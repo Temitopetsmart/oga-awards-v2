@@ -1,0 +1,341 @@
+/* ==========================================================================
+   OGA Awards — Reusable components (shared by public site and admin)
+   ========================================================================== */
+
+/* Buttons */
+.btn {
+  font-weight: 600;
+  border-radius: var(--oga-radius-pill);
+  padding: 0.72rem 1.5rem;
+  letter-spacing: 0.01em;
+  transition:
+    transform 0.2s var(--oga-ease),
+    box-shadow 0.2s var(--oga-ease),
+    background-color 0.2s;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-sm {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+}
+.btn-lg {
+  padding: 0.95rem 2rem;
+  font-size: 1.05rem;
+}
+.btn-gold {
+  --bs-btn-color: var(--oga-ink-900);
+  --bs-btn-bg: var(--oga-gold-500);
+  --bs-btn-border-color: var(--oga-gold-500);
+  --bs-btn-hover-color: var(--oga-ink-900);
+  --bs-btn-hover-bg: var(--oga-gold-300);
+  --bs-btn-hover-border-color: var(--oga-gold-300);
+  --bs-btn-active-color: var(--oga-ink-900);
+  --bs-btn-active-bg: var(--oga-gold-600);
+  --bs-btn-active-border-color: var(--oga-gold-600);
+  --bs-btn-focus-shadow-rgb: 212, 175, 55;
+  box-shadow: var(--oga-shadow-gold);
+}
+.btn-gold:hover {
+  transform: translateY(-2px);
+}
+.btn-ghost {
+  --bs-btn-color: var(--oga-text);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: rgba(247, 245, 239, 0.3);
+  --bs-btn-hover-color: var(--oga-ink-900);
+  --bs-btn-hover-bg: var(--oga-ink-50);
+  --bs-btn-hover-border-color: var(--oga-ink-50);
+  --bs-btn-active-color: var(--oga-ink-900);
+  --bs-btn-active-bg: var(--oga-ink-100);
+  --bs-btn-active-border-color: var(--oga-ink-100);
+}
+
+/* Badges */
+.oga-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--oga-radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--oga-gold-300);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid var(--oga-border-strong);
+}
+.oga-badge--muted {
+  color: var(--oga-text-muted);
+  background: rgba(247, 245, 239, 0.06);
+  border-color: var(--oga-border);
+}
+.oga-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--oga-gold-500);
+  box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.6);
+  animation: oga-pulse 2s infinite;
+}
+@keyframes oga-pulse {
+  70% {
+    box-shadow: 0 0 0 0.6rem rgba(212, 175, 55, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0);
+  }
+}
+
+/* Cards */
+.oga-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1.6rem;
+  color: inherit;
+  background: linear-gradient(160deg, var(--oga-surface), var(--oga-ink-800));
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+  transition:
+    transform 0.3s var(--oga-ease),
+    border-color 0.3s,
+    box-shadow 0.3s;
+}
+.oga-card h3 {
+  font-size: 1.2rem;
+  margin: 1rem 0 0.4rem;
+}
+.oga-card p {
+  font-size: 0.95rem;
+  margin: 0;
+}
+a.oga-card:hover,
+.oga-card--hover:hover {
+  transform: translateY(-4px);
+  border-color: var(--oga-border-strong);
+  box-shadow: var(--oga-shadow-md);
+}
+.oga-card__go {
+  margin-top: auto;
+  padding-top: 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--oga-gold-400);
+}
+.oga-card__go i {
+  transition: transform 0.2s;
+  margin-left: 0.35rem;
+}
+a.oga-card:hover .oga-card__go i {
+  transform: translateX(4px);
+}
+
+.oga-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  color: var(--oga-gold-400);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid var(--oga-border-strong);
+}
+
+/* Avatar (photo or initials) */
+.oga-avatar {
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  overflow: hidden;
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: var(--oga-ink-900);
+  background: linear-gradient(135deg, var(--oga-gold-300), var(--oga-gold-600));
+  border: 2px solid var(--oga-gold-500);
+}
+.oga-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.oga-avatar--lg {
+  width: 7rem;
+  height: 7rem;
+  font-size: 2.2rem;
+}
+
+/* Sections */
+.oga-section {
+  padding: var(--oga-space-7) 0;
+}
+.oga-section--alt {
+  background: var(--oga-bg-alt);
+  border-block: 1px solid var(--oga-border);
+}
+.oga-section-head {
+  max-width: 42rem;
+  margin: 0 auto var(--oga-space-5);
+  text-align: center;
+}
+.oga-section-head .oga-eyebrow {
+  margin-bottom: 0.75rem;
+}
+.oga-section-head h2 {
+  font-size: clamp(1.9rem, 3.5vw, 2.6rem);
+  margin-bottom: 0.75rem;
+}
+.oga-eyebrow {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--oga-gold-400);
+}
+
+/* Panel (e.g. countdown holder) */
+.oga-panel {
+  padding: 2rem;
+  text-align: center;
+  background: linear-gradient(
+    160deg,
+    rgba(212, 175, 55, 0.1),
+    rgba(24, 24, 24, 0.85)
+  );
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+  box-shadow: var(--oga-shadow-md);
+}
+.oga-panel__label {
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--oga-gold-300);
+}
+.oga-panel__note {
+  margin: 1.25rem 0 0;
+  font-size: 0.9rem;
+}
+
+/* Countdown */
+oga-countdown {
+  display: block;
+}
+oga-countdown .oga-cd {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+}
+oga-countdown .oga-cd__unit {
+  padding: 0.9rem 0.25rem;
+  background: rgba(5, 5, 5, 0.55);
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius-sm);
+}
+oga-countdown .oga-cd__num {
+  display: block;
+  font-family: var(--oga-font-display);
+  font-size: clamp(1.7rem, 4vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--oga-gold-400);
+  font-variant-numeric: tabular-nums;
+}
+oga-countdown .oga-cd__lbl {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--oga-text-muted);
+}
+
+/* Loading + empty states */
+.oga-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--oga-surface);
+  border-radius: var(--oga-radius-sm);
+}
+.oga-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(247, 245, 239, 0.07),
+    transparent
+  );
+  animation: oga-shimmer 1.4s infinite;
+}
+@keyframes oga-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+.oga-empty {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  border: 1px dashed var(--oga-border-strong);
+  border-radius: var(--oga-radius);
+}
+.oga-empty i {
+  font-size: 2rem;
+  color: var(--oga-gold-500);
+  margin-bottom: 1rem;
+}
+
+/* Forms */
+.form-control,
+.form-select {
+  background-color: var(--oga-ink-800);
+  border-color: var(--oga-border);
+  color: var(--oga-text);
+  border-radius: var(--oga-radius-sm);
+  padding: 0.75rem 1rem;
+}
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--oga-ink-800);
+  color: var(--oga-text);
+  border-color: var(--oga-gold-500);
+  box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.25);
+}
+.form-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* SweetAlert2 theme (see shared/js/ui/notify.js) */
+.oga-swal.swal2-popup {
+  background: var(--oga-surface);
+  color: var(--oga-text);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+  font-family: var(--oga-font-body);
+}
+.oga-swal .swal2-title {
+  font-family: var(--oga-font-display);
+  color: var(--oga-ink-50);
+}
+.oga-swal .swal2-html-container {
+  color: var(--oga-text-muted);
+}
+.oga-swal .swal2-actions .btn {
+  margin: 0 0.35rem;
+}
+.oga-swal--toast.swal2-popup {
+  border-radius: var(--oga-radius);
+}

@@ -1,0 +1,37 @@
+{
+  "_comment": "Occasions = any event the platform runs. 'main' is the one the home page follows. type 'awards' = main OGA; type 'special' = side events (e.g. Miss OGITECH). Special occasions appear on the home page only when enabled:true AND link.href is set. mode 'auto' derives the home state from timeline dates; 'manual' uses forceState.",
+  "main": "oga-10",
+  "occasions": [
+    {
+      "id": "oga-10",
+      "type": "awards",
+      "name": "OGA",
+      "edition": "10.0",
+      "tagline": "The OGITECH Student Awards",
+      "mode": "auto",
+      "forceState": null,
+      "timeline": {
+        "nominationsOpen": "2026-12-01T09:00:00+01:00",
+        "nominationsClose": "2026-12-20T23:59:00+01:00",
+        "votingOpen": "2027-01-05T09:00:00+01:00",
+        "votingClose": "2027-01-25T23:59:00+01:00",
+        "resultsPublish": "2027-02-14T18:00:00+01:00",
+        "ceremony": "2027-02-14T18:00:00+01:00"
+      },
+      "features": {
+        "tickets": false,
+        "committeeRecruitment": true,
+        "showVoteCounts": false
+      }
+    },
+    {
+      "id": "miss-ogitech",
+      "type": "special",
+      "name": "Miss OGITECH",
+      "tagline": "A separate pageant celebrating poise, intellect and purpose.",
+      "icon": "fa-crown",
+      "enabled": false,
+      "link": { "label": "Visit Miss OGITECH", "href": "" }
+    }
+  ]
+}

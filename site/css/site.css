@@ -1,0 +1,242 @@
+/* ==========================================================================
+   OGA Awards — Public site styles (layout + page-level). Tokens/components live in /shared.
+   ========================================================================== */
+.text-gold {
+  color: var(--oga-gold-400);
+}
+
+/* Header */
+.oga-header {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition:
+    background 0.3s,
+    border-color 0.3s,
+    backdrop-filter 0.3s;
+}
+.oga-header.is-scrolled,
+.oga-header:has(.navbar-collapse.show) {
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(14px);
+  border-bottom-color: var(--oga-border);
+}
+.oga-header .navbar {
+  min-height: var(--oga-header-h);
+}
+.oga-header .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--oga-ink-50);
+}
+.oga-header .navbar-brand img {
+  border-radius: 8px;
+  object-fit: cover;
+}
+.oga-header .navbar-brand em {
+  font-style: normal;
+  color: var(--oga-gold-400);
+}
+.oga-header .nav-link {
+  padding: 0.5rem 0.85rem;
+  font-weight: 500;
+  color: var(--oga-text-muted);
+  border-radius: var(--oga-radius-pill);
+  transition: color 0.2s;
+}
+.oga-header .nav-link:hover,
+.oga-header .nav-link.active {
+  color: var(--oga-gold-300);
+}
+.oga-header .navbar-toggler {
+  color: var(--oga-ink-50);
+  border: 1px solid var(--oga-border);
+  padding: 0.5rem 0.75rem;
+}
+@media (max-width: 991.98px) {
+  .oga-header .navbar-collapse {
+    padding-bottom: 1rem;
+  }
+}
+
+/* Hero */
+.oga-hero {
+  position: relative;
+  overflow: hidden;
+  margin-top: calc(var(--oga-header-h) * -1);
+  padding: calc(var(--oga-header-h) + 5rem) 0 5rem;
+  background:
+    radial-gradient(
+      ellipse at 15% 0%,
+      rgba(212, 175, 55, 0.1),
+      transparent 55%
+    ),
+    var(--oga-bg);
+}
+.oga-hero__glow {
+  position: absolute;
+  right: -10%;
+  top: 10%;
+  width: 36rem;
+  height: 36rem;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(212, 175, 55, 0.18),
+    transparent 65%
+  );
+  filter: blur(20px);
+  pointer-events: none;
+}
+.oga-hero__title {
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  margin-bottom: 1.25rem;
+}
+.oga-hero__lead {
+  max-width: 36rem;
+  font-size: 1.15rem;
+}
+.oga-emblem {
+  display: grid;
+  place-items: center;
+  min-height: 16rem;
+}
+.oga-emblem i {
+  font-size: 6rem;
+  color: var(--oga-gold-500);
+  filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.45));
+}
+.oga-spotlight h2 {
+  font-size: 1.8rem;
+}
+
+/* Winner + nominee cards */
+.winner-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 1.25rem;
+  text-align: center;
+}
+.winner-card__body h3 {
+  margin: 1rem 0 0.25rem;
+}
+.nominee-card {
+  align-items: flex-start;
+}
+.nominee-card h3 {
+  margin-top: 1rem;
+}
+
+/* Footer */
+.oga-footer {
+  padding: 4.5rem 0 1.5rem;
+  background: var(--oga-ink-950);
+  border-top: 1px solid var(--oga-border);
+}
+.oga-footer__brand {
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  font-size: 1.6rem;
+  color: var(--oga-gold-400);
+}
+.oga-footer__title {
+  margin-bottom: 1rem;
+  font-family: var(--oga-font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--oga-ink-50);
+}
+.oga-footer__links li {
+  margin-bottom: 0.55rem;
+}
+.oga-footer__links a {
+  color: var(--oga-text-muted);
+  transition: color 0.2s;
+}
+.oga-footer__links a:hover {
+  color: var(--oga-gold-300);
+}
+.oga-footer__links i {
+  width: 1.6rem;
+  color: var(--oga-gold-500);
+}
+.oga-social {
+  display: flex;
+  gap: 0.6rem;
+}
+.oga-social a {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  color: var(--oga-text);
+  border: 1px solid var(--oga-border);
+  transition: all 0.2s;
+}
+.oga-social a:hover {
+  color: var(--oga-ink-900);
+  background: var(--oga-gold-500);
+  border-color: var(--oga-gold-500);
+}
+.oga-footer__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--oga-border);
+  font-size: 0.85rem;
+  color: var(--oga-ink-300);
+}
+.oga-footer__bottom a {
+  color: var(--oga-ink-300);
+}
+.oga-footer__bottom a:hover {
+  color: var(--oga-gold-300);
+}
+
+/* Dev preview bar */
+.oga-preview {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 2000;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  background: rgba(5, 5, 5, 0.94);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-pill);
+  box-shadow: var(--oga-shadow-md);
+}
+.oga-preview strong {
+  color: var(--oga-gold-400);
+  margin-right: 0.25rem;
+}
+.oga-preview a {
+  padding: 0.25rem 0.65rem;
+  color: var(--oga-text-muted);
+  border-radius: var(--oga-radius-pill);
+}
+.oga-preview a:hover,
+.oga-preview a.is-active {
+  color: var(--oga-ink-900);
+  background: var(--oga-gold-500);
+}

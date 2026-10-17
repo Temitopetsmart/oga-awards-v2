@@ -1,0 +1,8 @@
+[
+  { "occasionId": "oga-10", "categoryId": "cat-leadership", "nomineeId": "n1" },
+  { "occasionId": "oga-10", "categoryId": "cat-academics", "nomineeId": "n3" },
+  { "occasionId": "oga-10", "categoryId": "cat-innovation", "nomineeId": "n5" },
+  { "occasionId": "oga-10", "categoryId": "cat-creative", "nomineeId": "n6" },
+  { "occasionId": "oga-10", "categoryId": "cat-sports", "nomineeId": "n7" },
+  { "occasionId": "oga-10", "categoryId": "cat-style", "nomineeId": "n8" }
+]

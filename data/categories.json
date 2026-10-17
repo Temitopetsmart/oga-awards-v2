@@ -1,0 +1,56 @@
+[
+  {
+    "id": "cat-leadership",
+    "occasionId": "oga-10",
+    "name": "Leadership Excellence",
+    "description": "For the student who leads with vision and integrity.",
+    "icon": "fa-landmark",
+    "order": 1,
+    "active": true
+  },
+  {
+    "id": "cat-academics",
+    "occasionId": "oga-10",
+    "name": "Academic Excellence",
+    "description": "Outstanding scholarship and dedication to learning.",
+    "icon": "fa-graduation-cap",
+    "order": 2,
+    "active": true
+  },
+  {
+    "id": "cat-innovation",
+    "occasionId": "oga-10",
+    "name": "Most Innovative",
+    "description": "Bold ideas and projects that move campus forward.",
+    "icon": "fa-lightbulb",
+    "order": 3,
+    "active": true
+  },
+  {
+    "id": "cat-creative",
+    "occasionId": "oga-10",
+    "name": "Creative of the Year",
+    "description": "Art, content and design that inspires.",
+    "icon": "fa-palette",
+    "order": 4,
+    "active": true
+  },
+  {
+    "id": "cat-sports",
+    "occasionId": "oga-10",
+    "name": "Sports Personality",
+    "description": "Passion, performance and team spirit.",
+    "icon": "fa-medal",
+    "order": 5,
+    "active": true
+  },
+  {
+    "id": "cat-style",
+    "occasionId": "oga-10",
+    "name": "Style Icon",
+    "description": "Campus fashion with a signature look.",
+    "icon": "fa-shirt",
+    "order": 6,
+    "active": true
+  }
+]

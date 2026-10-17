@@ -1,0 +1,65 @@
+/* ==========================================================================
+   OGA Awards — Design tokens (single source of truth for the brand)
+   Used by BOTH the public site and the admin dashboard.
+   ========================================================================== */
+:root {
+  /* Ink (blacks / neutrals) */
+  --oga-ink-950: #050505;
+  --oga-ink-900: #0a0a0a;
+  --oga-ink-800: #111111;
+  --oga-ink-700: #181818;
+  --oga-ink-600: #222222;
+  --oga-ink-500: #343434;
+  --oga-ink-300: #8c8a84;
+  --oga-ink-200: #b9b6ac;
+  --oga-ink-100: #e7e2d5;
+  --oga-ink-50: #f7f5ef;
+
+  /* Gold */
+  --oga-gold-200: #f6e7b4;
+  --oga-gold-300: #f1d98c;
+  --oga-gold-400: #e4c566;
+  --oga-gold-500: #d4af37;
+  --oga-gold-600: #b8922a;
+  --oga-gold-700: #8f6f1c;
+
+  /* Semantic */
+  --oga-success: #3fb97a;
+  --oga-warning: #e8a23c;
+  --oga-danger: #e5584f;
+  --oga-info: #4a9fd8;
+
+  /* Roles */
+  --oga-bg: var(--oga-ink-900);
+  --oga-bg-alt: var(--oga-ink-800);
+  --oga-surface: var(--oga-ink-700);
+  --oga-surface-2: var(--oga-ink-600);
+  --oga-text: var(--oga-ink-50);
+  --oga-text-muted: var(--oga-ink-200);
+  --oga-primary: var(--oga-gold-500);
+  --oga-border: rgba(247, 245, 239, 0.1);
+  --oga-border-strong: rgba(212, 175, 55, 0.35);
+
+  /* Typography */
+  --oga-font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --oga-font-body:
+    "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Spacing, radius, shadow, motion */
+  --oga-space-1: 0.25rem;
+  --oga-space-2: 0.5rem;
+  --oga-space-3: 1rem;
+  --oga-space-4: 1.5rem;
+  --oga-space-5: 2.5rem;
+  --oga-space-6: 4rem;
+  --oga-space-7: 6rem;
+  --oga-radius-sm: 8px;
+  --oga-radius: 14px;
+  --oga-radius-lg: 22px;
+  --oga-radius-pill: 999px;
+  --oga-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --oga-shadow-md: 0 18px 40px -14px rgba(0, 0, 0, 0.65);
+  --oga-shadow-gold: 0 10px 30px -12px rgba(212, 175, 55, 0.45);
+  --oga-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --oga-header-h: 72px;
+}

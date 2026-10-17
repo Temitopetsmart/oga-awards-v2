@@ -1,0 +1,92 @@
+/* ==========================================================================
+   OGA Awards — Base layer (maps tokens onto Bootstrap + global defaults)
+   Load AFTER bootstrap.css and tokens.css.
+   ========================================================================== */
+:root[data-bs-theme="dark"] {
+  --bs-body-bg: var(--oga-bg);
+  --bs-body-color: var(--oga-text);
+  --bs-body-font-family: var(--oga-font-body);
+  --bs-border-color: var(--oga-border);
+  --bs-link-color: var(--oga-gold-400);
+  --bs-link-hover-color: var(--oga-gold-300);
+  --bs-link-color-rgb: 228, 197, 102;
+  --bs-link-hover-color-rgb: 241, 217, 140;
+  --bs-secondary-color: var(--oga-text-muted);
+  --bs-emphasis-color: var(--oga-ink-50);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--oga-header-h) + 12px);
+}
+body {
+  background: var(--oga-bg);
+  color: var(--oga-text);
+  font-family: var(--oga-font-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+.oga-display {
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--oga-ink-50);
+}
+p {
+  color: var(--oga-text-muted);
+}
+a {
+  text-decoration: none;
+}
+img {
+  max-width: 100%;
+  height: auto;
+}
+::selection {
+  background: var(--oga-gold-500);
+  color: var(--oga-ink-900);
+}
+
+:focus-visible {
+  outline: 3px solid var(--oga-gold-400);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+main:focus {
+  outline: none;
+}
+
+.oga-skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 2000;
+  background: var(--oga-gold-500);
+  color: var(--oga-ink-900);
+  padding: 0.6rem 1rem;
+  border-radius: var(--oga-radius-sm);
+  font-weight: 700;
+  transition: top 0.2s;
+}
+.oga-skip:focus {
+  top: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
