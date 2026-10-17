@@ -1,0 +1,465 @@
+/* ==========================================================================
+   OGA Awards — Inner-page styles (loaded by every page except index.html)
+   ========================================================================== */
+/* Page hero */
+.oga-pagehero {
+  padding: 3.5rem 0 3rem;
+  background: radial-gradient(
+    ellipse at 10% 0%,
+    rgba(212, 175, 55, 0.1),
+    transparent 60%
+  );
+  border-bottom: 1px solid var(--oga-border);
+  margin-bottom: var(--oga-space-6);
+}
+.oga-pagehero h1 {
+  font-size: clamp(2rem, 4.5vw, 3.2rem);
+}
+.oga-pagehero__lead {
+  max-width: 40rem;
+  margin: 0.75rem 0 0;
+  font-size: 1.1rem;
+}
+.breadcrumb {
+  --bs-breadcrumb-divider-color: var(--oga-ink-300);
+  font-size: 0.85rem;
+}
+.breadcrumb-item a {
+  color: var(--oga-text-muted);
+}
+.breadcrumb-item a:hover {
+  color: var(--oga-gold-300);
+}
+.breadcrumb-item.active {
+  color: var(--oga-gold-400);
+}
+
+/* Toolbar, chips, search */
+.oga-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2.5rem;
+}
+.oga-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.oga-chip {
+  padding: 0.4rem 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--oga-text-muted);
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius-pill);
+  background: transparent;
+  transition: all 0.2s;
+}
+.oga-chip:hover,
+.oga-chip.is-active {
+  color: var(--oga-ink-900);
+  background: var(--oga-gold-500);
+  border-color: var(--oga-gold-500);
+}
+.oga-search {
+  position: relative;
+  min-width: min(100%, 18rem);
+}
+.oga-search i {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--oga-ink-300);
+  pointer-events: none;
+}
+.oga-search .form-control {
+  padding-left: 2.6rem;
+  border-radius: var(--oga-radius-pill);
+}
+
+/* Category sections */
+.oga-cat {
+  margin-bottom: var(--oga-space-6);
+}
+.oga-cat__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.oga-cat__head h2 {
+  font-size: 1.6rem;
+  margin: 0;
+}
+.oga-cat__head p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.oga-cat__head .oga-badge {
+  margin-left: auto;
+}
+
+/* Forms */
+.invalid-feedback {
+  display: block;
+  color: #ff8a82;
+  font-size: 0.85rem;
+}
+.form-control.is-invalid,
+.form-select.is-invalid {
+  border-color: var(--oga-danger);
+  background-image: none;
+}
+.form-control::placeholder {
+  color: var(--oga-ink-300);
+}
+.form-text {
+  color: var(--oga-ink-300);
+}
+.form-check-input {
+  background-color: var(--oga-ink-800);
+  border-color: var(--oga-ink-300);
+}
+.form-check-input:checked {
+  background-color: var(--oga-gold-500);
+  border-color: var(--oga-gold-500);
+}
+.oga-formcard {
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  background: linear-gradient(160deg, var(--oga-surface), var(--oga-ink-800));
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius-lg);
+}
+
+/* Accordion */
+.accordion {
+  --bs-accordion-bg: var(--oga-surface);
+  --bs-accordion-color: var(--oga-text);
+  --bs-accordion-border-color: var(--oga-border);
+  --bs-accordion-btn-color: var(--oga-ink-50);
+  --bs-accordion-btn-bg: var(--oga-surface);
+  --bs-accordion-active-bg: rgba(212, 175, 55, 0.1);
+  --bs-accordion-active-color: var(--oga-gold-300);
+  --bs-accordion-btn-focus-box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.25);
+  --bs-accordion-border-radius: var(--oga-radius);
+  --bs-accordion-inner-border-radius: var(--oga-radius);
+}
+.accordion-item {
+  margin-bottom: 0.75rem;
+  border-radius: var(--oga-radius) !important;
+  overflow: hidden;
+}
+.accordion-button {
+  font-weight: 600;
+}
+
+/* Timeline */
+.oga-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.5rem;
+  border-left: 2px solid var(--oga-border);
+}
+.oga-timeline li {
+  position: relative;
+  display: flex;
+  gap: 1rem;
+  padding: 0 0 1.75rem 1.5rem;
+}
+.oga-timeline li:last-child {
+  padding-bottom: 0;
+}
+.oga-timeline__dot {
+  position: absolute;
+  left: -0.95rem;
+  top: 0.25rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--oga-ink-500);
+  border: 2px solid var(--oga-bg);
+}
+.oga-timeline strong {
+  display: block;
+  color: var(--oga-ink-50);
+}
+.oga-timeline span:not(.oga-timeline__dot) {
+  font-size: 0.9rem;
+  color: var(--oga-text-muted);
+}
+.oga-timeline .is-past .oga-timeline__dot {
+  background: var(--oga-gold-700);
+}
+.oga-timeline .is-next .oga-timeline__dot {
+  background: var(--oga-gold-500);
+  box-shadow: 0 0 0 0.35rem rgba(212, 175, 55, 0.25);
+}
+
+/* Vote flow */
+.oga-steps {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+.oga-steps li {
+  flex: 1;
+  padding-top: 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--oga-ink-300);
+  border-top: 3px solid var(--oga-ink-500);
+}
+.oga-steps li.is-done,
+.oga-steps li.is-current {
+  color: var(--oga-gold-300);
+  border-top-color: var(--oga-gold-500);
+}
+.vote-pick {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem;
+  text-align: left;
+  color: var(--oga-text);
+  background: var(--oga-surface);
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+  transition: all 0.2s;
+}
+.vote-pick:hover {
+  border-color: var(--oga-border-strong);
+}
+.vote-pick.is-selected {
+  border-color: var(--oga-gold-500);
+  background: rgba(212, 175, 55, 0.1);
+  box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.2);
+}
+.vote-pick strong {
+  display: block;
+}
+.vote-pick small {
+  color: var(--oga-text-muted);
+}
+.vote-pick .oga-avatar {
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  font-size: 1.1rem;
+}
+.oga-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.oga-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius);
+}
+.oga-total strong {
+  font-family: var(--oga-font-display);
+  font-size: 1.6rem;
+  color: var(--oga-gold-400);
+}
+.oga-summary {
+  margin: 0 0 1.5rem;
+}
+.oga-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--oga-border);
+}
+.oga-summary dt {
+  font-weight: 500;
+  color: var(--oga-text-muted);
+}
+.oga-summary dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+
+/* Nominee profile */
+.oga-profile {
+  display: grid;
+  gap: 2rem;
+  align-items: start;
+}
+@media (min-width: 768px) {
+  .oga-profile {
+    grid-template-columns: 16rem 1fr;
+  }
+}
+.oga-profile__side {
+  text-align: center;
+}
+.oga-profile__side .oga-avatar {
+  margin: 0 auto 1rem;
+}
+
+/* Tickets */
+.oga-price {
+  font-family: var(--oga-font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--oga-gold-400);
+}
+.oga-perks {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+}
+.oga-perks li {
+  padding: 0.3rem 0;
+  color: var(--oga-text-muted);
+  font-size: 0.95rem;
+}
+.oga-perks i {
+  color: var(--oga-gold-500);
+  margin-right: 0.6rem;
+}
+.oga-card.is-selected {
+  border-color: var(--oga-gold-500);
+  box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.2);
+}
+.oga-ticket {
+  display: grid;
+  overflow: hidden;
+  background: linear-gradient(160deg, #1d1a10, var(--oga-ink-800));
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+  box-shadow: var(--oga-shadow-md);
+}
+@media (min-width: 640px) {
+  .oga-ticket {
+    grid-template-columns: 1fr auto;
+  }
+}
+.oga-ticket__main {
+  padding: 2rem;
+}
+.oga-ticket__qr {
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: #fff;
+}
+.oga-ticket__qr svg {
+  width: 9.5rem;
+  height: 9.5rem;
+}
+.oga-ticket__code {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  color: var(--oga-gold-300);
+}
+
+/* Gallery */
+.oga-tile {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 1rem;
+  text-align: center;
+  color: var(--oga-gold-400);
+  background: linear-gradient(135deg, var(--oga-ink-600), var(--oga-ink-800));
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+  overflow: hidden;
+  transition: all 0.3s var(--oga-ease);
+}
+.oga-tile:hover {
+  transform: translateY(-4px);
+  border-color: var(--oga-border-strong);
+}
+.oga-tile i {
+  font-size: 2.4rem;
+  margin-bottom: 0.6rem;
+}
+.oga-tile span {
+  display: block;
+  font-weight: 600;
+  color: var(--oga-ink-50);
+}
+.oga-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.modal-content {
+  background: var(--oga-surface);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+}
+.modal-header,
+.modal-footer {
+  border-color: var(--oga-border);
+}
+
+/* Committee */
+.oga-member {
+  text-align: center;
+  align-items: center;
+}
+.oga-member h3 {
+  margin-top: 1rem;
+}
+
+/* Legal */
+.oga-prose {
+  max-width: 46rem;
+}
+.oga-prose h2 {
+  font-size: 1.4rem;
+  margin: 2rem 0 0.5rem;
+}
+.alert-oga {
+  color: var(--oga-gold-200);
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius);
+}
+
+@media print {
+  .oga-header,
+  .oga-footer,
+  .oga-pagehero,
+  .oga-preview,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .oga-ticket {
+    box-shadow: none;
+    border-color: #999;
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+  .oga-ticket,
+  .oga-ticket * {
+    color: #000 !important;
+    background: #fff !important;
+  }
+}

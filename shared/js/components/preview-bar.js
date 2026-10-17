@@ -1,10 +1,29 @@
 import { APP, STATES } from "../config/app.config.js";
 import { html, mount } from "../core/dom.js";
+import { previewKey, withPreview } from "../core/nav.js";
 
-/** Dev helper: shows a bar to switch home states when the URL has ?preview=... */
+let linksPatched = false;
+
+/** Dev helper: when the URL has ?preview=…, show a state switcher and keep the preview on every internal link. */
 export function renderPreviewBar(currentState) {
-  if (!APP.allowPreview || !new URLSearchParams(location.search).has("preview"))
-    return;
+  if (!APP.allowPreview || !previewKey()) return;
+
+  if (!linksPatched) {
+    linksPatched = true;
+    document.addEventListener(
+      "click",
+      (e) => {
+        const a = e.target.closest?.("a[href]");
+        if (!a || a.target === "_blank" || a.closest("#oga-preview")) return;
+        const href = a.getAttribute("href");
+        if (!href || /^(#|mailto:|tel:|javascript:)/.test(href)) return;
+        a.href = withPreview(a.href);
+      },
+      true,
+    );
+  }
+
+  document.body.style.paddingBottom = "6rem"; // keep the floating bar from covering page content
   let bar = document.getElementById("oga-preview");
   if (!bar) {
     bar = document.createElement("div");

@@ -1,0 +1,48 @@
+{
+  "privacy": {
+    "title": "Privacy Policy",
+    "updated": "2026-10-17",
+    "draft": true,
+    "sections": [
+      {
+        "heading": "Information we collect",
+        "body": "We collect the details you give us when you register as a nominee, vote, buy tickets, apply to join the committee or contact us — for example your name, email address and phone number."
+      },
+      {
+        "heading": "How we use it",
+        "body": "We use your details to run OGA: to process votes and ticket orders, manage nominee accounts, respond to enquiries and send important event updates."
+      },
+      {
+        "heading": "Payments",
+        "body": "Payments are handled by our payment provider. We do not store your card details."
+      },
+      {
+        "heading": "Your choices",
+        "body": "You can contact us to ask about, correct or delete your information."
+      }
+    ]
+  },
+  "terms": {
+    "title": "Terms of Use",
+    "updated": "2026-10-17",
+    "draft": true,
+    "sections": [
+      {
+        "heading": "Using this site",
+        "body": "By using this site you agree to use it fairly and lawfully, and not to interfere with voting, ticketing or other users."
+      },
+      {
+        "heading": "Voting",
+        "body": "Votes are counted after payment is verified. Attempts to manipulate results may lead to votes being removed."
+      },
+      {
+        "heading": "Tickets",
+        "body": "Each ticket carries a unique code that can be scanned once at the gate."
+      },
+      {
+        "heading": "Changes",
+        "body": "We may update these terms. The date at the top shows when they last changed."
+      }
+    ]
+  }
+}

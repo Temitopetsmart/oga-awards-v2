@@ -1,0 +1,62 @@
+{
+  "_comment": "Sample committee data — replace names, roles and units. Add 'photo' paths when you have them.",
+  "intro": "The students who plan and deliver OGA every year.",
+  "units": [
+    {
+      "id": "u-exec",
+      "name": "Executive",
+      "description": "Leads strategy and keeps everything on track.",
+      "icon": "fa-landmark"
+    },
+    {
+      "id": "u-media",
+      "name": "Media & Publicity",
+      "description": "Content, design and communications.",
+      "icon": "fa-bullhorn"
+    },
+    {
+      "id": "u-tech",
+      "name": "Technology",
+      "description": "Website, voting and ticketing.",
+      "icon": "fa-laptop-code"
+    },
+    {
+      "id": "u-logistics",
+      "name": "Logistics & Events",
+      "description": "Venue, protocol and ceremony flow.",
+      "icon": "fa-clipboard-list"
+    }
+  ],
+  "members": [
+    {
+      "name": "Sample Member One",
+      "role": "Chairperson",
+      "unitId": "u-exec",
+      "photo": null
+    },
+    {
+      "name": "Sample Member Two",
+      "role": "Secretary",
+      "unitId": "u-exec",
+      "photo": null
+    },
+    {
+      "name": "Sample Member Three",
+      "role": "Media Lead",
+      "unitId": "u-media",
+      "photo": null
+    },
+    {
+      "name": "Sample Member Four",
+      "role": "Lead Developer",
+      "unitId": "u-tech",
+      "photo": null
+    },
+    {
+      "name": "Sample Member Five",
+      "role": "Logistics Lead",
+      "unitId": "u-logistics",
+      "photo": null
+    }
+  ]
+}

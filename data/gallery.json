@@ -1,0 +1,50 @@
+[
+  {
+    "id": "g1",
+    "edition": "OGA 9.0",
+    "title": "Red carpet arrivals",
+    "caption": "Guests arriving in style.",
+    "icon": "fa-shirt",
+    "src": null
+  },
+  {
+    "id": "g2",
+    "edition": "OGA 9.0",
+    "title": "The stage",
+    "caption": "A packed hall on awards night.",
+    "icon": "fa-microphone-lines",
+    "src": null
+  },
+  {
+    "id": "g3",
+    "edition": "OGA 9.0",
+    "title": "Winners' moment",
+    "caption": "Trophies and celebrations.",
+    "icon": "fa-trophy",
+    "src": null
+  },
+  {
+    "id": "g4",
+    "edition": "OGA 9.0",
+    "title": "Behind the scenes",
+    "caption": "The committee at work.",
+    "icon": "fa-people-group",
+    "src": null
+  },
+  {
+    "id": "g5",
+    "edition": "OGA 8.0",
+    "title": "Opening act",
+    "caption": "Music to start the night.",
+    "icon": "fa-music",
+    "src": null
+  },
+  {
+    "id": "g6",
+    "edition": "OGA 8.0",
+    "title": "Group photo",
+    "caption": "Nominees together.",
+    "icon": "fa-camera",
+    "src": null
+  }
+]

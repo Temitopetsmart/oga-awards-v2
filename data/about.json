@@ -1,0 +1,33 @@
+{
+  "_comment": "Copy for the About page. Sample text — rewrite to match OGA's real story.",
+  "kicker": "About OGA",
+  "title": "Celebrating the students who move campus forward",
+  "lead": "OGA is the OGITECH Student Awards — a student-run celebration of leadership, creativity, academics and service.",
+  "story": [
+    "OGA exists to recognise students whose work often goes unseen: the leaders, creators, scholars and builders who make campus life better for everyone.",
+    "Every edition is planned and delivered by a committee of students, with nominations, public voting and a ceremony that brings the community together."
+  ],
+  "valuesTitle": "What we stand for",
+  "values": [
+    {
+      "icon": "fa-scale-balanced",
+      "title": "Fairness",
+      "text": "Clear rules, verified votes and transparent results."
+    },
+    {
+      "icon": "fa-star",
+      "title": "Excellence",
+      "text": "We celebrate achievement that sets a high bar."
+    },
+    {
+      "icon": "fa-handshake",
+      "title": "Community",
+      "text": "Built by students, for the whole campus."
+    },
+    {
+      "icon": "fa-lock",
+      "title": "Trust",
+      "text": "Your details and payments are handled with care."
+    }
+  ]
+}

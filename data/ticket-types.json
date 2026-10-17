@@ -1,0 +1,32 @@
+[
+  {
+    "id": "t-regular",
+    "occasionId": "oga-10",
+    "name": "Regular",
+    "price": 2000,
+    "description": "General admission to the ceremony.",
+    "perks": ["Entry to the ceremony", "General seating"],
+    "maxPerOrder": 10,
+    "active": true
+  },
+  {
+    "id": "t-vip",
+    "occasionId": "oga-10",
+    "name": "VIP",
+    "price": 5000,
+    "description": "Premium seating and a better view.",
+    "perks": ["Priority entry", "Front-section seating", "Welcome drink"],
+    "maxPerOrder": 6,
+    "active": true
+  },
+  {
+    "id": "t-table",
+    "occasionId": "oga-10",
+    "name": "VIP Table (4)",
+    "price": 20000,
+    "description": "A reserved table for four.",
+    "perks": ["Reserved table for 4", "Priority entry", "Table service"],
+    "maxPerOrder": 2,
+    "active": true
+  }
+]

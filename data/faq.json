@@ -1,0 +1,50 @@
+[
+  {
+    "id": "f1",
+    "group": "General",
+    "q": "What is OGA?",
+    "a": "OGA is the OGITECH Student Awards — an annual, student-run celebration of excellence on campus."
+  },
+  {
+    "id": "f2",
+    "group": "General",
+    "q": "Who can be nominated?",
+    "a": "Eligible OGITECH students who register as nominees and are approved by the organising team."
+  },
+  {
+    "id": "f3",
+    "group": "Nominations",
+    "q": "How do I register as a nominee?",
+    "a": "When nominations are open, use the Register as Nominee button, create your account and pick a category."
+  },
+  {
+    "id": "f4",
+    "group": "Nominations",
+    "q": "How long does approval take?",
+    "a": "Our team reviews entries during the nomination window. You can follow your status from your nominee dashboard."
+  },
+  {
+    "id": "f5",
+    "group": "Voting",
+    "q": "How does voting work?",
+    "a": "Pick a nominee, choose how many votes you want, and pay securely. Votes are counted once the payment is verified."
+  },
+  {
+    "id": "f6",
+    "group": "Voting",
+    "q": "Is there a limit on votes?",
+    "a": "Yes. There is a maximum number of votes per payment, shown on the voting page."
+  },
+  {
+    "id": "f7",
+    "group": "Tickets",
+    "q": "How do I get my ticket after buying?",
+    "a": "Your ticket appears right after payment. You can always retrieve it on the Tickets page with your reference and email."
+  },
+  {
+    "id": "f8",
+    "group": "Tickets",
+    "q": "Can I transfer my ticket?",
+    "a": "Each ticket has a unique QR code that can be scanned once at the gate. Contact us if you need help with a transfer."
+  }
+]
