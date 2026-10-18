@@ -88,3 +88,16 @@ export const STATES = {
     cta: { label: "See the Winners", href: "results.html" },
   },
 };
+
+/**
+ * DEMO BRIDGE: values saved from the admin Settings page (kept in this browser) override the
+ * defaults above. APP is a const, but its properties are writable. Delete with the backend.
+ */
+try {
+  const s = JSON.parse(localStorage.getItem("oga:admin:settings") ?? "null");
+  if (s?.voting) Object.assign(APP.voting, s.voting);
+  if (s?.contact) Object.assign(APP.contact, s.contact);
+  if (Array.isArray(s?.social)) APP.social = s.social;
+} catch {
+  /* ignore */
+}

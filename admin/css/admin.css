@@ -1,0 +1,504 @@
+/* ==========================================================================
+   OGA Admin — AdminLTE 4 re-skinned with the OGA design tokens (dark theme).
+   Load order: bootstrap → adminlte → tokens → base → components → admin.css
+   ========================================================================== */
+:root[data-bs-theme="dark"] {
+  --bs-body-bg: var(--oga-ink-800); /* cards, top bar */
+  --bs-tertiary-bg: var(--oga-ink-900); /* page background */
+  --bs-secondary-bg: var(--oga-ink-950); /* sidebar */
+  --bs-body-bg-rgb: 17, 17, 17;
+  --bs-tertiary-bg-rgb: 10, 10, 10;
+  --bs-secondary-bg-rgb: 5, 5, 5;
+  --bs-primary: var(--oga-gold-500);
+  --bs-primary-rgb: 212, 175, 55;
+  --bs-primary-text-emphasis: var(--oga-gold-300);
+  --bs-primary-bg-subtle: rgba(212, 175, 55, 0.12);
+  --bs-primary-border-subtle: rgba(212, 175, 55, 0.35);
+}
+
+html .app-sidebar[data-bs-theme="dark"] {
+  --bs-secondary-bg: var(--oga-ink-950);
+  --bs-secondary-bg-rgb: 5, 5, 5;
+  --lte-sidebar-color: var(--oga-text-muted);
+  --lte-sidebar-hover-color: var(--oga-gold-300);
+  --lte-sidebar-hover-bg: rgba(212, 175, 55, 0.08);
+  --lte-sidebar-menu-active-bg: rgba(212, 175, 55, 0.14);
+  --lte-sidebar-menu-active-color: var(--oga-gold-300);
+  --lte-sidebar-header-color: var(--oga-ink-300);
+  border-right: 1px solid var(--oga-border);
+}
+.app-sidebar .sidebar-brand {
+  border-bottom: 1px solid var(--oga-border);
+}
+.app-sidebar .brand-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--oga-ink-50);
+}
+.app-sidebar .brand-link em {
+  font-style: normal;
+  color: var(--oga-gold-400);
+}
+.app-sidebar .brand-link img {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.app-sidebar .nav-header {
+  padding: 1.1rem 1rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--oga-ink-300);
+}
+.app-sidebar .nav-icon {
+  width: 1.6rem;
+  text-align: center;
+}
+.app-sidebar .nav-link.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.app-sidebar .nav-link .badge {
+  margin-left: auto;
+}
+.sidebar-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: var(--oga-ink-500) transparent;
+}
+
+.app-header {
+  border-bottom: 1px solid var(--oga-border);
+}
+.app-content-header h1 {
+  font-size: 1.6rem;
+}
+.app-footer {
+  color: var(--oga-ink-300);
+  border-top: 1px solid var(--oga-border);
+}
+.breadcrumb {
+  font-size: 0.85rem;
+}
+.breadcrumb-item a {
+  color: var(--oga-text-muted);
+}
+.breadcrumb-item.active {
+  color: var(--oga-gold-400);
+}
+
+/* Cards */
+.card {
+  --bs-card-bg: var(--oga-ink-800);
+  --bs-card-border-color: var(--oga-border);
+  --bs-card-cap-bg: transparent;
+  border-radius: var(--oga-radius);
+}
+.card-header {
+  border-bottom-color: var(--oga-border);
+}
+.card-title {
+  font-family: var(--oga-font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Stat cards */
+.oga-stat {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: 100%;
+  padding: 1.25rem;
+  background: linear-gradient(160deg, var(--oga-surface), var(--oga-ink-800));
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+}
+.oga-stat .oga-icon {
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  font-size: 1.3rem;
+}
+.oga-stat__value {
+  display: block;
+  font-family: var(--oga-font-display);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--oga-ink-50);
+}
+.oga-stat__label {
+  display: block;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--oga-text-muted);
+}
+.oga-stat__sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--oga-ink-300);
+}
+a.oga-stat {
+  color: inherit;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+a.oga-stat:hover {
+  border-color: var(--oga-border-strong);
+  transform: translateY(-2px);
+}
+
+/* Status badges */
+.oga-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--oga-radius-pill);
+  border: 1px solid transparent;
+}
+.oga-status::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.oga-status--success {
+  color: #6fdca5;
+  background: rgba(63, 185, 122, 0.12);
+  border-color: rgba(63, 185, 122, 0.3);
+}
+.oga-status--warning {
+  color: #f3be72;
+  background: rgba(232, 162, 60, 0.12);
+  border-color: rgba(232, 162, 60, 0.3);
+}
+.oga-status--danger {
+  color: #ff8a82;
+  background: rgba(229, 88, 79, 0.12);
+  border-color: rgba(229, 88, 79, 0.3);
+}
+.oga-status--muted {
+  color: var(--oga-text-muted);
+  background: rgba(247, 245, 239, 0.06);
+  border-color: var(--oga-border);
+}
+
+/* Data table */
+.oga-dt__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--oga-border);
+}
+.oga-dt__toolbar .oga-search {
+  flex: 1 1 14rem;
+  max-width: 22rem;
+}
+.oga-dt__toolbar .form-select {
+  width: auto;
+  padding-block: 0.55rem;
+  border-radius: var(--oga-radius-pill);
+}
+.oga-dt__bulk {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.oga-table {
+  margin: 0;
+  --bs-table-bg: transparent;
+  vertical-align: middle;
+}
+.oga-table thead th {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--oga-text-muted);
+  border-bottom-color: var(--oga-border);
+  white-space: nowrap;
+}
+.oga-table thead th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+.oga-table thead th[data-sort]:hover {
+  color: var(--oga-gold-300);
+}
+.oga-table tbody tr:hover {
+  background: rgba(212, 175, 55, 0.04);
+}
+.oga-table td {
+  border-bottom-color: var(--oga-border);
+}
+.oga-person {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.oga-person .oga-avatar {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 0.85rem;
+  border-width: 1px;
+}
+.oga-person small {
+  display: block;
+  color: var(--oga-ink-300);
+}
+.oga-actions {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+.oga-actions .btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+.oga-dt__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--oga-border);
+  font-size: 0.85rem;
+  color: var(--oga-text-muted);
+}
+.oga-dt__pager {
+  display: flex;
+  gap: 0.35rem;
+}
+.oga-dt__pager .btn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+.oga-dt__empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--oga-text-muted);
+}
+.oga-dt__empty i {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 2rem;
+  color: var(--oga-gold-500);
+}
+
+/* Modals + switches */
+.modal-content {
+  background: var(--oga-surface);
+  border: 1px solid var(--oga-border-strong);
+}
+.form-switch .form-check-input:checked {
+  background-color: var(--oga-gold-500);
+  border-color: var(--oga-gold-500);
+}
+.oga-dl {
+  margin: 0;
+}
+.oga-dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--oga-border);
+}
+.oga-dl dt {
+  font-weight: 500;
+  color: var(--oga-text-muted);
+}
+.oga-dl dd {
+  margin: 0;
+  text-align: right;
+}
+
+/* Activity feed */
+.oga-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.oga-feed li {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--oga-border);
+  font-size: 0.9rem;
+}
+.oga-feed li:last-child {
+  border-bottom: 0;
+}
+.oga-feed time {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--oga-ink-300);
+}
+.oga-chart {
+  position: relative;
+  height: 18rem;
+}
+
+/* Login */
+.oga-login {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(
+      ellipse at 20% 0%,
+      rgba(212, 175, 55, 0.12),
+      transparent 55%
+    ),
+    var(--oga-bg);
+}
+.oga-login__card {
+  width: min(100%, 26rem);
+  padding: clamp(1.5rem, 4vw, 2.25rem);
+  background: linear-gradient(160deg, var(--oga-surface), var(--oga-ink-800));
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+  box-shadow: var(--oga-shadow-md);
+}
+.oga-login__brand {
+  margin-bottom: 1.25rem;
+  font-family: var(--oga-font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--oga-ink-50);
+}
+.oga-login__brand em {
+  font-style: normal;
+  color: var(--oga-gold-400);
+}
+.oga-demo {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  font-size: 0.82rem;
+  color: var(--oga-gold-200);
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px dashed var(--oga-border-strong);
+  border-radius: var(--oga-radius-sm);
+}
+.oga-demo code {
+  color: var(--oga-gold-300);
+}
+
+/* AdminLTE adds a clearfix ::after to card headers, which breaks flex layouts */
+.card-header::after {
+  content: none;
+}
+.oga-dt__toolbar .form-select {
+  min-width: 10.5rem;
+  padding-right: 2.25rem;
+}
+
+/* Tabs */
+.nav-tabs {
+  --bs-nav-tabs-border-color: var(--oga-border);
+  --bs-nav-tabs-link-active-bg: var(--oga-ink-800);
+  --bs-nav-tabs-link-active-color: var(--oga-gold-300);
+  --bs-nav-tabs-link-active-border-color: var(--oga-border) var(--oga-border)
+    var(--oga-ink-800);
+  --bs-nav-link-color: var(--oga-text-muted);
+  --bs-nav-link-hover-color: var(--oga-gold-300);
+}
+.nav-tabs .nav-link {
+  font-weight: 600;
+}
+.card > .nav-tabs {
+  padding: 0.75rem 1.25rem 0;
+}
+
+/* Results */
+.oga-bar {
+  height: 0.5rem;
+  background: var(--oga-ink-600);
+  border-radius: 99px;
+  overflow: hidden;
+  min-width: 6rem;
+}
+.oga-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--oga-gold-500);
+}
+.oga-result td,
+.oga-result th {
+  vertical-align: middle;
+}
+
+/* Gate scanner */
+.oga-scan {
+  text-align: center;
+  padding: 2rem 1rem;
+  border-radius: var(--oga-radius-lg);
+  border: 2px solid var(--oga-border);
+  background: var(--oga-ink-800);
+}
+.oga-scan i {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+}
+.oga-scan h2 {
+  font-size: 1.8rem;
+  margin: 0;
+}
+.oga-scan--valid {
+  border-color: var(--oga-success);
+  background: rgba(63, 185, 122, 0.12);
+}
+.oga-scan--valid i {
+  color: var(--oga-success);
+}
+.oga-scan--used {
+  border-color: var(--oga-warning);
+  background: rgba(232, 162, 60, 0.12);
+}
+.oga-scan--used i {
+  color: var(--oga-warning);
+}
+.oga-scan--bad {
+  border-color: var(--oga-danger);
+  background: rgba(229, 88, 79, 0.12);
+}
+.oga-scan--bad i {
+  color: var(--oga-danger);
+}
+.oga-video {
+  width: 100%;
+  max-height: 18rem;
+  border-radius: var(--oga-radius);
+  background: #000;
+  object-fit: cover;
+}
+.oga-result .form-select {
+  min-width: 14rem;
+  padding-right: 2.25rem;
+}
