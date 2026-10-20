@@ -1,6 +1,8 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
 import { rules } from "../../../shared/js/core/validate.js";
+import { downloadCsv } from "../../../shared/js/core/csv.js";
+import { ROOT } from "../../../shared/js/config/app.config.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
@@ -16,7 +18,7 @@ import { listCategories } from "../services/category.repo.js";
 import { logAudit } from "../services/admin-store.js";
 
 export const title = "Nominees";
-export const perm = "nominees";
+export const perm = "nominees.view";
 export const crumbs = ["Awards", "Nominees"];
 
 const STATUSES = [
@@ -25,21 +27,30 @@ const STATUSES = [
   { value: "rejected", label: "Rejected" },
 ];
 
-export default async function nominees() {
+export default async function nominees({ can }) {
   return html`<div class="card">
     <div
       class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center"
     >
       <h2 class="card-title mb-0">All nominees</h2>
-      <button class="btn btn-gold btn-sm" id="addBtn">
-        <i class="fa-solid fa-plus me-1"></i>Add nominee
-      </button>
+      <div class="d-flex gap-2">
+        ${can("nominees.export")
+          ? html`<button class="btn btn-ghost btn-sm" id="exportBtn">
+              <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+            </button>`
+          : ""}
+        ${can("nominees.create")
+          ? html`<button class="btn btn-gold btn-sm" id="addBtn">
+              <i class="fa-solid fa-plus me-1"></i>Add nominee
+            </button>`
+          : ""}
+      </div>
     </div>
     <div id="nomTable"></div>
   </div>`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, can }) {
   const cats = await listCategories();
   const catName = (id) => cats.find((c) => c.id === id)?.name ?? "—";
   const load = async () =>
@@ -49,6 +60,7 @@ export async function init(root, { admin }) {
     }));
 
   const table = new DataTable(root.querySelector("#nomTable"), {
+    can,
     rows: await load(),
     searchKeys: ["name", "email", "department", "categoryName"],
     filters: [
@@ -92,28 +104,56 @@ export async function init(root, { admin }) {
       },
     ],
     actions: [
-      { key: "view", label: "View details", icon: "fa-eye" },
+      {
+        key: "view",
+        label: "View details",
+        icon: "fa-eye",
+        perm: "nominees.view",
+      },
+      {
+        key: "viewAs",
+        label: "View as nominee",
+        icon: "fa-user-secret",
+        perm: "nominees.view",
+      },
       {
         key: "approve",
         label: "Approve",
         icon: "fa-check",
         variant: "gold",
+        perm: "nominees.approve",
         when: (n) => n.status !== "approved",
       },
       {
         key: "reject",
         label: "Reject",
         icon: "fa-ban",
+        perm: "nominees.approve",
         when: (n) => n.status !== "rejected",
       },
-      { key: "edit", label: "Edit", icon: "fa-pen" },
-      { key: "delete", label: "Delete", icon: "fa-trash" },
+      { key: "edit", label: "Edit", icon: "fa-pen", perm: "nominees.edit" },
+      {
+        key: "delete",
+        label: "Delete",
+        icon: "fa-trash",
+        perm: "nominees.delete",
+      },
     ],
     bulkActions: [
-      { key: "approve", label: "Approve", icon: "fa-check" },
-      { key: "reject", label: "Reject", icon: "fa-ban" },
+      {
+        key: "approve",
+        label: "Approve",
+        icon: "fa-check",
+        perm: "nominees.approve",
+      },
+      {
+        key: "reject",
+        label: "Reject",
+        icon: "fa-ban",
+        perm: "nominees.approve",
+      },
     ],
-    empty: "No nominees yet. Add one, or wait for registrations.",
+    empty: "No nominees yet in this edition.",
     onAction: (key, n) => handlers[key](n),
     onBulk: (key, list) => bulk(key, list),
   });
@@ -203,6 +243,14 @@ export async function init(root, { admin }) {
           </div>
         </dl>`,
       }),
+    viewAs: (n) => {
+      logAudit(admin, "Previewed nominee dashboard", n.name);
+      window.open(
+        `${ROOT}dashboard.html?viewAs=${encodeURIComponent(n.id)}`,
+        "_blank",
+        "noopener",
+      );
+    },
     async approve(n) {
       await setStatus(n, "approved");
       notify.toast("success", `${n.name} approved`);
@@ -272,7 +320,7 @@ export async function init(root, { admin }) {
     refresh();
   }
 
-  root.querySelector("#addBtn").addEventListener("click", () =>
+  root.querySelector("#addBtn")?.addEventListener("click", () =>
     openFormModal({
       title: "Add nominee",
       fields: fields(),
@@ -287,4 +335,16 @@ export async function init(root, { admin }) {
       },
     }),
   );
+
+  root.querySelector("#exportBtn")?.addEventListener("click", async () => {
+    downloadCsv("oga-nominees.csv", await load(), [
+      { label: "Name", key: "name" },
+      { label: "Category", key: "categoryName" },
+      { label: "Department", key: "department" },
+      { label: "Email", key: "email" },
+      { label: "Phone", key: "phone" },
+      { label: "Status", key: "status" },
+    ]);
+    logAudit(admin, "Exported nominees");
+  });
 }

@@ -11,7 +11,14 @@ export async function getTicketTypes(occasionId) {
   );
 }
 
-export async function createTicketOrder({ type, qty, name, email, phone }) {
+export async function createTicketOrder({
+  type,
+  qty,
+  name,
+  email,
+  phone,
+  editionId,
+}) {
   await delay(300);
   if (!Number.isInteger(qty) || qty < 1 || qty > type.maxPerOrder)
     throw userError(`You can buy 1 to ${type.maxPerOrder} tickets per order.`, {
@@ -19,6 +26,7 @@ export async function createTicketOrder({ type, qty, name, email, phone }) {
     });
   const order = {
     reference: uid("ORD-", 8),
+    editionId,
     typeId: type.id,
     typeName: type.name,
     qty,
@@ -41,6 +49,7 @@ export async function issueTickets(reference) {
   order.status = "paid";
   const tickets = Array.from({ length: order.qty }, () => ({
     code: uid("TKT-", 8),
+    editionId: order.editionId,
     orderReference: order.reference,
     typeName: order.typeName,
     holder: order.name,

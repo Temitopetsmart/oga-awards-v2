@@ -8,12 +8,14 @@ import {
   currentAdmin,
   loginAdmin,
   landingPage,
+  seedDemo,
   DEMO_ACCOUNTS,
 } from "../services/admin-auth.service.js";
 
 export const title = "Sign in";
 
 export default async function login() {
+  await seedDemo();
   const me = currentAdmin();
   if (me && landingPage(me)) {
     location.replace(ROOT + landingPage(me));
@@ -41,10 +43,12 @@ export default async function login() {
         <button class="btn btn-gold btn-lg w-100" type="submit">Sign in</button>
       </form>
       <div class="oga-demo">
-        <strong>Demo mode.</strong> Use any password with
-        ${DEMO_ACCOUNTS.map(
-          (a, i) => html`${i ? " or " : ""}<code>${a.email}</code>`,
-        )}.
+        <strong>Demo mode.</strong> Use any password with one of:
+        <ul class="mb-0 mt-1 ps-3">
+          ${DEMO_ACCOUNTS.map(
+            (a) => html`<li><code>${a.email}</code> — ${a.label}</li>`,
+          )}
+        </ul>
       </div>
       <p class="text-center mt-4 mb-0">
         <a href="${ROOT}index.html">← Back to ${APP.brand.name}</a>
@@ -60,12 +64,12 @@ export function init(root) {
       password: [rules.required()],
     },
     async onSubmit(values) {
-      const admin = await loginAdmin(values);
-      const next = landingPage(admin);
+      const person = await loginAdmin(values);
+      const next = landingPage(person);
       if (!next) {
         await notify.warning(
           "No pages yet",
-          "Your role has no available pages right now.",
+          "You don’t have access to any pages right now.",
         );
         return;
       }

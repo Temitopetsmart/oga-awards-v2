@@ -17,6 +17,7 @@ import { pageHero, pageBody, notice } from "../sections/page-sections.js";
 
 export const title = "Tickets";
 let types = [];
+let editionId = "";
 
 export default async function tickets(ctx) {
   const hero = pageHero({
@@ -33,6 +34,7 @@ export default async function tickets(ctx) {
       actions: [{ label: "Back home", href: "index.html" }],
     })}`;
   }
+  editionId = ctx.occasion.id;
   types = await getTicketTypes(ctx.occasion.id);
   return html`${hero}${pageBody(
     html` <div class="row g-4" id="ticketTypes">
@@ -190,6 +192,7 @@ function renderCheckout(box, type) {
         name: v.name.trim(),
         email: v.email.trim(),
         phone: v.phone.trim(),
+        editionId,
       });
       await checkout(order);
       const { tickets: issued } = await issueTickets(order.reference);

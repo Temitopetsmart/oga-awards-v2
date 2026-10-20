@@ -124,7 +124,7 @@ export default async function register(ctx) {
   )}`;
 }
 
-export function init(root) {
+export function init(root, ctx) {
   const form = root.querySelector("#registerForm");
   if (!form) return;
   bindForm(form, {
@@ -143,7 +143,7 @@ export function init(root) {
       terms: [rules.required("You must accept to continue.")],
     },
     async onSubmit(values) {
-      await registerNominee(values);
+      await registerNominee({ ...values, occasionId: ctx.occasion.id });
       await notify.success(
         "Welcome aboard!",
         "Your account is created and pending review.",

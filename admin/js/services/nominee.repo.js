@@ -1,23 +1,30 @@
+// admin/js/services/nominee.repo.js
 import { store } from "../../../shared/js/core/store.js";
 import { collection } from "./admin-store.js";
+import { viewing, inEdition } from "./scope.js";
 
 /**
- * Nominees = seed nominees (admin store) + public self-registrations (the public site keeps
- * those under 'oga:nominees'). Status changes are written back to whichever store owns the record.
+ * Nominees of the edition being viewed = seed nominees (admin store) + public self-registrations
+ * (the public site keeps those under 'oga:nominees'). Status changes are written back to
+ * whichever store owns the record.
  */
 const seeds = collection("nominees", { seed: "nominees", prefix: "NOM-" });
 const REG_KEY = "nominees";
-
 const registered = () => store.get(REG_KEY, []);
 
-export async function listNominees() {
-  const base = (await seeds.all()).map((n) => ({ ...n, source: "admin" }));
-  const reg = registered().map((n) => ({ ...n, source: "registration" }));
+export async function listNominees(editionId = viewing()) {
+  const base = (await seeds.all())
+    .filter((n) => inEdition(n, editionId))
+    .map((n) => ({ ...n, source: "admin" }));
+  const reg = registered()
+    .filter((n) => inEdition(n, editionId))
+    .map((n) => ({ ...n, source: "registration" }));
   return [...reg, ...base];
 }
 
-export const pendingNomineeCount = () =>
-  registered().filter((n) => n.status === "pending").length;
+export const pendingNomineeCount = (editionId = viewing()) =>
+  registered().filter((n) => n.status === "pending" && inEdition(n, editionId))
+    .length;
 
 export async function setNomineeStatus(id, status) {
   const reg = registered();
@@ -39,7 +46,7 @@ export async function saveNominee(id, data) {
     return;
   }
   if (id) await seeds.update(id, data);
-  else await seeds.create({ occasionId: "oga-10", photo: null, ...data });
+  else await seeds.create({ occasionId: viewing(), photo: null, ...data });
 }
 
 export async function removeNominee(id) {

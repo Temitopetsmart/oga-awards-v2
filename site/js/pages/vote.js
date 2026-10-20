@@ -32,6 +32,7 @@ const S = {
 };
 let cats = [];
 let nominees = [];
+let editionId = "";
 const nomineeOf = () => nominees.find((n) => n.id === S.nomineeId);
 const categoryOf = () => cats.find((c) => c.id === S.categoryId);
 
@@ -64,6 +65,7 @@ export default async function vote(ctx, { params }) {
   });
   if (closed) return html`${hero}${closed}`;
 
+  editionId = ctx.occasion.id;
   [cats, nominees] = await Promise.all([
     getCategories(ctx.occasion.id),
     getNominees(ctx.occasion.id),
@@ -367,6 +369,7 @@ function bindReview(el) {
       const order = await createOrder({
         nomineeId: S.nomineeId,
         categoryId: S.categoryId,
+        editionId,
         votes: S.votes,
         name: S.name,
         email: S.email,

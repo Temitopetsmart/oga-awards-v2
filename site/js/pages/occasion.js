@@ -12,10 +12,10 @@ export const title = "Occasion";
 
 /** Generic page for any special occasion (e.g. Miss OGITECH) defined in data/occasions.json. */
 export default async function occasion(ctx, { params }) {
-  const { occasions } = await getResource("occasions");
-  const o = occasions.find(
-    (x) => x.id === params.get("id") && x.type === "special",
-  );
+  const { editions } = await getResource("editions");
+  const o = editions
+    .flatMap((e) => e.occasions ?? [])
+    .find((x) => x.id === params.get("id"));
   if (!o || !o.enabled)
     return notice({
       icon: "fa-calendar-xmark",

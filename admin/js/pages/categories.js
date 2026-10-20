@@ -14,24 +14,26 @@ import {
 import { logAudit } from "../services/admin-store.js";
 
 export const title = "Categories";
-export const perm = "categories";
+export const perm = "categories.view";
 export const crumbs = ["Awards", "Categories"];
 
-export default async function categories() {
+export default async function categories({ can }) {
   return html`<div class="card">
     <div
       class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center"
     >
       <h2 class="card-title mb-0">Award categories</h2>
-      <button class="btn btn-gold btn-sm" id="addBtn">
-        <i class="fa-solid fa-plus me-1"></i>Add category
-      </button>
+      ${can("categories.manage")
+        ? html`<button class="btn btn-gold btn-sm" id="addBtn">
+            <i class="fa-solid fa-plus me-1"></i>Add category
+          </button>`
+        : ""}
     </div>
     <div id="catTable"></div>
   </div>`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, can }) {
   const load = async () => {
     const [cats, counts] = await Promise.all([
       listCategories(),
@@ -97,6 +99,7 @@ export async function init(root, { admin }) {
   });
 
   const table = new DataTable(root.querySelector("#catTable"), {
+    can,
     rows: await load(),
     searchKeys: ["name", "description"],
     filters: [
@@ -138,10 +141,15 @@ export async function init(root, { admin }) {
       },
     ],
     actions: [
-      { key: "edit", label: "Edit", icon: "fa-pen" },
-      { key: "delete", label: "Delete", icon: "fa-trash" },
+      { key: "edit", label: "Edit", icon: "fa-pen", perm: "categories.manage" },
+      {
+        key: "delete",
+        label: "Delete",
+        icon: "fa-trash",
+        perm: "categories.manage",
+      },
     ],
-    empty: "No categories yet. Add your first one.",
+    empty: "No categories yet in this edition.",
     onAction: (key, c) => handlers[key](c),
   });
   const refresh = async () => table.setRows(await load());
@@ -184,7 +192,7 @@ export async function init(root, { admin }) {
     },
   };
 
-  root.querySelector("#addBtn").addEventListener("click", async () => {
+  root.querySelector("#addBtn")?.addEventListener("click", async () => {
     const next =
       (await listCategories()).reduce((m, c) => Math.max(m, c.order ?? 0), 0) +
       1;

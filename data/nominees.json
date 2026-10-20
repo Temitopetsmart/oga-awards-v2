@@ -70,5 +70,59 @@
     "department": "Fashion Design",
     "photo": null,
     "status": "approved"
+  },
+  {
+    "id": "n9-1",
+    "occasionId": "oga-9",
+    "categoryId": "c9-leadership",
+    "name": "Sample Winner 1",
+    "department": "Business Admin",
+    "photo": null,
+    "status": "approved"
+  },
+  {
+    "id": "n9-2",
+    "occasionId": "oga-9",
+    "categoryId": "c9-leadership",
+    "name": "Sample Winner 2",
+    "department": "Law",
+    "photo": null,
+    "status": "approved"
+  },
+  {
+    "id": "n9-3",
+    "occasionId": "oga-9",
+    "categoryId": "c9-academics",
+    "name": "Sample Winner 3",
+    "department": "Engineering",
+    "photo": null,
+    "status": "approved"
+  },
+  {
+    "id": "n9-4",
+    "occasionId": "oga-9",
+    "categoryId": "c9-academics",
+    "name": "Sample Winner 4",
+    "department": "Accountancy",
+    "photo": null,
+    "status": "approved"
+  },
+  {
+    "id": "n9-5",
+    "occasionId": "oga-9",
+    "categoryId": "c9-creative",
+    "name": "Sample Winner 5",
+    "department": "Mass Communication",
+    "photo": null,
+    "status": "approved"
+  },
+  {
+    "id": "n9-6",
+    "occasionId": "oga-9",
+    "categoryId": "c9-creative",
+    "name": "Sample Winner 6",
+    "department": "Fine Art",
+    "photo": null,
+    "status": "approved"
   }
 ]

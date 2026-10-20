@@ -1,115 +1,108 @@
 /**
- * Admin configuration: menu, roles and permissions.
- * `soon: true` shows a menu item as disabled until its page exists.
+ * Admin menu. A page shows only when the signed-in person has the permission in `perm`
+ * (checked in the edition being viewed). Roles and permissions themselves live in
+ * permissions.js and the team store, not here.
  */
 export const ADMIN = {
   title: "OGA Admin",
-
-  /** Role -> permissions. '*' means everything. A page declares the permission it needs. */
-  roles: {
-    super_admin: { label: "Super admin", perms: ["*"] },
-    editor: {
-      label: "Editor",
-      perms: [
-        "dashboard",
-        "nominees",
-        "categories",
-        "votes",
-        "results",
-        "committee",
-        "messages",
-        "occasions",
-      ],
-    },
-    gate: { label: "Gate staff", perms: ["scanner"] },
-  },
-
   menu: [
     { section: "Overview" },
     {
       label: "Dashboard",
       icon: "fa-gauge-high",
       href: "admin/index.html",
-      perm: "dashboard",
+      perm: "dashboard.view",
     },
     { section: "Awards" },
     {
       label: "Nominees",
       icon: "fa-user-group",
       href: "admin/nominees.html",
-      perm: "nominees",
+      perm: "nominees.view",
       badge: "pendingNominees",
     },
     {
       label: "Categories",
       icon: "fa-layer-group",
       href: "admin/categories.html",
-      perm: "categories",
+      perm: "categories.view",
     },
     {
       label: "Votes",
       icon: "fa-check-to-slot",
       href: "admin/votes.html",
-      perm: "votes",
+      perm: "votes.view",
     },
     {
       label: "Results",
       icon: "fa-trophy",
       href: "admin/results.html",
-      perm: "results",
+      perm: "results.view",
     },
     { section: "Events" },
     {
       label: "Tickets",
       icon: "fa-ticket",
       href: "admin/tickets.html",
-      perm: "tickets",
+      perm: "tickets.view",
     },
     {
       label: "Gate scanner",
       icon: "fa-qrcode",
       href: "admin/scanner.html",
-      perm: "scanner",
+      perm: "scanner.use",
     },
     {
       label: "Occasions",
       icon: "fa-crown",
       href: "admin/occasions.html",
-      perm: "occasions",
+      perm: "occasions.view",
     },
     { section: "People" },
     {
       label: "Committee",
       icon: "fa-people-group",
       href: "admin/committee.html",
-      perm: "committee",
+      perm: "committee.view",
       badge: "newApplications",
     },
     {
       label: "Messages",
       icon: "fa-envelope",
       href: "admin/messages.html",
-      perm: "messages",
+      perm: "messages.view",
       badge: "unreadMessages",
     },
-    { section: "System" },
+    { section: "Administration" },
+    {
+      label: "Editions",
+      icon: "fa-clock-rotate-left",
+      href: "admin/editions.html",
+      perm: "editions.view",
+    },
+    {
+      label: "Team & access",
+      icon: "fa-user-shield",
+      href: "admin/team.html",
+      perm: "team.view",
+    },
+    {
+      label: "Roles & permissions",
+      icon: "fa-key",
+      href: "admin/roles.html",
+      perm: "team.view",
+    },
     {
       label: "Settings",
       icon: "fa-sliders",
       href: "admin/settings.html",
-      perm: "settings",
-    },
-    {
-      label: "Admins & roles",
-      icon: "fa-user-shield",
-      href: "admin/admins.html",
-      perm: "admins",
+      perm: "settings.view",
     },
     {
       label: "Audit log",
-      icon: "fa-clock-rotate-left",
+      icon: "fa-list-check",
       href: "admin/audit.html",
-      perm: "audit",
+      perm: "audit.view",
     },
   ],
 };

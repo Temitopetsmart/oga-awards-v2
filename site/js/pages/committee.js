@@ -1,5 +1,5 @@
 import { html, safeClass } from "../../../shared/js/core/dom.js";
-import { getResource } from "../../../shared/js/core/http.js";
+import { getCommittee } from "../../../shared/js/services/catalog.service.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { field } from "../../../shared/js/components/form-fields.js";
 import { avatar } from "../../../shared/js/components/cards.js";
@@ -17,7 +17,7 @@ const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((l) => ({
 }));
 
 export default async function committee(ctx) {
-  const data = await getResource("committee");
+  const data = await getCommittee(ctx.occasion.id);
   const open = hasFeature(ctx.occasion, "committeeRecruitment");
   return html` ${pageHero({
       eyebrow: "The team",
@@ -131,7 +131,7 @@ export default async function committee(ctx) {
     </section>`;
 }
 
-export function init(root) {
+export function init(root, ctx) {
   const form = root.querySelector("#applyForm");
   if (!form) return;
   bindForm(form, {
@@ -145,7 +145,10 @@ export function init(root) {
       motivation: [rules.required(), rules.min(30)],
     },
     async onSubmit(values) {
-      await submitCommitteeApplication(values);
+      await submitCommitteeApplication({
+        ...values,
+        editionId: ctx.occasion.id,
+      });
       form.reset();
       await notify.success(
         "Application received",

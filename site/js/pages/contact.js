@@ -76,7 +76,7 @@ export default async function contact() {
   )}`;
 }
 
-export function init(root) {
+export function init(root, ctx) {
   const form = root.querySelector("#contactForm");
   bindForm(form, {
     schema: {
@@ -86,7 +86,7 @@ export function init(root) {
       message: [rules.required(), rules.min(20)],
     },
     async onSubmit(values) {
-      await sendContactMessage(values);
+      await sendContactMessage({ ...values, editionId: ctx.occasion.id });
       form.reset();
       await notify.success(
         "Message sent",

@@ -16,13 +16,13 @@ const cache = new Map();
  * Delete this and DEMO_OVERRIDES when the PHP API replaces the JSON files.
  */
 const DEMO_OVERRIDES = [
-  "occasions",
+  "editions",
   "categories",
   "nominees",
   "ticket-types",
   "winners",
-  "committee",
 ];
+
 function demoOverride(name, data) {
   if (!DEMO_OVERRIDES.includes(name)) return data;
   try {

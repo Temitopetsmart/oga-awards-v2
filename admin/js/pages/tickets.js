@@ -9,16 +9,17 @@ import { statusBadge } from "../components/badges.js";
 import { statCard } from "../components/stat-card.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
 import { collection, logAudit } from "../services/admin-store.js";
+import { scoped, inEdition } from "../services/scope.js";
 
 export const title = "Tickets";
-export const perm = "tickets";
+export const perm = "tickets.view";
 export const crumbs = ["Events", "Tickets"];
 const types = collection("ticket-types", {
   seed: "ticket-types",
   prefix: "TT-",
 });
 
-export default async function tickets() {
+export default async function tickets({ can }) {
   return html` <div class="row g-3 mb-4" id="tkStats"></div>
     <div class="card">
       <ul class="nav nav-tabs" role="tablist">
@@ -58,32 +59,36 @@ export default async function tickets() {
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tab-orders" role="tabpanel">
-          <div class="d-flex justify-content-end p-3 pb-0">
-            <button class="btn btn-ghost btn-sm" id="exportBtn">
-              <i class="fa-solid fa-file-csv me-1"></i>Export CSV
-            </button>
-          </div>
+          ${can("tickets.export")
+            ? html`<div class="d-flex justify-content-end p-3 pb-0">
+                <button class="btn btn-ghost btn-sm" id="exportBtn">
+                  <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+                </button>
+              </div>`
+            : ""}
           <div id="ordersTable"></div>
         </div>
         <div class="tab-pane fade" id="tab-issued" role="tabpanel">
           <div id="issuedTable"></div>
         </div>
         <div class="tab-pane fade" id="tab-types" role="tabpanel">
-          <div class="d-flex justify-content-end p-3 pb-0">
-            <button class="btn btn-gold btn-sm" id="addType">
-              <i class="fa-solid fa-plus me-1"></i>Add ticket type
-            </button>
-          </div>
+          ${can("tickets.manageTypes")
+            ? html`<div class="d-flex justify-content-end p-3 pb-0">
+                <button class="btn btn-gold btn-sm" id="addType">
+                  <i class="fa-solid fa-plus me-1"></i>Add ticket type
+                </button>
+              </div>`
+            : ""}
           <div id="typesTable"></div>
         </div>
       </div>
     </div>`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, edition, can }) {
+  const money$ = can("finance.view");
   const orders = () =>
-    store
-      .get("ticket-orders", [])
+    scoped(store.get("ticket-orders", []))
       .map((o) => ({
         ...o,
         id: o.reference,
@@ -92,9 +97,11 @@ export async function init(root, { admin }) {
       }))
       .sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const issued = () =>
-    store
-      .get("tickets", [])
-      .map((t) => ({ ...t, id: t.code, state: t.used ? "used" : "unused" }));
+    scoped(store.get("tickets", [])).map((t) => ({
+      ...t,
+      id: t.code,
+      state: t.used ? "used" : "unused",
+    }));
 
   const stats = () => {
     const paid = orders().filter((o) => o.status === "paid");
@@ -114,14 +121,18 @@ export async function init(root, { admin }) {
         value: number(all.filter((t) => t.used).length),
         sub: `of ${number(all.length)}`,
       }),
-      statCard({
-        icon: "fa-naira-sign",
-        label: "Revenue",
-        value: money(paid.reduce((s, o) => s + o.amount, 0)),
-      }),
+      ...(money$
+        ? [
+            statCard({
+              icon: "fa-naira-sign",
+              label: "Revenue",
+              value: money(paid.reduce((s, o) => s + o.amount, 0)),
+            }),
+          ]
+        : []),
     ].forEach((c) => {
       const col = document.createElement("div");
-      col.className = "col-md-4";
+      col.className = money$ ? "col-md-4" : "col-md-6";
       col.innerHTML = c.__raw;
       host.append(col);
     });
@@ -140,12 +151,16 @@ export async function init(root, { admin }) {
     },
     { key: "typeName", label: "Type", sort: true },
     { key: "qty", label: "Qty", sort: true },
-    {
-      key: "amount",
-      label: "Amount",
-      sort: true,
-      render: (o) => money(o.amount),
-    },
+    ...(money$
+      ? [
+          {
+            key: "amount",
+            label: "Amount",
+            sort: true,
+            render: (o) => money(o.amount),
+          },
+        ]
+      : []),
     {
       key: "status",
       label: "Status",
@@ -163,6 +178,7 @@ export async function init(root, { admin }) {
     },
   ];
   const ordersTable = new DataTable(root.querySelector("#ordersTable"), {
+    can,
     rows: orders(),
     columns: orderCols,
     searchKeys: ["reference", "buyer", "email", "typeName"],
@@ -176,8 +192,15 @@ export async function init(root, { admin }) {
         ],
       },
     ],
-    actions: [{ key: "view", label: "View details", icon: "fa-eye" }],
-    empty: "No ticket orders yet.",
+    actions: [
+      {
+        key: "view",
+        label: "View details",
+        icon: "fa-eye",
+        perm: "tickets.view",
+      },
+    ],
+    empty: "No ticket orders yet in this edition.",
     onAction: (_, o) =>
       openInfoModal({
         title: o.reference,
@@ -202,10 +225,12 @@ export async function init(root, { admin }) {
             <dt>Quantity</dt>
             <dd>${o.qty}</dd>
           </div>
-          <div>
-            <dt>Amount</dt>
-            <dd>${money(o.amount)}</dd>
-          </div>
+          ${money$
+            ? html`<div>
+                <dt>Amount</dt>
+                <dd>${money(o.amount)}</dd>
+              </div>`
+            : ""}
           <div>
             <dt>Status</dt>
             <dd>${statusBadge(o.status)}</dd>
@@ -215,6 +240,7 @@ export async function init(root, { admin }) {
   });
 
   const issuedTable = new DataTable(root.querySelector("#issuedTable"), {
+    can,
     rows: issued(),
     searchKeys: ["code", "holder", "email", "typeName", "orderReference"],
     filters: [
@@ -240,9 +266,14 @@ export async function init(root, { admin }) {
       },
     ],
     actions: [
-      { key: "toggle", label: "Toggle check-in", icon: "fa-right-to-bracket" },
+      {
+        key: "toggle",
+        label: "Toggle check-in",
+        icon: "fa-right-to-bracket",
+        perm: "tickets.override",
+      },
     ],
-    empty: "No tickets issued yet.",
+    empty: "No tickets issued yet in this edition.",
     async onAction(_, t) {
       const next = !t.used;
       if (
@@ -279,11 +310,11 @@ export async function init(root, { admin }) {
   });
 
   const typeRows = async () =>
-    (await types.all()).map((t) => ({
-      ...t,
-      status: t.active === false ? "hidden" : "live",
-    }));
+    (await types.all())
+      .filter((t) => inEdition(t))
+      .map((t) => ({ ...t, status: t.active === false ? "hidden" : "live" }));
   const typesTable = new DataTable(root.querySelector("#typesTable"), {
+    can,
     rows: await typeRows(),
     searchKeys: ["name", "description"],
     columns: [
@@ -313,10 +344,20 @@ export async function init(root, { admin }) {
       },
     ],
     actions: [
-      { key: "edit", label: "Edit", icon: "fa-pen" },
-      { key: "delete", label: "Delete", icon: "fa-trash" },
+      {
+        key: "edit",
+        label: "Edit",
+        icon: "fa-pen",
+        perm: "tickets.manageTypes",
+      },
+      {
+        key: "delete",
+        label: "Delete",
+        icon: "fa-trash",
+        perm: "tickets.manageTypes",
+      },
     ],
-    empty: "No ticket types yet.",
+    empty: "No ticket types yet in this edition.",
     onAction: (key, t) => typeHandlers[key](t),
   });
 
@@ -404,7 +445,7 @@ export async function init(root, { admin }) {
       refreshTypes();
     },
   };
-  root.querySelector("#addType").addEventListener("click", () =>
+  root.querySelector("#addType")?.addEventListener("click", () =>
     openFormModal({
       title: "Add ticket type",
       fields,
@@ -412,7 +453,7 @@ export async function init(root, { admin }) {
       submitLabel: "Add ticket type",
       values: { maxPerOrder: 10, active: true },
       async onSubmit(v) {
-        await types.create({ occasionId: "oga-10", ...clean(v) });
+        await types.create({ occasionId: edition.id, ...clean(v) });
         logAudit(admin, "Added ticket type", v.name);
         notify.toast("success", "Ticket type added");
         await refreshTypes();
@@ -425,7 +466,7 @@ export async function init(root, { admin }) {
     issuedTable.setRows(issued());
     stats();
   };
-  root.querySelector("#exportBtn").addEventListener("click", () => {
+  root.querySelector("#exportBtn")?.addEventListener("click", () => {
     downloadCsv("oga-ticket-orders.csv", orders(), [
       { label: "Reference", key: "reference" },
       { label: "Buyer", key: "buyer" },
@@ -433,7 +474,9 @@ export async function init(root, { admin }) {
       { label: "Phone", key: "phone" },
       { label: "Type", key: "typeName" },
       { label: "Quantity", key: "qty" },
-      { label: "Amount", key: "amount" },
+      ...(money$ && can("finance.export")
+        ? [{ label: "Amount", key: "amount" }]
+        : []),
       { label: "Status", key: "status" },
       { label: "Date", key: "at" },
     ]);

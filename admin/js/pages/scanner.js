@@ -2,9 +2,10 @@ import { html, mount } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
 import { store } from "../../../shared/js/core/store.js";
 import { logAudit } from "../services/admin-store.js";
+import { editionOf } from "../services/scope.js";
 
 export const title = "Gate scanner";
-export const perm = "scanner";
+export const perm = "scanner.use";
 export const crumbs = ["Events", "Gate scanner"];
 
 const RESULT = {
@@ -82,7 +83,7 @@ export default async function scanner() {
   </div>`;
 }
 
-export function init(root, { admin }) {
+export function init(root, { admin, edition }) {
   const input = root.querySelector("#scanInput");
   const show = (kind, detail = "") => {
     const r = RESULT[kind];
@@ -96,7 +97,9 @@ export function init(root, { admin }) {
     );
   };
   const counts = () => {
-    const all = store.get("tickets", []);
+    const all = store
+      .get("tickets", [])
+      .filter((t) => editionOf(t) === edition.id);
     root.querySelector("#inCount").textContent = all.filter(
       (t) => t.used,
     ).length;
@@ -143,7 +146,10 @@ export function init(root, { admin }) {
     const t = tickets.find((x) => x.code === code);
     let result = "bad";
     let detail = `No ticket matches “${code}”.`;
-    if (t && !t.used) {
+    if (t && editionOf(t) !== edition.id) {
+      result = "bad";
+      detail = `This ticket is for a different edition, not ${edition.name} ${edition.edition}.`;
+    } else if (t && !t.used) {
       t.used = true;
       t.usedAt = new Date().toISOString();
       t.usedBy = admin.name;
@@ -152,7 +158,10 @@ export function init(root, { admin }) {
       detail = `${t.holder} · ${t.typeName}`;
     } else if (t) {
       result = "used";
-      detail = `${t.holder} · scanned ${formatDate(t.usedAt, { dateStyle: "medium", timeStyle: "short" })}`;
+      detail = `${t.holder} · scanned ${formatDate(t.usedAt, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`;
     }
     store.set(
       "admin:scans",

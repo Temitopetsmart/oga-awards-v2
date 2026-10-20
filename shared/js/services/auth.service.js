@@ -17,6 +17,7 @@ export async function registerNominee(data) {
     });
   const user = {
     id: uid("NOM-", 6),
+    occasionId: data.occasionId,
     name: data.name.trim(),
     email,
     phone: data.phone,
@@ -55,4 +56,13 @@ export async function updateNominee(patch) {
   Object.assign(user, patch);
   store.set(USERS, users);
   return user;
+}
+
+/** DEMO BRIDGE: find a nominee by id in either demo store (used by the admin's "view as nominee"). */
+export function findNomineeById(id) {
+  return (
+    store.get(USERS, []).find((u) => u.id === id) ??
+    (store.get("admin:nominees", []) ?? []).find((u) => u.id === id) ??
+    null
+  );
 }

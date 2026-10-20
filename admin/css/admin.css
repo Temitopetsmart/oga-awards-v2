@@ -502,3 +502,209 @@ a.oga-stat:hover {
   min-width: 14rem;
   padding-right: 2.25rem;
 }
+
+/* Edition switcher + banners */
+.oga-edswitch .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.875rem;
+}
+.oga-edswitch .dropdown-menu {
+  min-width: 17rem;
+  background: var(--oga-surface);
+  border: 1px solid var(--oga-border-strong);
+}
+.oga-edswitch .dropdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  color: var(--oga-text);
+}
+.oga-edswitch .dropdown-item:hover,
+.oga-edswitch .dropdown-item.is-current {
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--oga-gold-300);
+}
+.oga-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--oga-radius);
+  font-size: 0.9rem;
+  border: 1px solid var(--oga-border-strong);
+  background: rgba(212, 175, 55, 0.08);
+  color: var(--oga-gold-200);
+}
+.oga-banner--warn {
+  background: rgba(232, 162, 60, 0.1);
+  border-color: rgba(232, 162, 60, 0.4);
+  color: #f3be72;
+}
+.oga-banner--preview {
+  background: rgba(74, 159, 216, 0.1);
+  border-color: rgba(74, 159, 216, 0.4);
+  color: #8cc6ee;
+}
+
+/* Permission matrices */
+.oga-matrix {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+.oga-matrix__group {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+  background: var(--oga-ink-800);
+  min-width: 0;
+}
+.oga-matrix__group legend {
+  float: none;
+  width: auto;
+  margin: 0 0 0.5rem;
+  padding: 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--oga-gold-400);
+}
+.oga-matrix__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.oga-matrix__row--ov {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.6rem;
+  align-items: center;
+  cursor: default;
+}
+.oga-matrix__row--ov label {
+  font-size: 0.78rem;
+  color: var(--oga-text-muted);
+  white-space: nowrap;
+}
+.oga-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--oga-ink-300);
+  border: 1px solid var(--oga-border);
+  border-radius: 99px;
+}
+.oga-tag--ok {
+  color: #6fdca5;
+  border-color: rgba(63, 185, 122, 0.35);
+}
+.oga-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.oga-chip {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--oga-gold-300);
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: 99px;
+}
+.oga-roles {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 17rem 1fr;
+  align-items: start;
+}
+@media (max-width: 991.98px) {
+  .oga-roles {
+    grid-template-columns: 1fr;
+  }
+}
+.oga-rolelist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.oga-rolelist button {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 0.35rem;
+  text-align: left;
+  color: var(--oga-text);
+  background: transparent;
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius-sm);
+}
+.oga-rolelist button:hover,
+.oga-rolelist button.is-active {
+  border-color: var(--oga-gold-500);
+  background: rgba(212, 175, 55, 0.08);
+}
+.oga-rolelist small {
+  display: block;
+  color: var(--oga-ink-300);
+}
+.oga-edtl {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.5rem;
+  border-left: 2px solid var(--oga-border);
+}
+.oga-edtl > li {
+  position: relative;
+  padding: 0 0 1.25rem 1.5rem;
+}
+.oga-edtl > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95rem;
+  top: 0.35rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--oga-ink-500);
+  border: 2px solid var(--oga-bg);
+}
+.oga-edtl > li.is-active::before {
+  background: var(--oga-gold-500);
+  box-shadow: 0 0 0 0.3rem rgba(212, 175, 55, 0.25);
+}
+.oga-edtl > li.is-viewing .oga-edcard {
+  border-color: var(--oga-gold-500);
+}
+.oga-edcard {
+  padding: 1rem 1.25rem;
+  background: var(--oga-ink-800);
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+}
+.oga-edcard__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--oga-text-muted);
+}
+.oga-edcard__stats strong {
+  color: var(--oga-ink-50);
+}

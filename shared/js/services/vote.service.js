@@ -16,6 +16,7 @@ export function validateVotes(n) {
 export async function createOrder({
   nomineeId,
   categoryId,
+  editionId,
   votes,
   name,
   email,
@@ -25,6 +26,7 @@ export async function createOrder({
   if (problem) throw userError(problem, { votes: problem });
   const order = {
     reference: uid("VOT-", 8),
+    editionId,
     nomineeId,
     categoryId,
     votes,

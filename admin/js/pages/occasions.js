@@ -5,12 +5,17 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openFormModal } from "../components/modal.js";
-import { documentStore, logAudit } from "../services/admin-store.js";
+import { logAudit } from "../services/admin-store.js";
+import {
+  getEdition,
+  updateEdition,
+  readEditions,
+  editionLabel,
+} from "../services/edition.repo.js";
 
 export const title = "Occasions";
-export const perm = "occasions";
+export const perm = "occasions.view";
 export const crumbs = ["Events", "Occasions"];
-const doc = documentStore("occasions", { seed: "occasions" });
 
 const slug = (s) =>
   s
@@ -25,41 +30,44 @@ const toInput = (iso) =>
     : "";
 const fromInput = (v) => (v ? `${v}:00+01:00` : undefined);
 
-export default async function occasions() {
-  return html` <div
-      class="alert mb-4"
-      role="note"
-      style="background:rgba(212,175,55,.08);border:1px solid var(--oga-border-strong);color:var(--oga-gold-200)"
-    >
-      <i class="fa-solid fa-circle-info me-2"></i>Occasions are side events like
-      <strong>Miss OGITECH</strong>. A <em>live</em> occasion gets its own page
-      and a card on the home page. The main awards event is edited in
-      <a href="${ROOT}admin/settings.html">Settings</a>.
+export default async function occasions({ edition, can }) {
+  return html` <div class="oga-banner" role="note">
+      <span
+        ><i class="fa-solid fa-circle-info me-2"></i>Occasions are side events
+        like <strong>Miss OGITECH</strong>, belonging to
+        <strong>${editionLabel(edition)}</strong>. A <em>live</em> occasion gets
+        its own page and a card on the home
+        page.${can("settings.view")
+          ? html` The main awards event is edited in
+              <a href="${ROOT}admin/settings.html">Settings</a>.`
+          : ""}</span
+      >
     </div>
     <div class="card">
       <div
         class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center"
       >
         <h2 class="card-title mb-0">Special occasions</h2>
-        <button class="btn btn-gold btn-sm" id="addBtn">
-          <i class="fa-solid fa-plus me-1"></i>Add occasion
-        </button>
+        ${can("occasions.manage")
+          ? html`<button class="btn btn-gold btn-sm" id="addBtn">
+              <i class="fa-solid fa-plus me-1"></i>Add occasion
+            </button>`
+          : ""}
       </div>
       <div id="occTable"></div>
     </div>`;
 }
 
-export async function init(root, { admin }) {
-  const rows = async () =>
-    (await doc.get()).occasions
-      .filter((o) => o.type === "special")
-      .map((o) => ({
-        ...o,
-        status: o.enabled ? "live" : "hidden",
-        pageUrl: o.link?.href ?? "",
-      }));
+export async function init(root, { admin, edition, can }) {
+  const rows = () =>
+    (getEdition(edition.id).occasions ?? []).map((o) => ({
+      ...o,
+      status: o.enabled ? "live" : "hidden",
+      pageUrl: o.link?.href ?? "",
+    }));
   const table = new DataTable(root.querySelector("#occTable"), {
-    rows: await rows(),
+    can,
+    rows: rows(),
     searchKeys: ["name", "tagline"],
     columns: [
       {
@@ -95,22 +103,34 @@ export async function init(root, { admin }) {
         key: "preview",
         label: "Open page",
         icon: "fa-arrow-up-right-from-square",
+        perm: "occasions.view",
         when: (o) => o.enabled,
       },
-      { key: "toggle", label: "Show / hide", icon: "fa-eye" },
-      { key: "edit", label: "Edit", icon: "fa-pen" },
-      { key: "delete", label: "Delete", icon: "fa-trash" },
+      {
+        key: "toggle",
+        label: "Show / hide",
+        icon: "fa-eye",
+        perm: "occasions.manage",
+      },
+      { key: "edit", label: "Edit", icon: "fa-pen", perm: "occasions.manage" },
+      {
+        key: "delete",
+        label: "Delete",
+        icon: "fa-trash",
+        perm: "occasions.manage",
+      },
     ],
-    empty: "No special occasions yet. Add one, e.g. Miss OGITECH.",
+    empty:
+      "No special occasions yet in this edition. Add one, e.g. Miss OGITECH.",
     onAction: (key, o) => handlers[key](o),
   });
-  const refresh = async () => table.setRows(await rows());
-
-  const mutate = async (fn) => {
-    const d = await doc.get();
-    fn(d);
-    doc.save(d);
-    await refresh();
+  const refresh = () => table.setRows(rows());
+  const mutate = (fn) => {
+    updateEdition(edition.id, (e) => {
+      e.occasions ??= [];
+      fn(e);
+    });
+    refresh();
   };
   const isLink = (v) =>
     !v || /^https?:\/\/\S+$/.test(v) || /^[a-z0-9_-]+\.html(\?\S*)?$/i.test(v);
@@ -223,9 +243,9 @@ export async function init(root, { admin }) {
         "_blank",
         "noopener",
       ),
-    async toggle(o) {
-      await mutate((d) => {
-        const x = d.occasions.find((y) => y.id === o.id);
+    toggle(o) {
+      mutate((e) => {
+        const x = e.occasions.find((y) => y.id === o.id);
         x.enabled = !x.enabled;
       });
       logAudit(
@@ -242,9 +262,9 @@ export async function init(root, { admin }) {
         schema,
         values: valuesOf(o),
         async onSubmit(v) {
-          await mutate((d) =>
+          mutate((e) =>
             apply(
-              d.occasions.find((y) => y.id === o.id),
+              e.occasions.find((y) => y.id === o.id),
               v,
               o.id,
             ),
@@ -263,15 +283,15 @@ export async function init(root, { admin }) {
         }))
       )
         return;
-      await mutate((d) => {
-        d.occasions = d.occasions.filter((y) => y.id !== o.id);
+      mutate((e) => {
+        e.occasions = e.occasions.filter((y) => y.id !== o.id);
       });
       logAudit(admin, "Deleted occasion", o.name);
       notify.toast("success", "Deleted");
     },
   };
 
-  root.querySelector("#addBtn").addEventListener("click", () =>
+  root.querySelector("#addBtn")?.addEventListener("click", () =>
     openFormModal({
       title: "Add occasion",
       fields,
@@ -279,17 +299,19 @@ export async function init(root, { admin }) {
       submitLabel: "Add occasion",
       values: { enabled: false },
       async onSubmit(v) {
-        const d = await doc.get();
+        const taken = new Set(
+          readEditions().editions.flatMap((e) =>
+            (e.occasions ?? []).map((o) => o.id),
+          ),
+        );
         let id = slug(v.name) || "occasion";
-        if (d.occasions.some((o) => o.id === id))
-          id += `-${Date.now().toString(36).slice(-4)}`;
+        if (taken.has(id))
+          id += `-${edition.id.replace(/\D/g, "") || Date.now().toString(36).slice(-4)}`;
         const o = { id, type: "special" };
         apply(o, v, id);
-        d.occasions.push(o);
-        doc.save(d);
+        mutate((e) => e.occasions.push(o));
         logAudit(admin, "Added occasion", v.name);
         notify.toast("success", "Occasion added");
-        await refresh();
       },
     }),
   );

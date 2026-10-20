@@ -1,0 +1,79 @@
+{
+  "_comment": "Editions of the awards. 'active' is the edition the public site follows (null between editions). status: draft | active | completed | archived. Records elsewhere (categories, nominees, winners, ticket types, committee…) carry an editionId (occasionId) that points here. Special occasions such as Miss OGITECH live inside the edition they belong to.",
+  "active": "oga-10",
+  "editions": [
+    {
+      "id": "oga-10",
+      "name": "OGA",
+      "edition": "10.0",
+      "year": 2027,
+      "status": "active",
+      "tagline": "The OGITECH Student Awards",
+      "mode": "auto",
+      "forceState": null,
+      "timeline": {
+        "nominationsOpen": "2026-12-01T09:00:00+01:00",
+        "nominationsClose": "2026-12-20T23:59:00+01:00",
+        "votingOpen": "2027-01-05T09:00:00+01:00",
+        "votingClose": "2027-01-25T23:59:00+01:00",
+        "resultsPublish": "2027-02-14T18:00:00+01:00",
+        "ceremony": "2027-02-14T18:00:00+01:00"
+      },
+      "features": {
+        "tickets": true,
+        "committeeRecruitment": true,
+        "showVoteCounts": false
+      },
+      "voting": {
+        "pricePerVote": 100,
+        "maxVotesPerPayment": 50,
+        "maxPaidVotesPerEmailPerCategory": 5
+      },
+      "occasions": [
+        {
+          "id": "miss-ogitech",
+          "type": "special",
+          "name": "Miss OGITECH",
+          "tagline": "A separate pageant celebrating poise, intellect and purpose.",
+          "icon": "fa-crown",
+          "enabled": false,
+          "link": {
+            "label": "Visit Miss OGITECH",
+            "href": "occasion.html?id=miss-ogitech"
+          },
+          "description": "Miss OGITECH is a separate pageant celebrating poise, intellect and purpose. Details, dates and entry information will be shared here.",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "oga-9",
+      "name": "OGA",
+      "edition": "9.0",
+      "year": 2026,
+      "status": "archived",
+      "tagline": "The OGITECH Student Awards",
+      "mode": "auto",
+      "forceState": null,
+      "timeline": {
+        "nominationsOpen": "2025-11-03T09:00:00+01:00",
+        "nominationsClose": "2025-11-24T23:59:00+01:00",
+        "votingOpen": "2025-12-08T09:00:00+01:00",
+        "votingClose": "2026-01-19T23:59:00+01:00",
+        "resultsPublish": "2026-02-14T18:00:00+01:00",
+        "ceremony": "2026-02-14T18:00:00+01:00"
+      },
+      "features": {
+        "tickets": false,
+        "committeeRecruitment": false,
+        "showVoteCounts": false
+      },
+      "voting": {
+        "pricePerVote": 100,
+        "maxVotesPerPayment": 50,
+        "maxPaidVotesPerEmailPerCategory": 5
+      },
+      "occasions": []
+    }
+  ]
+}

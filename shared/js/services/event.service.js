@@ -36,7 +36,7 @@ function nextMilestone(occ, now) {
   );
 }
 
-/** Work out which home state an occasion is in (auto from dates, manual, or preview). */
+/** Work out which home state an edition is in (auto from dates, manual, or preview). */
 export function resolveState(
   occ,
   { now = Date.now(), preview = null, allowPreview = false } = {},
@@ -66,21 +66,39 @@ function countdownFor(occ, state, now) {
 
 export const hasFeature = (occ, key) => Boolean(occ.features?.[key]);
 
-/** Everything a page needs to know about the current event + state. */
+/** All editions, newest first. */
+export async function getEditions() {
+  const data = await getResource("editions");
+  return {
+    active: data.active,
+    editions: [...data.editions].sort((a, b) => (b.year ?? 0) - (a.year ?? 0)),
+  };
+}
+
+/**
+ * Everything a page needs to know about the current edition + state.
+ * `occasion` is the edition the public site follows: the active one, or — between editions —
+ * the most recent completed one. (Name kept for compatibility: an edition is the main occasion.)
+ */
 export async function getHomeContext() {
   const [data, content] = await Promise.all([
-    getResource("occasions"),
+    getResource("editions"),
     getResource("content"),
   ]);
+  const sorted = [...data.editions].sort(
+    (a, b) => (b.year ?? 0) - (a.year ?? 0),
+  );
   const occasion =
-    data.occasions.find((o) => o.id === data.main) ?? data.occasions[0];
+    data.editions.find((e) => e.id === data.active) ??
+    sorted.find((e) => e.status === "completed" || e.status === "archived") ??
+    sorted[0];
   const preview = new URLSearchParams(location.search).get("preview");
   const now = Date.now();
-  const { state, source } = resolveState(occasion, {
-    now,
-    preview,
-    allowPreview: APP.allowPreview,
-  });
+  const resolved =
+    occasion.id === data.active
+      ? resolveState(occasion, { now, preview, allowPreview: APP.allowPreview })
+      : { state: "results", source: "completed" };
+  const { state, source } = resolved;
   return {
     occasion,
     state,
@@ -88,8 +106,8 @@ export async function getHomeContext() {
     stateInfo: STATES[state],
     countdown: countdownFor(occasion, state, now),
     copy: content.home[state] ?? {},
-    specials: data.occasions.filter(
-      (o) => o.type === "special" && o.enabled && o.link?.href,
+    specials: (occasion.occasions ?? []).filter(
+      (o) => o.enabled && o.link?.href,
     ),
   };
 }

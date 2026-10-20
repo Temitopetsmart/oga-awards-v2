@@ -4,31 +4,31 @@ import { store } from "../../../shared/js/core/store.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { ROOT } from "../../../shared/js/config/app.config.js";
 import { notify } from "../../../shared/js/ui/notify.js";
-import { getHomeContext } from "../../../shared/js/services/event.service.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
 import { collection, logAudit } from "../services/admin-store.js";
+import { scoped } from "../services/scope.js";
+import { editionLabel } from "../services/edition.repo.js";
 
 export const title = "Results";
-export const perm = "results";
+export const perm = "results.view";
 export const crumbs = ["Awards", "Results"];
 const winners = collection("winners", { seed: "winners", prefix: "WIN-" });
 
-export default async function results() {
-  const [ctx, nominees, cats, published] = await Promise.all([
-    getHomeContext(),
+export default async function results({ edition, can }) {
+  const [nominees, cats, published] = await Promise.all([
     listNominees(),
     listCategories(),
     winners.all(),
   ]);
   const tally = {};
-  store
-    .get("vote-orders", [])
+  scoped(store.get("vote-orders", []))
     .filter((o) => o.status === "paid")
     .forEach((o) => {
       tally[o.nomineeId] = (tally[o.nomineeId] ?? 0) + o.votes;
     });
+  const editable = can("results.save");
 
   const sections = cats
     .filter((c) => c.active !== false)
@@ -41,29 +41,33 @@ export default async function results() {
       const tie =
         list.length > 1 && list[0].votes > 0 && list[0].votes === list[1].votes;
       const current =
-        published.find((w) => w.categoryId === c.id)?.nomineeId ??
-        (tie || !list[0]?.votes ? "" : list[0].id);
+        published.find(
+          (w) => w.categoryId === c.id && w.occasionId === edition.id,
+        )?.nomineeId ?? (tie || !list[0]?.votes ? "" : list[0].id);
       return { c, list, total, tie, current };
     });
 
-  return html` <div
-      class="alert alert-oga d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4"
-      role="note"
-      style="background:rgba(212,175,55,.08);border:1px solid var(--oga-border-strong);color:var(--oga-gold-200)"
-    >
+  return html` <div class="oga-banner">
       <span
-        ><i class="fa-solid fa-circle-info me-2"></i>The public site is showing
-        <strong>${ctx.stateInfo.label}</strong>. Winners appear publicly when
-        the state is “Winners announced” (change it in
-        <a href="${ROOT}admin/settings.html">Settings</a>).</span
+        ><i class="fa-solid fa-circle-info me-2"></i>Winners for
+        <strong>${editionLabel(edition)}</strong> appear publicly when that
+        edition’s state is “Winners
+        announced”${can("settings.view")
+          ? html` (change it in
+              <a href="${ROOT}admin/settings.html">Settings</a>)`
+          : ""}.</span
       >
       <span class="d-flex gap-2"
-        ><button class="btn btn-ghost btn-sm" id="exportBtn">
-          <i class="fa-solid fa-file-csv me-1"></i>Export CSV
-        </button>
-        <button class="btn btn-gold btn-sm" id="saveBtn">
-          <i class="fa-solid fa-trophy me-1"></i>Save winners
-        </button></span
+        >${can("votes.export")
+          ? html`<button class="btn btn-ghost btn-sm" id="exportBtn">
+              <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+            </button>`
+          : ""}
+        ${editable
+          ? html`<button class="btn btn-gold btn-sm" id="saveBtn">
+              <i class="fa-solid fa-trophy me-1"></i>Save winners
+            </button>`
+          : ""}</span
       >
     </div>
     ${sections.length
@@ -89,7 +93,7 @@ export default async function results() {
                     class="form-select form-select-sm"
                     id="w-${c.id}"
                     data-winner="${c.id}"
-                    style="min-width:12rem"
+                    ${editable ? "" : "disabled"}
                   >
                     <option value="">— not chosen —</option>
                     ${list.map(
@@ -156,11 +160,11 @@ export default async function results() {
             </div>`,
         )
       : html`<div class="oga-dt__empty card py-5">
-          <i class="fa-solid fa-trophy"></i>No categories yet.
+          <i class="fa-solid fa-trophy"></i>No categories yet in this edition.
         </div>`}`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, edition }) {
   const [nominees, cats] = await Promise.all([
     listNominees(),
     listCategories(),
@@ -181,17 +185,24 @@ export async function init(root, { admin }) {
       }))
     )
       return;
-    await winners.replace(
-      rows.map((r, i) => ({ id: `WIN-${i + 1}`, occasionId: "oga-10", ...r })),
-    );
+    const others = (await winners.all()).filter(
+      (w) => w.occasionId !== edition.id,
+    ); // other editions are never touched
+    await winners.replace([
+      ...others,
+      ...rows.map((r, i) => ({
+        id: `WIN-${edition.id}-${i + 1}`,
+        occasionId: edition.id,
+        ...r,
+      })),
+    ]);
     logAudit(admin, "Saved winners", `${rows.length} categories`);
     notify.toast("success", "Winners saved");
   });
 
   root.querySelector("#exportBtn")?.addEventListener("click", () => {
     const tally = {};
-    store
-      .get("vote-orders", [])
+    scoped(store.get("vote-orders", []))
       .filter((o) => o.status === "paid")
       .forEach((o) => {
         tally[o.nomineeId] = (tally[o.nomineeId] ?? 0) + o.votes;

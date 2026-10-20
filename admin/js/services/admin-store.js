@@ -51,35 +51,22 @@ export function collection(name, { seed = null, prefix = "ID-" } = {}) {
   };
 }
 
-/** A whole JSON document (e.g. occasions, committee) seeded from a data file and edited as one unit. */
-export function documentStore(name, { seed }) {
-  const key = `admin:${name}`;
-  return {
-    async get() {
-      let doc = store.get(key);
-      if (doc === null) {
-        doc = structuredClone(await getSeed(seed));
-        store.set(key, doc);
-      }
-      return doc;
-    },
-    save(doc) {
-      store.set(key, doc);
-      return doc;
-    },
-  };
-}
-
-/* Audit trail: who did what, newest first (capped). */
+/* Audit trail: who did what, in which edition, newest first (capped). */
 const AUDIT = "admin:audit";
-export function logAudit(admin, action, target = "") {
+export function logAudit(
+  admin,
+  action,
+  target = "",
+  editionId = store.get("admin:viewing") ?? null,
+) {
   const entry = {
     id: uid("AUD-"),
     at: new Date().toISOString(),
     admin: admin?.name ?? "System",
     action,
     target,
+    editionId,
   };
-  store.set(AUDIT, [entry, ...store.get(AUDIT, [])].slice(0, 500));
+  store.set(AUDIT, [entry, ...store.get(AUDIT, [])].slice(0, 1000));
 }
 export const getAudit = () => store.get(AUDIT, []);

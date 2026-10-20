@@ -52,5 +52,32 @@
     "icon": "fa-shirt",
     "order": 6,
     "active": true
+  },
+  {
+    "id": "c9-leadership",
+    "occasionId": "oga-9",
+    "name": "Leadership Excellence",
+    "description": "For the student who led with vision and integrity.",
+    "icon": "fa-landmark",
+    "order": 1,
+    "active": true
+  },
+  {
+    "id": "c9-academics",
+    "occasionId": "oga-9",
+    "name": "Academic Excellence",
+    "description": "Outstanding scholarship and dedication to learning.",
+    "icon": "fa-graduation-cap",
+    "order": 2,
+    "active": true
+  },
+  {
+    "id": "c9-creative",
+    "occasionId": "oga-9",
+    "name": "Creative of the Year",
+    "description": "Art, content and design that inspired.",
+    "icon": "fa-palette",
+    "order": 3,
+    "active": true
   }
 ]

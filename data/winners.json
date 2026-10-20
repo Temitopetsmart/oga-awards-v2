@@ -4,5 +4,8 @@
   { "occasionId": "oga-10", "categoryId": "cat-innovation", "nomineeId": "n5" },
   { "occasionId": "oga-10", "categoryId": "cat-creative", "nomineeId": "n6" },
   { "occasionId": "oga-10", "categoryId": "cat-sports", "nomineeId": "n7" },
-  { "occasionId": "oga-10", "categoryId": "cat-style", "nomineeId": "n8" }
+  { "occasionId": "oga-10", "categoryId": "cat-style", "nomineeId": "n8" },
+  { "occasionId": "oga-9", "categoryId": "c9-leadership", "nomineeId": "n9-1" },
+  { "occasionId": "oga-9", "categoryId": "c9-academics", "nomineeId": "n9-3" },
+  { "occasionId": "oga-9", "categoryId": "c9-creative", "nomineeId": "n9-5" }
 ]

@@ -55,6 +55,7 @@ export const APP = {
     { label: "Vote", href: "vote.html", states: ["voting"] },
     { label: "Winners", href: "results.html", states: ["results"] },
     { label: "Tickets", href: "tickets.html", feature: "tickets" },
+    { label: "Hall of Fame", href: "editions.html" },
     { label: "Gallery", href: "gallery.html" },
     { label: "Committee", href: "committee.html" },
     { label: "FAQ", href: "faq.html" },
@@ -90,14 +91,18 @@ export const STATES = {
 };
 
 /**
- * DEMO BRIDGE: values saved from the admin Settings page (kept in this browser) override the
- * defaults above. APP is a const, but its properties are writable. Delete with the backend.
+ * DEMO BRIDGE: values saved from the admin (kept in this browser) override the defaults above.
+ * APP is a const, but its properties are writable. Delete with the backend.
  */
 try {
-  const s = JSON.parse(localStorage.getItem("oga:admin:settings") ?? "null");
-  if (s?.voting) Object.assign(APP.voting, s.voting);
-  if (s?.contact) Object.assign(APP.contact, s.contact);
-  if (Array.isArray(s?.social)) APP.social = s.social;
+  const read = (k) =>
+    JSON.parse(localStorage.getItem(`oga:admin:${k}`) ?? "null");
+  const settings = read("settings");
+  const editions = read("editions");
+  const active = editions?.editions?.find((e) => e.id === editions.active);
+  if (active?.voting) Object.assign(APP.voting, active.voting);
+  if (settings?.contact) Object.assign(APP.contact, settings.contact);
+  if (Array.isArray(settings?.social)) APP.social = settings.social;
 } catch {
   /* ignore */
 }

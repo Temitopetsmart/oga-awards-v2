@@ -11,13 +11,14 @@ import { openFormModal, openInfoModal } from "../components/modal.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
 import { logAudit } from "../services/admin-store.js";
+import { scoped } from "../services/scope.js";
 
 export const title = "Votes";
-export const perm = "votes";
+export const perm = "votes.view";
 export const crumbs = ["Awards", "Votes"];
 const KEY = "vote-orders";
 
-export default async function votes() {
+export default async function votes({ can }) {
   return html` <div class="row g-3 mb-4" id="voteStats"></div>
     <div class="card">
       <div
@@ -25,33 +26,39 @@ export default async function votes() {
       >
         <h2 class="card-title mb-0">Vote ledger</h2>
         <div class="d-flex gap-2">
-          <button class="btn btn-ghost btn-sm" id="exportBtn">
-            <i class="fa-solid fa-file-csv me-1"></i>Export CSV
-          </button>
-          <button class="btn btn-gold btn-sm" id="manualBtn">
-            <i class="fa-solid fa-plus me-1"></i>Add manual votes
-          </button>
+          ${can("votes.export")
+            ? html`<button class="btn btn-ghost btn-sm" id="exportBtn">
+                <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+              </button>`
+            : ""}
+          ${can("votes.addManual")
+            ? html`<button class="btn btn-gold btn-sm" id="manualBtn">
+                <i class="fa-solid fa-plus me-1"></i>Add manual votes
+              </button>`
+            : ""}
         </div>
       </div>
       <div id="voteTable"></div>
     </div>`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, edition, can }) {
+  const money$ = can("finance.view");
   const [nominees, cats] = await Promise.all([
     listNominees(),
     listCategories(),
   ]);
   const nameOf = (id) => nominees.find((n) => n.id === id)?.name ?? "(removed)";
   const catOf = (id) => cats.find((c) => c.id === id)?.name ?? "—";
-  const orders = () => store.get(KEY, []);
+  const all = () => store.get(KEY, []);
+  const mine = () => scoped(all());
   const patch = (ref, data) =>
     store.set(
       KEY,
-      orders().map((o) => (o.reference === ref ? { ...o, ...data } : o)),
+      all().map((o) => (o.reference === ref ? { ...o, ...data } : o)),
     );
   const load = () =>
-    orders()
+    mine()
       .map((o) => ({
         ...o,
         id: o.reference,
@@ -64,16 +71,19 @@ export async function init(root, { admin }) {
       .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
   const stats = () => {
-    const rows = orders();
+    const rows = mine();
     const paid = rows.filter((o) => o.status === "paid");
     const sum = (list) => list.reduce((s, o) => s + o.votes, 0);
-    root.querySelector("#voteStats").innerHTML = "";
-    const cards = [
+    const host = root.querySelector("#voteStats");
+    host.innerHTML = "";
+    [
       statCard({
         icon: "fa-check-to-slot",
         label: "Paid votes",
         value: number(sum(paid.filter((o) => o.source !== "manual"))),
-        sub: `${money(paid.reduce((s, o) => s + o.amount, 0))} collected`,
+        sub: money$
+          ? `${money(paid.reduce((s, o) => s + o.amount, 0))} collected`
+          : "",
       }),
       statCard({
         icon: "fa-hand",
@@ -91,12 +101,11 @@ export async function init(root, { admin }) {
         label: "Void orders",
         value: number(rows.filter((o) => o.status === "void").length),
       }),
-    ];
-    cards.forEach((c) => {
+    ].forEach((c) => {
       const col = document.createElement("div");
       col.className = "col-sm-6 col-xl-3";
       col.innerHTML = c.__raw;
-      root.querySelector("#voteStats").append(col);
+      host.append(col);
     });
   };
 
@@ -105,12 +114,16 @@ export async function init(root, { admin }) {
     { key: "nomineeName", label: "Nominee", sort: true },
     { key: "categoryName", label: "Category", sort: true },
     { key: "votes", label: "Votes", sort: true },
-    {
-      key: "amount",
-      label: "Amount",
-      sort: true,
-      render: (o) => (o.amount ? money(o.amount) : "—"),
-    },
+    ...(money$
+      ? [
+          {
+            key: "amount",
+            label: "Amount",
+            sort: true,
+            render: (o) => (o.amount ? money(o.amount) : "—"),
+          },
+        ]
+      : []),
     {
       key: "voter",
       label: "Voter",
@@ -147,6 +160,7 @@ export async function init(root, { admin }) {
   ];
 
   const table = new DataTable(root.querySelector("#voteTable"), {
+    can,
     rows: load(),
     searchKeys: ["reference", "nomineeName", "voter", "email", "categoryName"],
     filters: [
@@ -175,22 +189,29 @@ export async function init(root, { admin }) {
     ],
     columns,
     actions: [
-      { key: "view", label: "View details", icon: "fa-eye" },
+      {
+        key: "view",
+        label: "View details",
+        icon: "fa-eye",
+        perm: "votes.view",
+      },
       {
         key: "paid",
         label: "Mark as paid",
         icon: "fa-check",
         variant: "gold",
+        perm: "finance.reconcile",
         when: (o) => o.status === "pending",
       },
       {
         key: "void",
         label: "Void order",
         icon: "fa-ban",
+        perm: "votes.void",
         when: (o) => o.status !== "void",
       },
     ],
-    empty: "No votes yet. Votes cast on the public site appear here.",
+    empty: "No votes yet in this edition.",
     onAction: (key, o) => handlers[key](o),
   });
   const refresh = () => {
@@ -219,10 +240,12 @@ export async function init(root, { admin }) {
             <dt>Votes</dt>
             <dd>${o.votes}</dd>
           </div>
-          <div>
-            <dt>Amount</dt>
-            <dd>${o.amount ? money(o.amount) : "—"}</dd>
-          </div>
+          ${money$
+            ? html`<div>
+                <dt>Amount</dt>
+                <dd>${o.amount ? money(o.amount) : "—"}</dd>
+              </div>`
+            : ""}
           <div>
             <dt>Voter</dt>
             <dd>${o.voter}${o.email ? ` · ${o.email}` : ""}</dd>
@@ -270,18 +293,16 @@ export async function init(root, { admin }) {
     },
   };
 
-  root.querySelector("#exportBtn").addEventListener("click", () => {
+  root.querySelector("#exportBtn")?.addEventListener("click", () => {
     downloadCsv("oga-votes.csv", load(), [
-      ...columns.filter(
-        (c) =>
-          c.key !== "amount" &&
-          c.key !== "voter" &&
-          c.key !== "at" &&
-          c.key !== "source",
-      ),
-      { label: "Amount", value: (o) => o.amount },
+      { label: "Reference", key: "reference" },
+      { label: "Nominee", key: "nomineeName" },
+      { label: "Category", key: "categoryName" },
+      { label: "Votes", key: "votes" },
+      ...(money$ ? [{ label: "Amount", value: (o) => o.amount }] : []),
       { label: "Voter", value: (o) => o.voter },
       { label: "Email", value: (o) => o.email ?? "" },
+      { label: "Status", key: "status" },
       { label: "Source", value: (o) => o.source },
       { label: "Date", value: (o) => o.at },
       { label: "Reason", value: (o) => o.reason ?? "" },
@@ -289,11 +310,10 @@ export async function init(root, { admin }) {
     logAudit(admin, "Exported vote ledger");
   });
 
-  root.querySelector("#manualBtn").addEventListener("click", () =>
+  root.querySelector("#manualBtn")?.addEventListener("click", () =>
     openFormModal({
       title: "Add manual votes",
       submitLabel: "Add votes",
-      size: "",
       fields: [
         {
           name: "nomineeId",
@@ -337,9 +357,10 @@ export async function init(root, { admin }) {
       async onSubmit(v) {
         const nominee = nominees.find((n) => n.id === v.nomineeId);
         store.set(KEY, [
-          ...orders(),
+          ...all(),
           {
             reference: uid("MAN-", 8),
+            editionId: edition.id,
             nomineeId: nominee.id,
             categoryId: nominee.categoryId,
             votes: Number(v.votes),

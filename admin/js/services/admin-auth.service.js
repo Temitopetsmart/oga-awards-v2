@@ -1,77 +1,69 @@
-import { ADMIN } from "../config/admin.config.js";
 import { store, delay, userError } from "../../../shared/js/core/store.js";
+import { ADMIN } from "../config/admin.config.js";
 import { logAudit } from "./admin-store.js";
+import { ensureTeam, listPeople, getPerson } from "./team.repo.js";
+import { ensureEditions, listEditions } from "./edition.repo.js";
+import { accessibleEditionIds } from "./team.repo.js";
+import { buildAccess } from "../core/access.js";
 
 /**
  * DEMO admin auth (localStorage). Passwords are NOT checked here — the real backend will
  * authenticate securely. Keep these signatures when swapping in the API.
  */
 const SESSION = "admin:session";
-const ADMINS = "admin:admins";
-export const SEED = [
-  {
-    id: "adm-1",
-    name: "Super Admin",
-    email: "admin@oga.local",
-    role: "super_admin",
-    active: true,
-    seed: true,
-  },
-  {
-    id: "adm-2",
-    name: "Editor",
-    email: "editor@oga.local",
-    role: "editor",
-    active: true,
-    seed: true,
-  },
-  {
-    id: "adm-3",
-    name: "Gate Staff",
-    email: "gate@oga.local",
-    role: "gate",
-    active: true,
-    seed: true,
-  },
+const VIEW_AS = "admin:viewas";
+
+export const DEMO_ACCOUNTS = [
+  { email: "admin@oga.local", label: "Super admin" },
+  { email: "editor@oga.local", label: "Editor" },
+  { email: "treasurer@oga.local", label: "Treasurer" },
+  { email: "secretary@oga.local", label: "Secretary" },
+  { email: "publicity@oga.local", label: "Publicity" },
+  { email: "gate@oga.local", label: "Gate staff" },
 ];
 
-export const DEMO_ACCOUNTS = SEED.map(({ email, role }) => ({ email, role }));
-
-export function listAdmins() {
-  const rows = store.get(ADMINS) ?? [];
-  const missing = SEED.filter((s) => !rows.some((r) => r.id === s.id)); // demo accounts always exist
-  if (missing.length || store.get(ADMINS) === null) {
-    store.set(ADMINS, [...rows, ...missing]);
-    return [...rows, ...missing];
-  }
-  return rows;
+export async function seedDemo() {
+  await ensureEditions();
+  await ensureTeam();
 }
-export const saveAdmins = (rows) => store.set(ADMINS, rows);
 
 export async function loginAdmin({ email }) {
   await delay(500);
-  const admin = listAdmins().find(
-    (a) => a.email === email.trim().toLowerCase() && a.active,
+  await seedDemo();
+  const person = listPeople().find(
+    (p) => p.email && p.email === email.trim().toLowerCase() && p.active,
   );
-  if (!admin) throw userError("We could not sign you in with those details.");
-  store.set(SESSION, admin.id);
-  logAudit(admin, "Signed in");
-  return admin;
+  if (!person || accessibleEditionIds(person, listEditions()).length === 0)
+    throw userError("We could not sign you in with those details.");
+  store.set(SESSION, person.id);
+  store.remove(VIEW_AS);
+  logAudit(person, "Signed in", "", null);
+  return person;
 }
 
-export const currentAdmin = () =>
-  listAdmins().find((a) => a.id === store.get(SESSION)) ?? null;
+export const currentAdmin = () => {
+  const p = getPerson(store.get(SESSION));
+  return p?.active ? p : null;
+};
 export function logoutAdmin() {
-  logAudit(currentAdmin(), "Signed out");
+  logAudit(currentAdmin(), "Signed out", "", null);
   store.remove(SESSION);
+  store.remove(VIEW_AS);
 }
 
-export const roleLabel = (admin) =>
-  ADMIN.roles[admin.role]?.label ?? admin.role;
-export function can(admin, perm) {
-  const perms = ADMIN.roles[admin?.role]?.perms ?? [];
-  return perms.includes("*") || perms.includes(perm);
+export const getViewAs = () => store.get(VIEW_AS);
+export const setViewAs = (target) => store.set(VIEW_AS, target);
+export const clearViewAs = () => store.remove(VIEW_AS);
+
+/** First menu page the person may open in an edition (used right after login). */
+export function landingPage(person) {
+  const editions = listEditions();
+  const ids = accessibleEditionIds(person, editions);
+  const active =
+    editions.find((e) => e.status === "active" && ids.includes(e.id)) ??
+    editions.find((e) => ids.includes(e.id));
+  if (!active) return null;
+  store.set("admin:viewing", active.id);
+  const access = buildAccess(person, active, null);
+  return ADMIN.menu.find((m) => m.href && access.can(m.perm))?.href ?? null;
 }
-/** First menu page this admin may open (used after login). */
-export const landingPage = (admin) =>
-  ADMIN.menu.find((m) => m.href && !m.soon && can(admin, m.perm))?.href ?? null;

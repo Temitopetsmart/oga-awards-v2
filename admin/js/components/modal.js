@@ -110,3 +110,38 @@ export function openFormModal({
     { once: true },
   );
 }
+
+/**
+ * Modal with a custom body. `body` is html containing form controls; onSubmit(form) may throw
+ * (the error is shown); the modal closes when it resolves.
+ */
+export function openCustomModal({
+  title,
+  body,
+  submitLabel = "Save",
+  size = "modal-lg",
+  onSubmit,
+}) {
+  const { el, modal } = build(
+    title,
+    html`<form novalidate>
+      <div class="modal-body">${body}</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-gold">${submitLabel}</button>
+      </div>
+    </form>`,
+    { size: `${size} modal-dialog-scrollable` },
+  );
+  const form = el.querySelector("form");
+  bindForm(form, {
+    schema: {},
+    async onSubmit() {
+      await onSubmit(form);
+      modal.hide();
+    },
+  });
+  modal.show();
+}

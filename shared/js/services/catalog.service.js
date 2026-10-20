@@ -44,3 +44,43 @@ export async function getWinners(occasionId) {
     .filter((w) => w.category && w.nominee)
     .sort((a, b) => (a.category.order ?? 0) - (b.category.order ?? 0));
 }
+
+/**
+ * Committee for an edition. DEMO BRIDGE: when the admin has managed the team (kept in this
+ * browser), the public committee is built from those assignments; otherwise from the data file.
+ */
+export async function getCommittee(editionId) {
+  const file = await getResource("committee");
+  try {
+    const read = (k) =>
+      JSON.parse(localStorage.getItem(`oga:admin:${k}`) ?? "null");
+    const assignments = read("assignments");
+    const people = read("people");
+    if (assignments && people) {
+      const members = assignments
+        .filter(
+          (a) => a.editionId === editionId && a.position && a.visible !== false,
+        )
+        .map((a) => {
+          const p = people.find((x) => x.id === a.personId);
+          return p
+            ? {
+                id: a.id,
+                name: p.name,
+                role: a.position,
+                unitId: a.unitId,
+                photo: p.photo ?? null,
+              }
+            : null;
+        })
+        .filter(Boolean);
+      return { ...file, members };
+    }
+  } catch {
+    /* fall back to the file */
+  }
+  return {
+    ...file,
+    members: file.members.filter((m) => m.editionId === editionId),
+  };
+}

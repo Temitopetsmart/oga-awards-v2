@@ -21,8 +21,16 @@ export class DataTable {
       actions: [],
       bulkActions: [],
       empty: "Nothing here yet.",
+      can: () => true,
       ...opts,
     };
+    // Actions and bulk actions carry a `perm`; the ones the person isn't allowed are dropped here.
+    this.o.actions = this.o.actions.filter(
+      (a) => !a.perm || this.o.can(a.perm),
+    );
+    this.o.bulkActions = this.o.bulkActions.filter(
+      (a) => !a.perm || this.o.can(a.perm),
+    );
     this.state = {
       q: "",
       sort: null,

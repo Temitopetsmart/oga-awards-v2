@@ -46,8 +46,10 @@ const pages = [
   ['occasions', 'occasions', 'Occasions', true],
   ['committee', 'committee', 'Committee', true],
   ['messages', 'messages', 'Messages', true],
+  ['editions', 'editions', 'Editions', true],
+  ['team', 'team', 'Team & access', true],
+  ['roles', 'roles', 'Roles & permissions', true],
   ['settings', 'settings', 'Settings', true],
-  ['admins', 'admins', 'Admins & roles', true],
   ['audit', 'audit', 'Audit log', true],
 ];
 

@@ -6,9 +6,10 @@ import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openInfoModal } from "../components/modal.js";
 import { logAudit } from "../services/admin-store.js";
+import { scoped } from "../services/scope.js";
 
 export const title = "Messages";
-export const perm = "messages";
+export const perm = "messages.view";
 export const crumbs = ["People", "Messages"];
 const KEY = "contact-messages";
 
@@ -21,10 +22,9 @@ export default async function messages() {
   </div>`;
 }
 
-export async function init(root, { admin }) {
+export async function init(root, { admin, can }) {
   const rows = () =>
-    store
-      .get(KEY, [])
+    scoped(store.get(KEY, []))
       .map((m) => ({ ...m, status: m.read ? "read" : "unread" }))
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const patch = (id, p) =>
@@ -32,7 +32,9 @@ export async function init(root, { admin }) {
       KEY,
       store.get(KEY, []).map((m) => (m.id === id ? { ...m, ...p } : m)),
     );
+  const manage = can("messages.manage");
   const table = new DataTable(root.querySelector("#msgTable"), {
+    can,
     rows: rows(),
     searchKeys: ["name", "email", "subject", "message"],
     filters: [
@@ -81,20 +83,41 @@ export async function init(root, { admin }) {
       },
     ],
     actions: [
-      { key: "view", label: "Read message", icon: "fa-eye" },
-      { key: "reply", label: "Reply by email", icon: "fa-reply" },
-      { key: "toggle", label: "Mark read / unread", icon: "fa-envelope-open" },
-      { key: "delete", label: "Delete", icon: "fa-trash" },
+      {
+        key: "view",
+        label: "Read message",
+        icon: "fa-eye",
+        perm: "messages.view",
+      },
+      {
+        key: "reply",
+        label: "Reply by email",
+        icon: "fa-reply",
+        perm: "messages.manage",
+      },
+      {
+        key: "toggle",
+        label: "Mark read / unread",
+        icon: "fa-envelope-open",
+        perm: "messages.manage",
+      },
+      {
+        key: "delete",
+        label: "Delete",
+        icon: "fa-trash",
+        perm: "messages.manage",
+      },
     ],
-    empty:
-      "No messages yet. They arrive from the Contact page on the public site.",
+    empty: "No messages yet in this edition.",
     onAction: (key, m) => handlers[key](m),
   });
   const refresh = () => table.setRows(rows());
   const handlers = {
     view(m) {
-      patch(m.id, { read: true });
-      refresh();
+      if (manage) {
+        patch(m.id, { read: true });
+        refresh();
+      }
       openInfoModal({
         title: m.subject,
         body: html`<p class="text-secondary mb-3">

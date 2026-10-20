@@ -1,5 +1,4 @@
 {
-  "_comment": "Sample committee data — replace names, roles and units. Add 'photo' paths when you have them.",
   "intro": "The students who plan and deliver OGA every year.",
   "units": [
     {
@@ -29,34 +28,76 @@
   ],
   "members": [
     {
+      "id": "m10-1",
       "name": "Sample Member One",
       "role": "Chairperson",
       "unitId": "u-exec",
-      "photo": null
+      "photo": null,
+      "editionId": "oga-10"
     },
     {
+      "id": "m10-2",
       "name": "Sample Member Two",
       "role": "Secretary",
       "unitId": "u-exec",
-      "photo": null
+      "photo": null,
+      "editionId": "oga-10"
     },
     {
+      "id": "m10-3",
       "name": "Sample Member Three",
       "role": "Media Lead",
       "unitId": "u-media",
-      "photo": null
+      "photo": null,
+      "editionId": "oga-10"
     },
     {
+      "id": "m10-4",
       "name": "Sample Member Four",
       "role": "Lead Developer",
       "unitId": "u-tech",
-      "photo": null
+      "photo": null,
+      "editionId": "oga-10"
     },
     {
+      "id": "m10-5",
       "name": "Sample Member Five",
       "role": "Logistics Lead",
       "unitId": "u-logistics",
-      "photo": null
+      "photo": null,
+      "editionId": "oga-10"
+    },
+    {
+      "id": "m9-1",
+      "name": "Sample Member Six",
+      "role": "Chairperson",
+      "unitId": "u-exec",
+      "photo": null,
+      "editionId": "oga-9"
+    },
+    {
+      "id": "m9-2",
+      "name": "Sample Member Seven",
+      "role": "Treasurer",
+      "unitId": "u-exec",
+      "photo": null,
+      "editionId": "oga-9"
+    },
+    {
+      "id": "m9-3",
+      "name": "Sample Member Eight",
+      "role": "Media Lead",
+      "unitId": "u-media",
+      "photo": null,
+      "editionId": "oga-9"
+    },
+    {
+      "id": "m9-4",
+      "name": "Sample Member Nine",
+      "role": "Lead Developer",
+      "unitId": "u-tech",
+      "photo": null,
+      "editionId": "oga-9"
     }
   ]
 }
