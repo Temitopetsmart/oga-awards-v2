@@ -1,6 +1,7 @@
 [
   {
     "id": "g1",
+    "editionId": "oga-9",
     "edition": "OGA 9.0",
     "title": "Red carpet arrivals",
     "caption": "Guests arriving in style.",
@@ -9,6 +10,7 @@
   },
   {
     "id": "g2",
+    "editionId": "oga-9",
     "edition": "OGA 9.0",
     "title": "The stage",
     "caption": "A packed hall on awards night.",
@@ -17,6 +19,7 @@
   },
   {
     "id": "g3",
+    "editionId": "oga-9",
     "edition": "OGA 9.0",
     "title": "Winners' moment",
     "caption": "Trophies and celebrations.",
@@ -25,6 +28,7 @@
   },
   {
     "id": "g4",
+    "editionId": "oga-9",
     "edition": "OGA 9.0",
     "title": "Behind the scenes",
     "caption": "The committee at work.",
@@ -33,6 +37,7 @@
   },
   {
     "id": "g5",
+    "editionId": "oga-8",
     "edition": "OGA 8.0",
     "title": "Opening act",
     "caption": "Music to start the night.",
@@ -41,6 +46,7 @@
   },
   {
     "id": "g6",
+    "editionId": "oga-8",
     "edition": "OGA 8.0",
     "title": "Group photo",
     "caption": "Nominees together.",

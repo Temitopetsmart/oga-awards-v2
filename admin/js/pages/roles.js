@@ -162,7 +162,23 @@ export function init(root, { admin, can, access }) {
         }))
       )
         return;
-      saveRoles(listRoles().map((x) => (x.id === r.id ? resetRole(r.id) : x)));
+      const reset = resetRole(r.id);
+
+      if (!reset) return;
+
+      if (!access.isSuper) {
+        reset.perms = reset.perms.filter((key) => access.perms.has(key));
+
+        if (!reset.perms.length) {
+          await notify.warning(
+            "Cannot reset role",
+            "You do not have permission to grant any of this role's default permissions.",
+          );
+          return;
+        }
+      }
+
+      saveRoles(listRoles().map((x) => (x.id === r.id ? reset : x)));
       logAudit(admin, "Reset role to default", r.name);
       notify.toast("success", "Role reset");
       renderList();
@@ -237,11 +253,18 @@ export function init(root, { admin, can, access }) {
         const base = v.copyFrom
           ? rolePerms(getRole(v.copyFrom)).filter((k) => !lockedKeys.has(k))
           : ["dashboard.view"].filter((k) => !lockedKeys.has(k));
+        if (!base.length) {
+          await notify.warning(
+            "No permissions available",
+            "Choose a starting role that contains permissions you are allowed to grant.",
+          );
+          return;
+        }
         const role = {
           id: `role-${slug(v.name)}-${uid("", 3).toLowerCase()}`,
           name: v.name.trim(),
           description: v.description.trim(),
-          perms: base.length ? base : ["dashboard.view"],
+          perms: base,
           system: false,
         };
         saveRoles([...listRoles(), role]);
