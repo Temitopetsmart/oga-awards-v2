@@ -315,6 +315,25 @@ a.oga-stat:hover {
   background: var(--oga-surface);
   border: 1px solid var(--oga-border-strong);
 }
+
+/* Keep long admin form modals within the viewport */
+.modal-dialog-scrollable .modal-content > form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-dialog-scrollable .modal-content > form > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .form-switch .form-check-input:checked {
   background-color: var(--oga-gold-500);
   border-color: var(--oga-gold-500);

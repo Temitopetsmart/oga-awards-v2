@@ -468,10 +468,13 @@
 #editProfileModal .modal-dialog {
   width: calc(100% - 1rem);
   max-width: 38rem;
-  margin: 0.5rem auto;
 }
 
 #editProfileModal .modal-content {
+  background: var(--oga-surface);
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 1rem);
@@ -479,30 +482,17 @@
   overflow: hidden;
 }
 
+#editProfileModal #profileForm {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #editProfileModal .modal-header,
 #editProfileModal .modal-footer {
-  flex: 0 0 auto;
-}
-
-#editProfileModal .modal-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  padding: 1rem;
-}
-
-#editProfileModal .modal-body .row > * {
-  min-width: 0;
-}
-
-#editProfileModal .form-control,
-#editProfileModal .form-select {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
+  border-color: var(--oga-border);
 }
 
 #editProfileModal #photoPreview img {
@@ -513,22 +503,6 @@
   margin-inline: auto;
   object-fit: cover;
   border: 2px solid var(--oga-gold-500);
-}
-
-@media (min-width: 576px) {
-  #editProfileModal .modal-dialog {
-    width: calc(100% - 2rem);
-    margin: 1rem auto;
-  }
-
-  #editProfileModal .modal-content {
-    max-height: calc(100vh - 2rem);
-    max-height: calc(100dvh - 2rem);
-  }
-
-  #editProfileModal .modal-body {
-    padding: 1.5rem;
-  }
 }
 
 /* Nominee dashboard page layout */
