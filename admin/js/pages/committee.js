@@ -315,6 +315,16 @@ export async function init(root, { admin, edition, can }) {
         perm: "committee.review",
         when: (a) => a.status === "screened" && a.screeningResult === "passed",
       },
+
+      {
+        key: "appoint",
+        label: "Appoint to committee",
+        icon: "fa-user-tie",
+        variant: "gold",
+        perm: "committee.review",
+        when: (a) => a.status === "approved",
+      },
+
       {
         key: "reserve",
         label: "Move to reserve list",
@@ -401,6 +411,47 @@ export async function init(root, { admin, edition, can }) {
             label: "Screening instructions",
             type: "textarea",
             value: c.screeningInstructions,
+          },
+          {
+            name: "approvalMessage",
+            label: "Approval message",
+            type: "textarea",
+            value: c.approvalMessage,
+          },
+          {
+            name: "onboardingMessage",
+            label: "Onboarding instructions",
+            type: "textarea",
+            value: c.onboardingMessage,
+          },
+          {
+            name: "unsuccessfulMessage",
+            label: "Unsuccessful application message",
+            type: "textarea",
+            value: c.unsuccessfulMessage,
+          },
+          {
+            name: "reserveMessage",
+            label: "Reserve list message",
+            type: "textarea",
+            value: c.reserveMessage,
+          },
+          {
+            name: "whatsappGroupUrl",
+            label: "Committee WhatsApp group link",
+            type: "url",
+            value: c.whatsappGroupUrl,
+          },
+          {
+            type: "switch",
+            name: "photoUploadsEnabled",
+            label: "Allow applicant photo uploads",
+          },
+          {
+            name: "photoMaxSizeKB",
+            label: "Maximum photo size (KB)",
+            type: "number",
+            value: c.photoMaxSizeKB,
           },
         ],
         values: c,
@@ -709,6 +760,110 @@ export async function init(root, { admin, edition, can }) {
         },
       }),
 
+    appoint: (a) =>
+      openFormModal({
+        title: `Appoint ${a.name}`,
+        submitLabel: "Appoint to committee",
+        fields: [
+          {
+            name: "position",
+            label: "Committee position",
+            required: true,
+            value: "",
+          },
+          {
+            name: "unitId",
+            label: "Committee unit",
+            required: true,
+            options: unitOptions,
+          },
+          {
+            type: "switch",
+            name: "visible",
+            label: "Show on the public Committee page",
+          },
+        ],
+        values: {
+          position: "",
+          unitId: a.unitId || "",
+          visible: true,
+        },
+        schema: {
+          position: [rules.required(), rules.max(60)],
+          unitId: [rules.required("Choose a committee unit.")],
+        },
+        async onSubmit(v) {
+          const existing = listPeople().find(
+            (person) =>
+              person.email &&
+              person.email.trim().toLowerCase() ===
+                a.email.trim().toLowerCase(),
+          );
+
+          const person =
+            existing ||
+            addPerson({
+              name: a.name,
+              email: a.email,
+              active: true,
+            });
+
+          if (existing && !existing.active) {
+            throw new Error(
+              "This person is inactive in Team & Access. Activate them before appointment.",
+            );
+          }
+
+          const currentAssignment = listAssignments(edition.id).find(
+            (assignment) => assignment.personId === person.id,
+          );
+
+          upsertAssignment(person.id, edition.id, {
+            position: v.position.trim(),
+            unitId: v.unitId,
+            visible: Boolean(v.visible),
+            roleIds: currentAssignment?.roleIds ?? [],
+            grants: currentAssignment?.grants ?? [],
+            denies: currentAssignment?.denies ?? [],
+          });
+
+          patchApp(
+            a,
+            {
+              status: "appointed",
+              decision: "appointed",
+              appointedAt: new Date().toISOString(),
+              appointedPersonId: person.id,
+              appointedPosition: v.position.trim(),
+              appointedUnitId: v.unitId,
+            },
+            `Appointed as ${v.position.trim()}`,
+          );
+
+          queueNotice(a, "appointed", {
+            position: v.position.trim(),
+            unitId: v.unitId,
+            message:
+              "Congratulations. You have been appointed to the committee.",
+          });
+
+          logAudit(
+            admin,
+            "Appointed committee applicant",
+            `${a.name} · ${v.position.trim()}`,
+          );
+
+          notify.toast(
+            "success",
+            "Applicant appointed. Notification queued in demo.",
+          );
+
+          refreshMembers();
+          refreshApps();
+          renderRecruitmentSummary();
+        },
+      }),
+
     reserve: (a) =>
       openFormModal({
         title: `Move ${a.name} to reserve list`,
@@ -753,24 +908,57 @@ export async function init(root, { admin, edition, can }) {
           },
         ],
         schema: { note: [rules.required()] },
+
         async onSubmit(v) {
+          const reason = String(v.note ?? "").trim();
+
+          if (!reason) {
+            throw new Error(
+              "Enter the reason for the withdrawal or forfeiture.",
+            );
+          }
+
           patchApp(
             a,
             {
-              status: "reconsideration",
-              decisionReason: v.note,
-              reconsiderationAt: new Date().toISOString(),
-              interested: null,
+              status: "withdrawn",
+              decisionReason: reason,
+              withdrawnAt: new Date().toISOString(),
             },
-            "Reopened for reconsideration",
+            "Applicant withdrew or forfeited their position",
           );
 
-          queueNotice(a, "reconsideration", { message: v.note });
-          logAudit(admin, "Reopened committee application", a.name);
+          if (a.appointedPersonId) {
+            const assignment = listAssignments(edition.id).find(
+              (item) => item.personId === a.appointedPersonId,
+            );
+
+            if (assignment) {
+              upsertAssignment(a.appointedPersonId, edition.id, {
+                position: "",
+                unitId: "",
+                visible: false,
+              });
+            }
+          }
+
+          queueNotice(a, "withdrawn", {
+            message: reason,
+            note: "Withdrawal notification queued in demo; no email sent.",
+          });
+
+          logAudit(
+            admin,
+            "Recorded committee withdrawal or forfeiture",
+            a.name,
+          );
+
           notify.toast(
             "success",
-            "Reconsideration notification queued in demo.",
+            "Withdrawal recorded. Review the reserve list for a replacement.",
           );
+
+          refreshMembers();
           refreshApps();
           renderRecruitmentSummary();
         },

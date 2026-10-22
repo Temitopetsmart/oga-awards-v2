@@ -43,31 +43,56 @@ export function getRecruitmentConfig(editionId) {
 }
 
 export function saveRecruitmentConfig(editionId, patch) {
+  if (!String(editionId ?? "").trim()) {
+    throw userError("A valid edition is required.");
+  }
+
   const current = getRecruitmentConfig(editionId);
   const next = { ...current, ...patch, editionId };
 
-  if (
-    !Number.isInteger(Number(next.targetApplicants)) ||
-    Number(next.targetApplicants) < 1
-  ) {
+  next.targetApplicants = Number(next.targetApplicants);
+  next.photoMaxSizeKB = Number(next.photoMaxSizeKB);
+  next.enabled = Boolean(next.enabled);
+  next.photoUploadsEnabled = Boolean(next.photoUploadsEnabled);
+
+  if (!Number.isInteger(next.targetApplicants) || next.targetApplicants < 1) {
     throw userError("The applicant target must be at least 1.");
   }
 
   if (
-    !Number.isInteger(Number(next.photoMaxSizeKB)) ||
-    Number(next.photoMaxSizeKB) < 50 ||
-    Number(next.photoMaxSizeKB) > 10240
+    !Number.isInteger(next.photoMaxSizeKB) ||
+    next.photoMaxSizeKB < 50 ||
+    next.photoMaxSizeKB > 10240
   ) {
     throw userError("Photo size must be between 50 KB and 10 MB.");
   }
 
-  if (
-    next.opensAt &&
-    next.closesAt &&
-    new Date(next.closesAt) <= new Date(next.opensAt)
-  ) {
+  if (next.enabled && (!next.opensAt || !next.closesAt)) {
+    throw userError(
+      "Set both the opening and closing date before enabling recruitment.",
+    );
+  }
+
+  const opens = next.opensAt ? new Date(next.opensAt).getTime() : null;
+  const closes = next.closesAt ? new Date(next.closesAt).getTime() : null;
+
+  if (next.opensAt && !Number.isFinite(opens)) {
+    throw userError("Enter a valid opening date and time.");
+  }
+
+  if (next.closesAt && !Number.isFinite(closes)) {
+    throw userError("Enter a valid closing date and time.");
+  }
+
+  if (opens !== null && closes !== null && closes <= opens) {
     throw userError("The closing date must be after the opening date.");
   }
+
+  next.allowedPhotoTypes = Array.isArray(next.allowedPhotoTypes)
+    ? next.allowedPhotoTypes.filter((type) =>
+        ["image/jpeg", "image/png", "image/webp"].includes(type),
+      )
+    : ["image/jpeg", "image/png", "image/webp"];
 
   store.set(`${CONFIG_PREFIX}${editionId}`, next);
   return next;
@@ -131,8 +156,33 @@ export function submitRecruitmentApplication(data) {
     .trim()
     .toLowerCase();
 
-  if (!email) {
-    throw userError("An email address is required.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw userError("Enter a valid email address.");
+  }
+
+  const requiredFields = [
+    ["name", "Enter your full name."],
+    ["phone", "Enter your phone number."],
+    ["department", "Enter your department."],
+    ["level", "Choose your level."],
+    ["unitId", "Choose your preferred committee unit."],
+    ["motivation", "Tell us why you want to join the committee."],
+  ];
+
+  for (const [key, message] of requiredFields) {
+    if (!String(data[key] ?? "").trim()) {
+      throw userError(message);
+    }
+  }
+
+  if (String(data.name).trim().length < 2) {
+    throw userError("Your name must contain at least 2 characters.");
+  }
+
+  if (String(data.motivation).trim().length < 30) {
+    throw userError(
+      "Your motivation statement must contain at least 30 characters.",
+    );
   }
 
   const applications = store.get(APPLICATIONS, []);
@@ -193,9 +243,21 @@ export function updateCommitteeApplication(
   }
 
   const current = applications[index];
+  const { historyNote = "", ...changes } = patch;
+
+  if (
+    changes.status &&
+    !Object.prototype.hasOwnProperty.call(COMMITTEE_STAGES, changes.status)
+  ) {
+    throw userError("That committee application stage is not recognised.");
+  }
+
+  const stageChanged =
+    Boolean(changes.status) && changes.status !== current.status;
+
   const next = {
     ...current,
-    ...patch,
+    ...changes,
     id: current.id,
     editionId: current.editionId,
     email: current.email,
@@ -203,18 +265,14 @@ export function updateCommitteeApplication(
     updatedAt: now(),
   };
 
-  if (patch.status && patch.status !== current.status) {
-    if (!COMMITTEE_STAGES[patch.status]) {
-      throw userError("That committee application stage is not recognised.");
-    }
-
+  if (stageChanged) {
     next.history = [
       ...(current.history ?? []),
       {
-        stage: patch.status,
-        at: now(),
+        stage: changes.status,
+        at: next.updatedAt,
         actor,
-        note: String(patch.historyNote ?? ""),
+        note: String(historyNote).trim(),
       },
     ];
   }
@@ -226,14 +284,20 @@ export function updateCommitteeApplication(
 }
 
 export function queueCommitteeNotification(application, type, details = {}) {
+  if (!application?.id || !application?.editionId || !application?.email) {
+    throw userError(
+      "A valid application and recipient email are required to queue a notification.",
+    );
+  }
+
   const outbox = store.get(OUTBOX, []);
 
   const message = {
     id: uid("MAIL-", 8),
     editionId: application.editionId,
     applicationId: application.id,
-    recipient: application.email,
-    applicantName: application.name,
+    recipient: String(application.email).trim().toLowerCase(),
+    applicantName: String(application.name ?? "Applicant").trim(),
     type,
     details,
     status: "queued_demo",
