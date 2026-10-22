@@ -9,7 +9,9 @@ function build(titleText, bodyHtml, { size = "" } = {}) {
   el.setAttribute("aria-hidden", "true");
   mount(
     el,
-    html`<div class="modal-dialog modal-dialog-centered ${size}">
+    html`<div
+      class="modal-dialog modal-dialog-centered modal-dialog-scrollable ${size}"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title h5">${titleText}</h2>

@@ -358,97 +358,111 @@ export default async function dashboard(ctx, { params }) {
                     <div class="modal-content">
                       <form id="profileForm" novalidate>
                         <div class="modal-header">
-                          <div>
+                          <div class="min-w-0">
                             <h2
                               class="modal-title h5"
                               id="editProfileModalLabel"
                             >
                               Edit nominee profile
                             </h2>
-
                             <p class="small text-secondary mb-0">
-                              Changes apply to your selected edition entry.
+                              Update your details for this edition.
                             </p>
                           </div>
 
                           <button
                             type="button"
-                            class="btn-close btn-close-white"
+                            class="btn-close btn-close-white ms-2"
                             data-bs-dismiss="modal"
                             aria-label="Close"
                           ></button>
                         </div>
 
-                        <div class="modal-body p-3 p-md-4">
-                          <div class="row justify-content-center">
-  <div class="col-12 col-sm-10 col-md-8">
-    <label
-      class="form-label d-block mt-3"
-      for="profilePhoto"
-    >
-      Profile photo
-    </label>
-
-    <input
-      class="form-control w-100"
-      type="file"
-      id="profilePhoto"
-      name="profilePhoto"
-      accept="image/jpeg,image/png,image/webp"
-    />
-
-    <div class="form-text">
-      Choose a clear JPG, PNG or WebP photo. Maximum size: 1 MB.
-    </div>
-
-    <div id="photoPreview" class="mt-3"></div>
-  </div>
-</div>
-                          </div>
-
+                        <div class="modal-body">
                           <div class="row g-3">
-                            ${field({
-                              label: "Full name",
-                              name: "name",
-                              required: true,
-                              value: me.name,
-                              col: "col-md-6",
-                            })}
-                            ${field({
-                              label: "Phone",
-                              name: "phone",
-                              type: "tel",
-                              required: true,
-                              value: me.phone ?? "",
-                              col: "col-md-6",
-                            })}
-                          </div>
+                            <div class="col-12">
+                              <div
+                                class="d-flex flex-column align-items-center text-center gap-2"
+                              >
+                                <div id="photoPreview">
+                                  <img
+                                    src="${me.photo || ""}"
+                                    alt="Profile photo preview"
+                                    class="rounded-circle"
+                                    width="100"
+                                    height="100"
+                                    style="object-fit:cover;${me.photo
+                                      ? ""
+                                      : "display:none;"}"
+                                  />
+                                </div>
 
-                          <div class="row g-3">
-                            ${field({
-                              label: "Department",
-                              name: "department",
-                              required: true,
-                              value: me.department ?? "",
-                              col: "col-12 col-md-6",
-                            })}
-                            ${field({
-                              label: "Level",
-                              name: "level",
-                              options: LEVELS,
-                              required: true,
-                              value: me.level ?? "",
-                              col: "col-12 col-md-6",
-                            })}
-                            ${field({
-                              label: "About you",
-                              name: "bio",
-                              type: "textarea",
-                              rows: 4,
-                              value: me.bio ?? "",
-                              help: "Shown on your public profile after approval. Maximum 500 characters.",
-                              col: "col-12",
-                            })}
+                                <div class="w-100">
+                                  <label class="form-label" for="profilePhoto">
+                                    Profile photo
+                                  </label>
+                                  <input
+                                    class="form-control"
+                                    type="file"
+                                    id="profilePhoto"
+                                    name="profilePhoto"
+                                    accept="image/jpeg,image/png,image/webp"
+                                  />
+                                  <div class="form-text">
+                                    JPG, PNG or WebP. Maximum size: 1 MB.
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              ${field({
+                                label: "Full name",
+                                name: "name",
+                                required: true,
+                                value: me.name,
+                              })}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              ${field({
+                                label: "Phone number",
+                                name: "phone",
+                                type: "tel",
+                                required: true,
+                                value: me.phone ?? "",
+                              })}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              ${field({
+                                label: "Department",
+                                name: "department",
+                                required: true,
+                                value: me.department ?? "",
+                              })}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              ${field({
+                                label: "Level",
+                                name: "level",
+                                options: LEVELS,
+                                required: true,
+                                value: me.level ?? "",
+                              })}
+                            </div>
+
+                            <div class="col-12">
+                              ${field({
+                                label: "About you",
+                                name: "bio",
+                                type: "textarea",
+                                rows: 4,
+                                value: me.bio ?? "",
+                                help: "Maximum 500 characters.",
+                              })}
+                            </div>
                           </div>
                         </div>
 
