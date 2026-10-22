@@ -6,6 +6,7 @@ import { userError } from "../../../shared/js/core/store.js";
 import { ROOT } from "../../../shared/js/config/app.config.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
+import { createInvitation } from "../services/invitation.repo.js";
 import { openFormModal, openCustomModal } from "../components/modal.js";
 import {
   overrideMatrix,
@@ -83,12 +84,19 @@ export default async function team({ can, edition, readOnly }) {
             </p>
             ${manage
               ? html`<button class="btn btn-gold btn-sm" id="giveBtn">
-                  <i class="fa-solid fa-user-plus me-1"></i>Give access
-                </button>`
+                    <i class="fa-solid fa-user-plus me-1"></i>Give access
+                  </button>
+                  <button
+                    class="btn btn-outline-light btn-sm"
+                    id="inviteAdminBtn"
+                  >
+                    <i class="fa-solid fa-envelope me-1"></i>Invite by email
+                  </button>`
               : ""}
           </div>
           <div id="accessTable"></div>
         </div>
+
         <div class="tab-pane fade" id="tab-people" role="tabpanel">
           ${can("team.manage")
             ? html`<div class="d-flex justify-content-end p-3 pb-0">
@@ -429,6 +437,100 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         notify.toast("success", `${person.name} now has access`);
         refreshAccess();
         refreshPeople();
+      },
+    });
+  });
+
+  root.querySelector("#inviteAdminBtn")?.addEventListener("click", () => {
+    openCustomModal({
+      title: `Invite admin to ${editionLabel(edition)}`,
+      submitLabel: "Create invitation",
+      body: html`
+        ${field({
+          label: "Invitee email",
+          name: "email",
+          type: "email",
+          required: true,
+          col: "col-12",
+        })}
+        ${field({
+          label: "Invitation expires after",
+          name: "expiresInDays",
+          required: true,
+          value: "7",
+          options: [
+            { value: "1", label: "1 day" },
+            { value: "3", label: "3 days" },
+            { value: "7", label: "7 days" },
+            { value: "14", label: "14 days" },
+          ],
+          col: "col-12",
+        })}
+        ${rolesBody(new Set())}
+
+        <p class="small text-secondary mt-3">
+          The invitee will receive access only to this edition and the selected
+          roles. Choose only roles you are authorised to assign.
+        </p>
+      `,
+      async onSubmit(form) {
+        const values = Object.fromEntries(new FormData(form));
+        const roleIds = chosenRoles(form);
+
+        if (!roleIds.length) {
+          throw userError("Choose at least one role.");
+        }
+
+        if (roleIds.some((id) => !assignable(getRole(id)))) {
+          throw userError("You cannot assign one or more of those roles.");
+        }
+
+        const invitation = createInvitation({
+          email: values.email,
+          editionId: edition.id,
+          roleIds,
+          invitedBy: admin,
+          expiresInDays: Number(values.expiresInDays),
+        });
+
+        const link = new URL(`${ROOT}accept-invite.html`, window.location.href);
+        link.searchParams.set("token", invitation.token);
+
+        await Swal.fire({
+          icon: "success",
+          title: "Invitation created",
+          html: `
+          <p>Share this invitation link with the invitee.</p>
+          <input
+            id="invitationLink"
+            class="swal2-input"
+            readonly
+            value="${link.href}"
+          >
+          <p class="small">Expires: ${new Date(
+            invitation.expiresAt,
+          ).toLocaleString()}</p>
+        `,
+          confirmButtonText: "Copy invitation link",
+          showCancelButton: true,
+          cancelButtonText: "Close",
+          preConfirm: async () => {
+            try {
+              await navigator.clipboard.writeText(link.href);
+            } catch {
+              const input = document.getElementById("invitationLink");
+              input?.select();
+              document.execCommand("copy");
+            }
+          },
+        });
+
+        logAudit(
+          admin,
+          "Created admin invitation",
+          `${invitation.email} · ${editionLabel(edition)}`,
+          edition.id,
+        );
       },
     });
   });

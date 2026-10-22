@@ -16,39 +16,55 @@ export default async function login() {
     go("dashboard.html");
     return null;
   }
-  return html` ${pageHero({
-    eyebrow: "Nominees",
-    title: "Log in",
-    lead: "Access your nominee dashboard.",
-    crumbs: [{ label: "Login" }],
-  })}
-  ${pageBody(
-    html` <form id="loginForm" class="oga-formcard" novalidate>
-      ${field({
-        label: "Email",
-        name: "email",
-        type: "email",
-        required: true,
-        autocomplete: "email",
-      })}
-      ${field({
-        label: "Password",
-        name: "password",
-        type: "password",
-        required: true,
-        autocomplete: "current-password",
-      })}
-      <button class="btn btn-gold btn-lg w-100" type="submit">Log in</button>
-      <p class="text-center mt-3 mb-0">
-        New here? <a href="register.html">Register as a nominee</a>
-      </p>
-    </form>`,
-    { width: "30rem" },
-  )}`;
+
+  return html`
+    ${pageHero({
+      eyebrow: "Nominees",
+      title: "Log in",
+      lead: "Access your nominee dashboard.",
+      crumbs: [{ label: "Login" }],
+    })}
+    ${pageBody(
+      html`
+        <form id="loginForm" class="oga-formcard" novalidate>
+          ${field({
+            label: "Email",
+            name: "email",
+            type: "email",
+            required: true,
+            autocomplete: "email",
+          })}
+          ${field({
+            label: "Password",
+            name: "password",
+            type: "password",
+            required: true,
+            autocomplete: "current-password",
+          })}
+
+          <p class="text-end mb-3">
+            <a href="forgot-password.html">Forgot password?</a>
+          </p>
+
+          <button class="btn btn-gold btn-lg w-100" type="submit">
+            Log in
+          </button>
+
+          <p class="text-center mt-3 mb-0">
+            New here? <a href="register.html">Register as a nominee</a>
+          </p>
+        </form>
+      `,
+      { width: "30rem" },
+    )}
+  `;
 }
 
 export function init(root) {
-  bindForm(root.querySelector("#loginForm"), {
+  const form = root.querySelector("#loginForm");
+  if (!form) return;
+
+  bindForm(form, {
     schema: {
       email: [rules.required(), rules.email()],
       password: [rules.required()],
