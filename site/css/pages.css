@@ -463,3 +463,31 @@
     background: #fff !important;
   }
 }
+
+/* Nominee dashboard profile modal */
+#editProfileModal .modal-content {
+  overflow: hidden;
+}
+
+#editProfileModal .modal-body {
+  padding: 1.5rem;
+}
+
+#editProfileModal .oga-avatar {
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+}
+
+#editProfileModal .oga-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#photoPreview img {
+  display: block;
+  margin-inline: auto;
+  border: 2px solid var(--oga-gold-500);
+}

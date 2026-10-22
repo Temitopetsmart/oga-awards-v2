@@ -289,7 +289,7 @@ export async function updateNominee(patch) {
     throw userError("We could not find your nominee entry.");
   }
 
-  const allowed = ["name", "phone", "department", "level", "bio"];
+  const allowed = ["name", "phone", "department", "level", "bio", "photo"];
   const safePatch = {};
 
   for (const key of allowed) {

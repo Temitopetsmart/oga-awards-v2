@@ -250,6 +250,205 @@ export default async function settings({ edition: ed, can, access }) {
         </form>`,
         "cardContact",
       )}
+      ${card(
+        "Committee recruitment communications",
+        html`
+          <p class="text-secondary">
+            Configure the intended email provider, sender details, WhatsApp
+            onboarding link and the messages used throughout committee
+            recruitment. Real delivery will be connected by the backend.
+          </p>
+
+          <form id="recruitmentCommsForm" novalidate>
+            <h3 class="h6 mt-3">Email delivery</h3>
+            <div class="row">
+              ${field({
+                label: "Email delivery method",
+                name: "emailMode",
+                options: [
+                  { value: "smtp", label: "SMTP / PHPMailer" },
+                  { value: "domain", label: "Hosting provider email" },
+                  { value: "api", label: "Email provider API" },
+                ],
+                value: s.communications?.emailMode ?? "smtp",
+                col: "col-md-6",
+              })}
+              ${field({
+                label: "SMTP host",
+                name: "smtpHost",
+                value: s.communications?.smtpHost ?? "",
+                placeholder: "mail.example.com",
+                col: "col-md-6",
+              })}
+              ${field({
+                label: "SMTP port",
+                name: "smtpPort",
+                type: "number",
+                value: s.communications?.smtpPort ?? "587",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "SMTP username",
+                name: "smtpUsername",
+                value: s.communications?.smtpUsername ?? "",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "Sender name",
+                name: "fromName",
+                value: s.communications?.fromName ?? "OGA Awards",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "Sender email",
+                name: "fromEmail",
+                type: "email",
+                value: s.communications?.fromEmail ?? "",
+                col: "col-md-6",
+              })}
+              ${field({
+                label: "Reply-to email",
+                name: "replyTo",
+                type: "email",
+                value: s.communications?.replyTo ?? "",
+                col: "col-md-6",
+              })}
+            </div>
+
+            <div class="alert alert-warning">
+              <strong>Security:</strong> SMTP passwords, email API keys and
+              payment gateway secrets must be stored on the server, not in
+              browser storage. This page saves non-secret configuration only. A
+              backend connection and server-side secret configuration are
+              required before emails can actually be sent.
+            </div>
+
+            <h3 class="h6 mt-4">WhatsApp and onboarding</h3>
+            <div class="row">
+              ${field({
+                label: "Committee WhatsApp group invite URL",
+                name: "whatsappGroupUrl",
+                type: "url",
+                value: s.communications?.whatsappGroupUrl ?? "",
+                placeholder: "https://chat.whatsapp.com/...",
+                col: "col-12",
+                help: "Applicants receive this only in the approved/onboarding message.",
+              })}
+            </div>
+
+            <h3 class="h6 mt-4">Email message templates</h3>
+            <p class="text-secondary small">
+              Supported placeholders: {{name}}, {{edition}}, {{screening_date}},
+              {{screening_time}}, {{screening_venue}}, {{message}} and
+              {{whatsapp_link}}.
+            </p>
+
+            <div class="row">
+              ${field({
+                label: "Application received",
+                name: "templateReceived",
+                type: "textarea",
+                rows: 3,
+                value:
+                  s.communications?.templateReceived ??
+                  "Hello {{name}}, your committee application for {{edition}} has been received. We will contact you about the next stage.",
+                col: "col-12",
+              })}
+              ${field({
+                label: "Shortlisted for screening",
+                name: "templateShortlisted",
+                type: "textarea",
+                rows: 4,
+                value:
+                  s.communications?.templateShortlisted ??
+                  "Hello {{name}}, you have been shortlisted for {{edition}} screening. Date: {{screening_date}}. Time: {{screening_time}}. Venue: {{screening_venue}}. {{message}}",
+                col: "col-12",
+              })}
+              ${field({
+                label: "Approved",
+                name: "templateApproved",
+                type: "textarea",
+                rows: 4,
+                value:
+                  s.communications?.templateApproved ??
+                  "Congratulations {{name}}! Your application for {{edition}} has been approved. {{message}} Join the committee group: {{whatsapp_link}}",
+                col: "col-12",
+              })}
+              ${field({
+                label: "Not selected / reserve",
+                name: "templateUnsuccessful",
+                type: "textarea",
+                rows: 4,
+                value:
+                  s.communications?.templateUnsuccessful ??
+                  "Hello {{name}}, thank you for participating in the {{edition}} committee recruitment process. {{message}}",
+                col: "col-12",
+              })}
+              ${field({
+                label: "Reconsideration",
+                name: "templateReconsideration",
+                type: "textarea",
+                rows: 3,
+                value:
+                  s.communications?.templateReconsideration ??
+                  "Hello {{name}}, a committee position may have become available for {{edition}}. We would like to know if you are still interested. {{message}}",
+                col: "col-12",
+              })}
+            </div>
+
+            ${save("Save recruitment communications")}
+          </form>
+        `,
+        "cardRecruitmentComms",
+      )}
+      ${card(
+        "Payment gateway configuration",
+        html`
+          <p class="text-secondary">
+            Select the payment provider and configure its non-secret settings.
+            Secret keys must be stored on the backend before live payments can
+            be enabled.
+          </p>
+          <form id="gatewaySettingsForm" novalidate>
+            <div class="row">
+              ${field({
+                label: "Payment provider",
+                name: "gatewayProvider",
+                options: [
+                  { value: "flutterwave", label: "Flutterwave" },
+                  { value: "paystack", label: "Paystack" },
+                  { value: "none", label: "Not configured" },
+                ],
+                value: s.gateway?.provider ?? "none",
+                col: "col-md-6",
+              })}
+              ${field({
+                label: "Environment",
+                name: "gatewayEnvironment",
+                options: [
+                  { value: "test", label: "Test mode" },
+                  { value: "live", label: "Live mode" },
+                ],
+                value: s.gateway?.environment ?? "test",
+                col: "col-md-6",
+              })}
+              ${field({
+                label: "Public key",
+                name: "gatewayPublicKey",
+                value: s.gateway?.publicKey ?? "",
+                col: "col-12",
+              })}
+            </div>
+            <div class="alert alert-warning">
+              Secret keys and webhook signing secrets are not saved here. Live
+              payment processing must remain disabled until the backend is
+              configured and the provider's webhook signatures are verified.
+            </div>
+            ${save("Save gateway preferences")}
+          </form>
+        `,
+        "cardGatewaySettings",
+      )}
       ${access.isSuper
         ? card(
             "Demo data",
@@ -423,6 +622,101 @@ export async function init(root, { admin, edition: ed, can }) {
         });
         logAudit(admin, "Updated contact details");
         notify.toast("success", "Contact details saved");
+      },
+    });
+
+    bindForm(root.querySelector("#recruitmentCommsForm"), {
+      schema: {
+        emailMode: [
+          rules.custom((v) =>
+            ["smtp", "domain", "api"].includes(v)
+              ? null
+              : "Choose an email delivery method.",
+          ),
+        ],
+        smtpPort: [
+          rules.custom((v, all) =>
+            all.emailMode !== "smtp" ||
+            (Number.isInteger(Number(v)) &&
+              Number(v) >= 1 &&
+              Number(v) <= 65535)
+              ? null
+              : "Enter a valid SMTP port.",
+          ),
+        ],
+        fromEmail: [rules.email()],
+        replyTo: [
+          rules.custom((v) =>
+            !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+              ? null
+              : "Enter a valid reply-to email.",
+          ),
+        ],
+        whatsappGroupUrl: [
+          rules.custom((v) =>
+            !v || /^https:\/\/\S+$/.test(v)
+              ? null
+              : "Use a complete HTTPS URL.",
+          ),
+        ],
+      },
+      async onSubmit(v) {
+        const current = store.get(SETTINGS, {});
+
+        store.set(SETTINGS, {
+          ...current,
+          communications: {
+            ...current.communications,
+            emailMode: v.emailMode,
+            smtpHost: v.smtpHost.trim(),
+            smtpPort: v.smtpPort,
+            smtpUsername: v.smtpUsername.trim(),
+            fromName: v.fromName.trim(),
+            fromEmail: v.fromEmail.trim(),
+            replyTo: v.replyTo.trim(),
+            whatsappGroupUrl: v.whatsappGroupUrl.trim(),
+            templateReceived: v.templateReceived,
+            templateShortlisted: v.templateShortlisted,
+            templateApproved: v.templateApproved,
+            templateUnsuccessful: v.templateUnsuccessful,
+            templateReconsideration: v.templateReconsideration,
+          },
+        });
+
+        logAudit(admin, "Updated recruitment communications settings");
+        notify.toast("success", "Recruitment communications settings saved.");
+      },
+    });
+
+    bindForm(root.querySelector("#gatewaySettingsForm"), {
+      schema: {
+        gatewayProvider: [
+          rules.custom((v) =>
+            ["flutterwave", "paystack", "none"].includes(v)
+              ? null
+              : "Choose a supported provider.",
+          ),
+        ],
+        gatewayEnvironment: [
+          rules.custom((v) =>
+            ["test", "live"].includes(v) ? null : "Choose test or live mode.",
+          ),
+        ],
+      },
+      async onSubmit(v) {
+        const current = store.get(SETTINGS, {});
+
+        store.set(SETTINGS, {
+          ...current,
+          gateway: {
+            provider: v.gatewayProvider,
+            environment: v.gatewayEnvironment,
+            publicKey: v.gatewayPublicKey.trim(),
+          },
+        });
+
+        logAudit(admin, "Updated payment gateway preferences");
+        notify.toast("success", "Gateway preferences saved.");
       },
     });
   }

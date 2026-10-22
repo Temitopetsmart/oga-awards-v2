@@ -58,15 +58,17 @@ export async function listNominees(editionId = viewing()) {
 }
 
 export const pendingNomineeCount = (editionId = viewing()) => {
-  const legacyCount = legacyRegistrations().filter(
-    (n) => n.status === "pending" && inEdition(n, editionId),
-  ).length;
+  const pending = new Set();
 
-  const accountCount = entries().filter(
-    (n) => n.status === "pending" && inEdition(n, editionId),
-  ).length;
+  for (const nominee of [...entries(), ...legacyRegistrations()]) {
+    if (nominee.status !== "pending" || !inEdition(nominee, editionId)) {
+      continue;
+    }
 
-  return legacyCount + accountCount;
+    pending.add(String(nominee.legacyId || nominee.id));
+  }
+
+  return pending.size;
 };
 
 export async function setNomineeStatus(id, status) {
