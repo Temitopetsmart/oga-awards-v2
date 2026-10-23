@@ -92,6 +92,7 @@ export async function getHomeContext() {
     data.editions.find((e) => e.id === data.active) ??
     sorted.find((e) => e.status === "completed" || e.status === "archived") ??
     sorted[0];
+  if (occasion.voting) Object.assign(APP.voting, occasion.voting);
   const preview = new URLSearchParams(location.search).get("preview");
   const now = Date.now();
   const resolved =

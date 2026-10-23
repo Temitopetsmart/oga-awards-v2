@@ -1,0 +1,47 @@
+<?php
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/backend/src/bootstrap.php';
+
+use App\Cache;
+use App\Catalog;
+use App\Database;
+use App\Response;
+
+$base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');                       // e.g. /oga-awards-v2/api
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+$path = substr($path, strlen($base));
+$path = '/' . trim(preg_replace('#^/index\.php#', '', $path), '/');         // works with or without URL rewriting
+$method = $_SERVER['REQUEST_METHOD'];
+
+if ($method === 'GET' && $path === '/health') {
+    $tables = (int) Database::pdo()
+        ->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')
+        ->fetchColumn();
+    Response::json(['ok' => true, 'database' => 'connected', 'tables' => $tables, 'time' => date('c')]);
+}
+
+// ---- Public read-only data (same names and shapes as the V2 /data/*.json files) ----
+$public = [
+    '/editions'     => [fn () => Catalog::editions(), 30],
+    '/categories'   => [fn () => Catalog::categories(), 30],
+    '/nominees'     => [fn () => Catalog::nominees(), 30],
+    '/ticket-types' => [fn () => Catalog::ticketTypes(), 30],
+    '/winners'      => [fn () => Catalog::winners(), 30],
+    '/committee'    => [fn () => Catalog::committee(), 60],
+    '/about'        => [fn () => Catalog::staticFile('about'), 300],
+    '/content'      => [fn () => Catalog::staticFile('content'), 300],
+    '/faqs'         => [fn () => Catalog::staticFile('faqs'), 300],
+    '/gallery'      => [fn () => Catalog::staticFile('gallery'), 300],
+    '/legal'        => [fn () => Catalog::staticFile('legal'), 300],
+];
+
+if (($method === 'GET' || $method === 'HEAD') && isset($public[$path])) {
+    [$build, $ttl] = $public[$path];
+    $json = Cache::remember('public' . str_replace('/', '_', $path), $ttl, function () use ($build): string {
+        return json_encode($build(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
+    });
+    Response::cachedJson($json, $ttl);
+}
+
+Response::error('Not found', 404);

@@ -18,7 +18,11 @@ export const APP = {
   currency: { code: "NGN" },
 
   /** Where data comes from. Switch to 'api' when the PHP backend is ready. */
-  data: { source: "json", jsonPath: "data/", apiBase: "/api" },
+  data: {
+    source: "api",
+    jsonPath: "data/",
+    apiBase: new URL("api", ROOT).href,
+  },
 
   /** Lets ?preview=voting force a home-page state. Set to false in production. */
   allowPreview: true,
@@ -94,15 +98,16 @@ export const STATES = {
  * DEMO BRIDGE: values saved from the admin (kept in this browser) override the defaults above.
  * APP is a const, but its properties are writable. Delete with the backend.
  */
-try {
-  const read = (k) =>
-    JSON.parse(localStorage.getItem(`oga:admin:${k}`) ?? "null");
-  const settings = read("settings");
-  const editions = read("editions");
-  const active = editions?.editions?.find((e) => e.id === editions.active);
-  if (active?.voting) Object.assign(APP.voting, active.voting);
-  if (settings?.contact) Object.assign(APP.contact, settings.contact);
-  if (Array.isArray(settings?.social)) APP.social = settings.social;
-} catch {
-  /* ignore */
-}
+if (APP.data.source === "json")
+  try {
+    const read = (k) =>
+      JSON.parse(localStorage.getItem(`oga:admin:${k}`) ?? "null");
+    const settings = read("settings");
+    const editions = read("editions");
+    const active = editions?.editions?.find((e) => e.id === editions.active);
+    if (active?.voting) Object.assign(APP.voting, active.voting);
+    if (settings?.contact) Object.assign(APP.contact, settings.contact);
+    if (Array.isArray(settings?.social)) APP.social = settings.social;
+  } catch {
+    /* ignore */
+  }
