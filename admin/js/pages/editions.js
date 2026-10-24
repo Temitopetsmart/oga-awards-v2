@@ -9,6 +9,7 @@ import { ROOT } from "../../../shared/js/config/app.config.js";
 import { logAudit } from "../services/admin-store.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
+import { accessibleEditionIds } from "../services/team.repo.js";
 import { scoped } from "../services/scope.js";
 import {
   listEditions,
@@ -391,7 +392,7 @@ export function init(root, { admin, can }) {
             team: v.copy_team,
           },
         });
-        
+
         notify.toast("success", `${editionLabel(e)} created as a draft`);
         location.reload();
       },

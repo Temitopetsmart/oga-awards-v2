@@ -38,14 +38,13 @@ final class Catalog
         
         $rows = self::db()->query(
             'SELECT e.*,
-                    s.price_per_vote,
-                    s.max_votes_per_payment,
-                    s.max_paid_payments_per_email_per_category,
-                    s.nominee_registration_fee
+                s.price_per_vote,
+                s.max_votes_per_payment,
+                s.max_paid_payments_per_email_per_category,
+                s.nominee_registration_fee
             FROM editions e
             LEFT JOIN edition_settings s ON s.edition_id = e.id
-            ' . ($includeDrafts ? '' : 'WHERE e.status <> \'draft\'') . '
-            ORDER BY e.year DESC, e.id DESC'
+            ORDER BY e.year DESC, e.id DESC;'
         )->fetchAll();
 
 
