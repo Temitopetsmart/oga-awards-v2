@@ -8,14 +8,13 @@ import {
   currentAdmin,
   loginAdmin,
   landingPage,
-  seedDemo,
-  DEMO_ACCOUNTS,
+  restoreSession,
 } from "../services/admin-auth.service.js";
 
 export const title = "Sign in";
 
 export default async function login() {
-  await seedDemo();
+  restoreSession(); // try to restore the session in case the user is already signed in
   const me = currentAdmin();
   if (me && landingPage(me)) {
     location.replace(ROOT + landingPage(me));
@@ -42,14 +41,7 @@ export default async function login() {
         })}
         <button class="btn btn-gold btn-lg w-100" type="submit">Sign in</button>
       </form>
-      <div class="oga-demo">
-        <strong>Demo mode.</strong> Use any password with one of:
-        <ul class="mb-0 mt-1 ps-3">
-          ${DEMO_ACCOUNTS.map(
-            (a) => html`<li><code>${a.email}</code> — ${a.label}</li>`,
-          )}
-        </ul>
-      </div>
+
       <p class="text-center mt-4 mb-0">
         <a href="${ROOT}index.html">← Back to ${APP.brand.name}</a>
       </p>

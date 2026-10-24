@@ -1,54 +1,70 @@
-import { store, delay, userError } from "../../../shared/js/core/store.js";
+import { store } from "../../../shared/js/core/store.js";
 import { ADMIN } from "../config/admin.config.js";
-import { logAudit } from "./admin-store.js";
-import { ensureTeam, listPeople, getPerson } from "./team.repo.js";
-import { ensureEditions, listEditions } from "./edition.repo.js";
+import { adminApi, setCsrf } from "./admin-api.js";
+import { listEditions } from "./edition.repo.js";
 import { accessibleEditionIds } from "./team.repo.js";
 import { buildAccess } from "../core/access.js";
 
 /**
- * DEMO admin auth (localStorage). Passwords are NOT checked here — the real backend will
- * authenticate securely. Keep these signatures when swapping in the API.
+ * Admin sign-in against the PHP backend. The PHP session cookie is the real login; this file
+ * keeps a copy of who you are and what you may see in the browser so pages can render
+ * instantly. The server checks permissions again on every request.
  */
-const SESSION = "admin:session";
+const ME = "admin:me";
 const VIEW_AS = "admin:viewas";
-
-export const DEMO_ACCOUNTS = [
-  { email: "admin@oga.local", label: "Super admin" },
-  { email: "editor@oga.local", label: "Editor" },
-  { email: "treasurer@oga.local", label: "Treasurer" },
-  { email: "secretary@oga.local", label: "Secretary" },
-  { email: "publicity@oga.local", label: "Publicity" },
-  { email: "gate@oga.local", label: "Gate staff" },
+const SESSION_KEYS = [
+  ME,
+  "admin:people",
+  "admin:roles",
+  "admin:assignments",
+  "admin:editions",
+  VIEW_AS,
+  "admin:viewing",
 ];
 
-export async function seedDemo() {
-  await ensureEditions();
-  await ensureTeam();
+function hydrate(data) {
+  setCsrf(data.csrf);
+  store.set(ME, data.person);
+  store.set("admin:people", data.people);
+  store.set("admin:roles", data.roles);
+  store.set("admin:assignments", data.assignments);
+  store.set("admin:editions", data.editions);
 }
 
-export async function loginAdmin({ email }) {
-  await delay(500);
-  await seedDemo();
-  const person = listPeople().find(
-    (p) => p.email && p.email === email.trim().toLowerCase() && p.active,
-  );
-  if (!person || accessibleEditionIds(person, listEditions()).length === 0)
-    throw userError("We could not sign you in with those details.");
-  store.set(SESSION, person.id);
+const clearSession = () => SESSION_KEYS.forEach((k) => store.remove(k));
+
+/** Ask the server who is signed in. Call once when an admin page starts. */
+export async function restoreSession() {
+  try {
+    const data = await adminApi("/admin/me");
+    if (data.authenticated) hydrate(data);
+    else clearSession();
+  } catch {
+    clearSession(); // API unreachable: treat as signed out
+  }
+}
+
+export async function loginAdmin({ email, password }) {
+  const data = await adminApi("/admin/login", {
+    method: "POST",
+    body: { email: email.trim().toLowerCase(), password },
+  });
   store.remove(VIEW_AS);
-  logAudit(person, "Signed in", "", null);
-  return person;
+  hydrate(data);
+  return currentAdmin();
 }
 
 export const currentAdmin = () => {
-  const p = getPerson(store.get(SESSION));
+  const p = store.get(ME);
   return p?.active ? p : null;
 };
+
+/** Clears the browser copy at once and signs out on the server (keepalive lets it finish while the page changes). */
 export function logoutAdmin() {
-  logAudit(currentAdmin(), "Signed out", "", null);
-  store.remove(SESSION);
-  store.remove(VIEW_AS);
+  clearSession();
+  return adminApi("/admin/logout", { method: "POST", keepalive: true }).catch(
+    () => {},
+  );
 }
 
 export const getViewAs = () => store.get(VIEW_AS);

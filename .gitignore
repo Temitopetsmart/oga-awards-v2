@@ -1,2 +1,5 @@
 backend/.env
 uploads/
+backend/storage/cache/
+backend/config.php
+backend/storage/cache/

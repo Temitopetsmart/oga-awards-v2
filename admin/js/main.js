@@ -4,6 +4,7 @@ import { store } from "../../shared/js/core/store.js";
 import { notify } from "../../shared/js/ui/notify.js";
 import {
   currentAdmin,
+  restoreSession,
   logoutAdmin,
   getViewAs,
   setViewAs,
@@ -35,6 +36,8 @@ import { rules } from "../../shared/js/core/validate.js";
  */
 const page = document.body.dataset.page;
 const root = document.getElementById("admin-root");
+
+await restoreSession();
 const person = currentAdmin();
 
 const notice = (icon, title, text) =>
@@ -97,7 +100,7 @@ function start() {
       if (
         await notify.confirm({ title: "Sign out?", confirmText: "Sign out" })
       ) {
-        logoutAdmin();
+        await logoutAdmin();
         location.assign(`${ROOT}admin/login.html`);
       }
       return;

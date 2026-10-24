@@ -33,12 +33,12 @@ final class Catalog
         return $v === null || $v === '' ? $default : (json_decode($v, true) ?? $default);
     }
 
-    public static function editions(): array
+        public static function editions(bool $includeDrafts = false): array
     {
         $rows = self::db()->query(
             'SELECT e.*, s.price_per_vote, s.max_votes_per_payment, s.max_paid_payments_per_email_per_category
                FROM editions e LEFT JOIN edition_settings s ON s.edition_id = e.id
-              WHERE e.status <> \'draft\'
+              ' . ($includeDrafts ? '' : 'WHERE e.status <> \'draft\'') . '
               ORDER BY e.year DESC, e.id DESC'
         )->fetchAll();
 

@@ -15,10 +15,24 @@ $path = '/' . trim(preg_replace('#^/index\.php#', '', $path), '/');         // w
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET' && $path === '/health') {
-    $tables = (int) Database::pdo()
-        ->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')
-        ->fetchColumn();
-    Response::json(['ok' => true, 'database' => 'connected', 'tables' => $tables, 'time' => date('c')]);
+    $pdo = Database::pdo();
+    $body = [
+        'ok'       => true,
+        'database' => 'connected',
+        'tables'   => (int) $pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn(),
+        'editions' => (int) $pdo->query('SELECT COUNT(*) FROM editions')->fetchColumn(),
+        'nominees' => (int) $pdo->query('SELECT COUNT(*) FROM nominee_entries')->fetchColumn(),
+        'time'     => date('c'),
+    ];
+    if ($body['editions'] === 0) {
+        $body['hint'] = 'Connected, but the database has no data yet. Run: C:/xampp/php/php.exe backend/tools/load-demo-data.php';
+    }
+    Response::json($body);
+}
+
+// ---- Admin area (sign-in, session, permissions) ----
+if (str_starts_with($path, '/admin/')) {
+    App\AdminApi::handle($method, $path);
 }
 
 // ---- Public read-only data (same names and shapes as the V2 /data/*.json files) ----

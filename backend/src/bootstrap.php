@@ -15,7 +15,7 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
-Env::load(dirname(__DIR__) . '/.env');
+Env::load(dirname(__DIR__) . '/config.php');
 
 date_default_timezone_set(Env::get('APP_TIMEZONE', 'Africa/Lagos'));
 $debug = Env::bool('APP_DEBUG', false);
