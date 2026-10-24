@@ -1,0 +1,6 @@
+# Development only: always check for newer JS/CSS/HTML (a quick 304 if nothing changed)
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css|html)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

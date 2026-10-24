@@ -8,12 +8,17 @@ import { ALL_KEYS, ROLE_TEMPLATES } from "../config/permissions.js";
 import { logAudit } from "../services/admin-store.js";
 import {
   listRoles,
-  saveRoles,
   getRole,
   rolePerms,
   resetRole,
   roleUsage,
 } from "../services/team.repo.js";
+import {
+  createRole,
+  updateRole,
+  resetRoleToDefault,
+  deleteRole,
+} from "../services/team.api.js";
 
 export const title = "Roles & permissions";
 export const perm = "team.view";
@@ -137,19 +142,18 @@ export function init(root, { admin, can, access }) {
         );
         return;
       }
-      saveRoles(
-        listRoles().map((x) =>
-          x.id === r.id
-            ? {
-                ...x,
-                name,
-                description: body.querySelector("#rDesc").value.trim(),
-                perms,
-              }
-            : x,
-        ),
-      );
-      logAudit(admin, "Edited role", `${name} (${perms.length} permissions)`);
+
+      try {
+        await updateRole(r.id, {
+          name,
+          description: body.querySelector("#rDesc").value.trim(),
+          perms,
+        });
+      } catch (err) {
+        await notify.warning("Couldn’t save the role", err.message);
+        return;
+      }
+
       notify.toast("success", "Role saved");
       renderList();
       renderEditor();
@@ -201,8 +205,12 @@ export function init(root, { admin, can, access }) {
         }))
       )
         return;
-      saveRoles(listRoles().filter((x) => x.id !== r.id));
-      logAudit(admin, "Deleted role", r.name);
+      try {
+        await deleteRole(r.id);
+      } catch (err) {
+        await notify.warning("Couldn’t delete the role", err.message);
+        return;
+      }
       selected = listRoles()[0].id;
       notify.toast("success", "Role deleted");
       renderList();
@@ -260,16 +268,11 @@ export function init(root, { admin, can, access }) {
           );
           return;
         }
-        const role = {
-          id: `role-${slug(v.name)}-${uid("", 3).toLowerCase()}`,
+        selected = await createRole({
           name: v.name.trim(),
           description: v.description.trim(),
-          perms: base,
-          system: false,
-        };
-        saveRoles([...listRoles(), role]);
-        selected = role.id;
-        logAudit(admin, "Created role", role.name);
+          copyFrom: v.copyFrom || "",
+        });
         notify.toast("success", "Role created");
         renderList();
         renderEditor();

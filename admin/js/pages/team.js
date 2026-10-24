@@ -19,19 +19,22 @@ import { setViewAs } from "../services/admin-auth.service.js";
 import { editionLabel } from "../services/edition.repo.js";
 import {
   listPeople,
-  savePeople,
   getPerson,
   listRoles,
   getRole,
   rolePerms,
   listAssignments,
   listAllAssignments,
-  saveAssignments,
   getAssignment,
-  upsertAssignment,
-  addPerson,
   hasAdminAccess,
 } from "../services/team.repo.js";
+import {
+  addPerson,
+  updatePerson,
+  setSuperAdmin,
+  deletePerson,
+  upsertAssignment,
+} from "../services/team.api.js";
 
 export const title = "Team & access";
 export const perm = "team.view";
@@ -311,7 +314,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           const roleIds = chosenRoles(form);
           const { grants, denies } = readOverrides(form);
           const fromRoles = permsOf(roleIds);
-          upsertAssignment(r.personId, edition.id, {
+          await upsertAssignment(r.personId, edition.id, {
             roleIds,
             grants: grants.filter((k) => !fromRoles.has(k)),
             denies,
@@ -342,12 +345,16 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         }))
       )
         return;
-      upsertAssignment(r.personId, edition.id, {
-        roleIds: [],
-        grants: [],
-        denies: [],
-      });
-      logAudit(admin, "Removed access", r.name);
+      try {
+        await upsertAssignment(r.personId, edition.id, {
+          roleIds: [],
+          grants: [],
+          denies: [],
+        });
+      } catch (err) {
+        await notify.warning("Couldn’t remove access", err.message);
+        return;
+      }
       notify.toast("success", "Access removed");
       refreshAccess();
       refreshPeople();
@@ -408,7 +415,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
             throw userError(
               "Someone with that email already exists — pick them from the list.",
             );
-          person = addPerson({ name: v.name, email: v.email });
+          person = await addPerson({ name: v.name, email: v.email });
         } else {
           person = getPerson(v.personId);
           if (v.email?.trim()) {
@@ -421,6 +428,9 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
                   : p,
               ),
             );
+            await updatePerson(person.id, {
+              email: v.email.trim().toLowerCase(),
+            });
             person = getPerson(person.id);
           }
           if (!person.email)
@@ -428,7 +438,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
               "This person has no email yet — enter one so they can sign in.",
             );
         }
-        upsertAssignment(person.id, edition.id, { roleIds });
+        await upsertAssignment(person.id, edition.id, { roleIds });
         logAudit(
           admin,
           "Gave access",
@@ -646,23 +656,11 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           email: [rules.email(), emailTaken(p.id)],
         },
         async onSubmit(v) {
-          const list = listPeople();
-          const row = list.find((x) => x.id === p.id);
-          if (
-            !v.active &&
-            row.superAdmin &&
-            activeSupers(
-              list.map((x) => (x.id === p.id ? { ...x, active: false } : x)),
-            ) < 1
-          )
-            throw userError("At least one active Super admin is required.");
-          Object.assign(row, {
+          await updatePerson(p.id, {
             name: v.name.trim(),
             email: v.email.trim().toLowerCase(),
             active: p.id === admin.id ? true : v.active,
           });
-          savePeople(list);
-          logAudit(admin, "Edited person", row.name);
           notify.toast("success", "Person updated");
           refreshPeople();
           refreshAccess();
@@ -691,13 +689,12 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         }))
       )
         return;
-      row.superAdmin = !row.superAdmin;
-      savePeople(list);
-      logAudit(
-        admin,
-        row.superAdmin ? "Made Super admin" : "Removed Super admin",
-        p.name,
-      );
+      try {
+        await setSuperAdmin(p.id, !row.superAdmin);
+      } catch (err) {
+        await notify.warning("Couldn’t update", err.message);
+        return;
+      }
       notify.toast("success", "Updated");
       refreshPeople();
       refreshAccess();
@@ -723,13 +720,12 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         }))
       )
         return;
-      row.active = !row.active;
-      savePeople(list);
-      logAudit(
-        admin,
-        row.active ? "Activated person" : "Deactivated person",
-        p.name,
-      );
+      try {
+        await updatePerson(p.id, { active: !row.active });
+      } catch (err) {
+        await notify.warning("Couldn’t update", err.message);
+        return;
+      }
       notify.toast("success", "Updated");
       refreshPeople();
       refreshAccess();
@@ -751,9 +747,12 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         }))
       )
         return;
-      savePeople(listPeople().filter((x) => x.id !== p.id));
-      saveAssignments(listAllAssignments().filter((a) => a.personId !== p.id));
-      logAudit(admin, "Deleted person", p.name);
+      try {
+        await deletePerson(p.id);
+      } catch (err) {
+        await notify.warning("Couldn’t delete", err.message);
+        return;
+      }
       notify.toast("success", "Deleted");
       refreshPeople();
     },
@@ -769,8 +768,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         email: [rules.email(), emailTaken(null)],
       },
       async onSubmit(v) {
-        addPerson({ name: v.name, email: v.email, active: v.active });
-        logAudit(admin, "Added person", v.name);
+        await addPerson({ name: v.name, email: v.email, active: v.active });
         notify.toast("success", "Person added");
         refreshPeople();
       },

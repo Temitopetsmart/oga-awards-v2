@@ -6,7 +6,7 @@ namespace App;
 /** /admin/* endpoints. Responses are never cached. */
 final class AdminApi
 {
-    public static function handle(string $method, string $path): never
+        public static function handle(string $method, string $path): never
     {
         header('Cache-Control: no-store');
 
@@ -14,13 +14,45 @@ final class AdminApi
             Session::requireCsrf();                 // every change needs the CSRF token
         }
 
-        match (true) {
-            $method === 'GET'  && $path === '/admin/csrf'   => Response::json(['ok' => true, 'csrf' => Session::csrf()]),
-            $method === 'POST' && $path === '/admin/login'  => self::login(),
-            $method === 'POST' && $path === '/admin/logout' => self::logout(),
-            $method === 'GET'  && $path === '/admin/me'     => self::me(),
-            default => Response::error('Not found', 404),
-        };
+        if ($method === 'GET' && $path === '/admin/csrf') {
+            Response::json(['ok' => true, 'csrf' => Session::csrf()]);
+        }
+        if ($method === 'POST' && $path === '/admin/login') {
+            self::login();
+        }
+        if ($method === 'POST' && $path === '/admin/logout') {
+            self::logout();
+        }
+        if ($method === 'GET' && $path === '/admin/me') {
+            self::me();
+        }
+
+        // ---- team, access and roles ----
+        if ($method === 'POST' && $path === '/admin/people') {
+            TeamApi::addPerson();
+        }
+        if (preg_match('#^/admin/people/(\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && TeamApi::updatePerson((int) $m[1]);
+            $method === 'DELETE' && TeamApi::deletePerson((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/people/(\d+)/super$#', $path, $m)) {
+            TeamApi::setSuper((int) $m[1]);
+        }
+        if ($method === 'PUT' && $path === '/admin/assignments') {
+            TeamApi::saveAssignment();
+        }
+        if ($method === 'POST' && $path === '/admin/roles') {
+            TeamApi::createRole();
+        }
+        if (preg_match('#^/admin/roles/([a-z0-9-]+)$#', $path, $m)) {
+            $method === 'PATCH'  && TeamApi::updateRole($m[1]);
+            $method === 'DELETE' && TeamApi::deleteRole($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/roles/([a-z0-9-]+)/reset$#', $path, $m)) {
+            TeamApi::resetRole($m[1]);
+        }
+
+        Response::error('Not found', 404);
     }
 
     private static function login(): never
