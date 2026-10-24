@@ -30,6 +30,14 @@ if ($method === 'GET' && $path === '/health') {
     Response::json($body);
 }
 
+// ---- Invitation links (public: the token is the secret) ----
+if ($method === 'GET' && preg_match('#^/invite/([A-Za-z0-9]+)$#', $path, $m)) {
+    App\InviteApi::info($m[1]);
+}
+if ($method === 'POST' && $path === '/invite/accept') {
+    App\InviteApi::accept();
+}
+
 // ---- Admin area (sign-in, session, permissions) ----
 if (str_starts_with($path, '/admin/')) {
     App\AdminApi::handle($method, $path);

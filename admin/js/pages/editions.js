@@ -12,14 +12,16 @@ import { listCategories } from "../services/category.repo.js";
 import { scoped } from "../services/scope.js";
 import {
   listEditions,
-  updateEdition,
-  transition,
-  createEdition,
-  deleteDraftEdition,
   setViewing,
   editionLabel,
 } from "../services/edition.repo.js";
-import { accessibleEditionIds } from "../services/team.repo.js";
+import {
+  updateEditionDetails,
+  transition,
+  createEdition,
+  deleteDraftEdition,
+} from "../services/edition.api.js";
+import { userError } from "../../../shared/js/core/store.js";
 
 export const title = "Editions";
 export const perm = "editions.view";
@@ -222,15 +224,12 @@ export function init(root, { admin, can }) {
           ],
         },
         async onSubmit(v) {
-          updateEdition(e.id, (x) =>
-            Object.assign(x, {
-              name: v.name.trim(),
-              edition: v.edition.trim(),
-              year: Number(v.year),
-              tagline: v.tagline.trim(),
-            }),
-          );
-          logAudit(admin, "Edited edition", `${v.name} ${v.edition}`);
+          await updateEditionDetails(e.id, {
+            name: v.name.trim(),
+            edition: v.edition.trim(),
+            year: Number(v.year),
+            tagline: v.tagline.trim(),
+          });
           location.reload();
         },
       });
@@ -246,28 +245,51 @@ export function init(root, { admin, can }) {
         }))
       )
         return;
-      const r = deleteDraftEdition(e.id);
+      const r = await deleteDraftEdition(e.id);
       if (!r.ok) {
         await notify.warning("Can’t delete", r.error);
         return;
       }
-      logAudit(admin, "Deleted draft edition", editionLabel(e));
+
       location.reload();
       return;
     }
     const to = ACTIONS[e.status].find(([key]) => key === act)[3];
+    if (act === "reopen") {
+      // Reopening a finished edition is rare and serious: a Super admin must say why (kept in the audit log).
+      openFormModal({
+        title: `Reopen ${editionLabel(e)}?`,
+        submitLabel: "Reopen edition",
+        fields: [
+          {
+            name: "reason",
+            label: "Why are you reopening this edition?",
+            type: "textarea",
+            rows: 3,
+            required: true,
+            help: "Only a Super admin can do this. Your reason is recorded in the audit log.",
+          },
+        ],
+        schema: {
+          reason: [
+            rules.required(),
+            rules.min(8, "Give a little more detail."),
+          ],
+        },
+        async onSubmit(v) {
+          const r = await transition(e.id, to, v.reason.trim());
+          if (!r.ok) throw userError(r.error);
+          location.reload();
+        },
+      });
+      return;
+    }
     if (!(await notify.confirm(CONFIRM[act](e)))) return;
-    const r = transition(e.id, to);
+    const r = await transition(e.id, to);
     if (!r.ok) {
       await notify.warning("Can’t do that yet", r.error);
       return;
     }
-    logAudit(
-      admin,
-      `Edition ${to === "active" ? "activated" : to}`,
-      editionLabel(e),
-      e.id,
-    );
     location.reload();
   });
 
@@ -369,7 +391,7 @@ export function init(root, { admin, can }) {
             team: v.copy_team,
           },
         });
-        logAudit(admin, "Created edition", editionLabel(e), e.id);
+        
         notify.toast("success", `${editionLabel(e)} created as a draft`);
         location.reload();
       },

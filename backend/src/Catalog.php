@@ -35,12 +35,19 @@ final class Catalog
 
         public static function editions(bool $includeDrafts = false): array
     {
+        
         $rows = self::db()->query(
-            'SELECT e.*, s.price_per_vote, s.max_votes_per_payment, s.max_paid_payments_per_email_per_category
-               FROM editions e LEFT JOIN edition_settings s ON s.edition_id = e.id
-              ' . ($includeDrafts ? '' : 'WHERE e.status <> \'draft\'') . '
-              ORDER BY e.year DESC, e.id DESC'
+            'SELECT e.*,
+                    s.price_per_vote,
+                    s.max_votes_per_payment,
+                    s.max_paid_payments_per_email_per_category,
+                    s.nominee_registration_fee
+            FROM editions e
+            LEFT JOIN edition_settings s ON s.edition_id = e.id
+            ' . ($includeDrafts ? '' : 'WHERE e.status <> \'draft\'') . '
+            ORDER BY e.year DESC, e.id DESC'
         )->fetchAll();
+
 
         $occ = [];
         foreach (self::db()->query('SELECT * FROM occasions ORDER BY id')->fetchAll() as $o) {
@@ -54,7 +61,7 @@ final class Catalog
                 'link'        => $o['link_href'] ? ['label' => $o['link_label'], 'href' => $o['link_href']] : null,
                 'description' => $o['description'],
                 'actions'     => self::jsonCol($o['actions'], []),
-            ];
+            ] + ($o['event_at'] !== null ? ['timeline' => ['ceremony' => self::iso($o['event_at'])]] : []);
         }
 
         $active = null;
@@ -87,7 +94,8 @@ final class Catalog
                     'pricePerVote'                    => self::num($e['price_per_vote']),
                     'maxVotesPerPayment'              => self::num($e['max_votes_per_payment']),
                     'maxPaidVotesPerEmailPerCategory' => self::num($e['max_paid_payments_per_email_per_category']),
-                ],
+                    'nomineeRegistrationFee'          => self::num($e['nominee_registration_fee']),                
+                    ],
                 'occasions'  => $occ[$e['id']] ?? [],
             ];
         }

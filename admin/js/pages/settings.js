@@ -7,11 +7,12 @@ import { bindForm } from "../../../shared/js/ui/form.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { resolveState } from "../../../shared/js/services/event.service.js";
 import { logAudit } from "../services/admin-store.js";
+import { getEdition, editionLabel } from "../services/edition.repo.js";
 import {
-  getEdition,
-  updateEdition,
-  editionLabel,
-} from "../services/edition.repo.js";
+  updateEditionDetails,
+  saveEditionState,
+  saveVotingRules,
+} from "../services/edition.api.js";
 
 export const title = "Settings";
 export const perm = "settings.view";
@@ -200,13 +201,22 @@ export default async function settings({ edition: ed, can, access }) {
                 col: "col-md-4",
               })}
               ${field({
-                label: "Max paid votes per email, per category",
+                label: "Max paid payments per email, per category",
                 name: "maxPaidVotesPerEmailPerCategory",
                 type: "number",
                 required: true,
                 value: o.voting?.maxPaidVotesPerEmailPerCategory,
                 col: "col-md-4",
-                help: "Enforced by the server once the backend exists.",
+                help: "How many separate paid vote payments one email can make for one category. Enforced by the server.",
+              })}
+              ${field({
+                label: "Nominee registration fee (₦)",
+                name: "nomineeRegistrationFee",
+                type: "number",
+                required: true,
+                value: o.voting?.nomineeRegistrationFee ?? 0,
+                col: "col-md-4",
+                help: "Charged when someone registers as a nominee. Enter 0 to make registration free.",
               })}
             </div>
             ${save("Save voting rules")}
@@ -504,15 +514,12 @@ export async function init(root, { admin, edition: ed, can }) {
         tagline: [rules.max(120)],
       },
       async onSubmit(v) {
-        updateEdition(ed.id, (o) =>
-          Object.assign(o, {
-            name: v.name.trim(),
-            edition: v.edition.trim(),
-            year: Number(v.year),
-            tagline: v.tagline.trim(),
-          }),
-        );
-        logAudit(admin, "Updated edition details", `${v.name} ${v.edition}`);
+        await updateEditionDetails(ed.id, {
+          name: v.name.trim(),
+          edition: v.edition.trim(),
+          year: Number(v.year),
+          tagline: v.tagline.trim(),
+        });
         notify.toast("success", "Details saved");
       },
     });
@@ -541,30 +548,22 @@ export async function init(root, { admin, edition: ed, can }) {
         ),
       },
       async onSubmit(v) {
-        updateEdition(ed.id, (o) => {
-          Object.assign(o, {
-            mode: v.mode,
-            forceState: v.mode === "manual" ? v.forceState : null,
-          });
-          o.timeline = Object.fromEntries(
+        await saveEditionState(ed.id, {
+          mode: v.mode,
+          forceState: v.mode === "manual" ? v.forceState : null,
+          timeline: Object.fromEntries(
             TIMELINE.map(([k]) => [k, fromInput(v[k])]).filter(
               ([, val]) => val,
             ),
-          );
-          o.features = {
-            ...o.features,
+          ),
+          features: {
             tickets: eventForm.elements.tickets.checked,
             committeeRecruitment:
               eventForm.elements.committeeRecruitment.checked,
             showVoteCounts: eventForm.elements.showVoteCounts.checked,
-          };
+          },
         });
         showState();
-        logAudit(
-          admin,
-          "Updated state, dates and features",
-          editionLabel(getEdition(ed.id)),
-        );
         notify.toast("success", "Saved");
       },
     });
@@ -579,18 +578,17 @@ export async function init(root, { admin, edition: ed, can }) {
         pricePerVote: [rules.required(), whole(1, 1000000)],
         maxVotesPerPayment: [rules.required(), whole(1, 10000)],
         maxPaidVotesPerEmailPerCategory: [rules.required(), whole(1, 1000)],
+        nomineeRegistrationFee: [rules.required(), whole(0, 10000000)],
       },
       async onSubmit(v) {
-        updateEdition(ed.id, (o) => {
-          o.voting = {
-            pricePerVote: Number(v.pricePerVote),
-            maxVotesPerPayment: Number(v.maxVotesPerPayment),
-            maxPaidVotesPerEmailPerCategory: Number(
-              v.maxPaidVotesPerEmailPerCategory,
-            ),
-          };
+        await saveVotingRules(ed.id, {
+          pricePerVote: Number(v.pricePerVote),
+          maxVotesPerPayment: Number(v.maxVotesPerPayment),
+          maxPaidVotesPerEmailPerCategory: Number(
+            v.maxPaidVotesPerEmailPerCategory,
+          ),
+          nomineeRegistrationFee: Number(v.nomineeRegistrationFee),
         });
-        logAudit(admin, "Updated voting rules", `₦${v.pricePerVote} per vote`);
         notify.toast("success", "Voting rules saved");
       },
     });

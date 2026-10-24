@@ -46,3 +46,17 @@ export const updateRole = (id, { name, description = "", perms }) =>
 export const resetRoleToDefault = (id) =>
   write(`/admin/roles/${id}/reset`, "POST");
 export const deleteRole = (id) => write(`/admin/roles/${id}`, "DELETE");
+
+/** Creates an invitation. The returned token is shown once — only its hash is stored on the server. */
+export async function createInvitation({
+  email,
+  editionId,
+  roleIds,
+  expiresInDays = 7,
+}) {
+  const r = await adminApi("/admin/invitations", {
+    method: "POST",
+    body: { edition: viewing(), editionId, email, roleIds, expiresInDays },
+  });
+  return r.invitation;
+}

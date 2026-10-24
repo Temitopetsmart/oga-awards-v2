@@ -6,7 +6,6 @@ import { userError } from "../../../shared/js/core/store.js";
 import { ROOT } from "../../../shared/js/config/app.config.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
-import { createInvitation } from "../services/invitation.repo.js";
 import { openFormModal, openCustomModal } from "../components/modal.js";
 import {
   overrideMatrix,
@@ -34,7 +33,9 @@ import {
   setSuperAdmin,
   deletePerson,
   upsertAssignment,
+  createInvitation,
 } from "../services/team.api.js";
+import { logPreview } from "../services/audit.api.js";
 
 export const title = "Team & access";
 export const perm = "team.view";
@@ -330,9 +331,9 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
       });
       wireSync(document.querySelector(".modal.show form"));
     },
-    viewAs(r) {
+    async viewAs(r) {
       setViewAs({ type: "person", id: r.personId });
-      logAudit(admin, "Started previewing access", r.name);
+      await logPreview("start", `person:${r.personId}`);
       location.assign(`${ROOT}admin/index.html`);
     },
     async remove(r) {
@@ -495,11 +496,10 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           throw userError("You cannot assign one or more of those roles.");
         }
 
-        const invitation = createInvitation({
+        const invitation = await createInvitation({
           email: values.email,
           editionId: edition.id,
           roleIds,
-          invitedBy: admin,
           expiresInDays: Number(values.expiresInDays),
         });
 
@@ -534,13 +534,6 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
             }
           },
         });
-
-        logAudit(
-          admin,
-          "Created admin invitation",
-          `${invitation.email} · ${editionLabel(edition)}`,
-          edition.id,
-        );
       },
     });
   });

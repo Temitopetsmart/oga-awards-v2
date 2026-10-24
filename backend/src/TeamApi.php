@@ -339,6 +339,33 @@ final class TeamApi
         Response::json(['ok' => true]);
     }
 
+        /** Stops with an error unless $actor may hand out these roles in this edition (used by invitations). */
+        public static function assertGrantable(array $actor, int $editionId, array $roleSlugs): void
+        {
+            if ($roleSlugs === []) {
+                self::fail('Choose at least one role.');
+            }
+            $in = implode(',', array_fill(0, count($roleSlugs), '?'));
+            $st = self::pdo()->prepare("SELECT slug, is_locked FROM roles WHERE slug IN ($in)");
+            $st->execute($roleSlugs);
+            $found = $st->fetchAll();
+            if (count($found) !== count($roleSlugs)) {
+                self::fail('One of those roles no longer exists.');
+            }
+            if (self::isSuper($actor)) {
+                return;
+            }
+            foreach ($found as $r) {
+                if ($r['is_locked']) {
+                    self::fail('Only a Super admin can give the Super admin role.', 403);
+                }
+            }
+            $mine = Access::effective($actor, $editionId)['perms'];
+            if (array_diff_key(self::permsFrom($roleSlugs, []), $mine) !== []) {
+                self::fail('You can only give access that you hold yourself.', 403);
+            }
+        }
+
     // ------------------------------------------------------------------ roles
 
     private static function role(string $roleId): array

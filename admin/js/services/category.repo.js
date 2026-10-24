@@ -1,29 +1,35 @@
-// admin/js/services/category.repo.js
-import { collection } from "./admin-store.js";
-import { listNominees } from "./nominee.repo.js";
-import { viewing, inEdition } from "./scope.js";
+// admin/js/services/category.repo.js — categories now live on the server.
+import { adminApi } from "./admin-api.js";
+import { viewing } from "./scope.js";
 
-const categories = collection("categories", {
-  seed: "categories",
-  prefix: "cat-",
-});
-
+/** All categories of an edition (hidden ones too), each with its nominee count. */
 export async function listCategories(editionId = viewing()) {
-  return (await categories.all())
-    .filter((c) => inEdition(c, editionId))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  try {
+    const r = await adminApi(
+      `/admin/categories?edition=${encodeURIComponent(editionId)}`,
+    );
+    return r.categories;
+  } catch {
+    return []; // no access to categories in that edition
+  }
 }
 
 /** Map of categoryId -> number of nominees (in the edition being viewed). */
 export async function nomineeCounts() {
   const counts = {};
-  for (const n of await listNominees())
-    counts[n.categoryId] = (counts[n.categoryId] ?? 0) + 1;
+  for (const c of await listCategories()) counts[c.id] = c.nominees;
   return counts;
 }
 
-export const getCategory = (id) => categories.get(id);
+export const getCategory = async (id) =>
+  (await listCategories()).find((c) => c.id === id) ?? null;
+
+const write = (path, method, data = {}) =>
+  adminApi(path, { method, body: { edition: viewing(), ...data } });
+
 export const createCategory = (data) =>
-  categories.create({ occasionId: viewing(), ...data });
-export const updateCategory = (id, data) => categories.update(id, data);
-export const deleteCategory = (id) => categories.remove(id);
+  write("/admin/categories", "POST", data);
+export const updateCategory = (id, data) =>
+  write(`/admin/categories/${id}`, "PATCH", data);
+export const deleteCategory = (id) =>
+  write(`/admin/categories/${id}`, "DELETE");

@@ -2,7 +2,7 @@ import { html } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { DataTable } from "../components/data-table.js";
-import { getAudit, logAudit } from "../services/admin-store.js";
+import { fetchAudit, recordAuditExport } from "../services/audit.api.js";
 import { listEditions, editionLabel } from "../services/edition.repo.js";
 
 export const title = "Audit log";
@@ -29,7 +29,7 @@ export async function init(root, { admin }) {
     const e = editions.find((x) => x.id === id);
     return e ? editionLabel(e) : "All editions";
   };
-  const rows = getAudit().map((r) => ({
+  const rows = (await fetchAudit()).map((r) => ({
     ...r,
     editionKey: r.editionId ?? "none",
     editionName: label(r.editionId),
@@ -78,6 +78,6 @@ export async function init(root, { admin }) {
       { label: "Details", key: "target" },
       { label: "Edition", key: "editionName" },
     ]);
-    logAudit(admin, "Exported audit log");
+    recordAuditExport();
   });
 }

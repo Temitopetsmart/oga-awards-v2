@@ -21,7 +21,7 @@ import {
   listPeople,
   listRoles,
 } from "./services/team.repo.js";
-import { logAudit } from "./services/admin-store.js";
+import { logPreview } from "./services/audit.api.js";
 import { buildAccess } from "./core/access.js";
 import { renderShell, setPageHeader } from "./core/layout.js";
 import { openFormModal } from "./components/modal.js";
@@ -92,7 +92,7 @@ function start() {
     }
     if (e.target.closest("#exitPreview")) {
       clearViewAs();
-      logAudit(person, "Stopped previewing access");
+      logPreview("stop");
       location.reload();
       return;
     }
@@ -134,7 +134,7 @@ function openViewAs(edition) {
     async onSubmit(v) {
       const [type, tid] = v.target.split(":");
       setViewAs({ type, id: tid });
-      logAudit(person, "Started previewing access", v.target);
+      await logPreview("start", v.target);
       location.assign(`${ROOT}admin/index.html`);
     },
   });

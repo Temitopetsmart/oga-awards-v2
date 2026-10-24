@@ -6,12 +6,13 @@ import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openFormModal } from "../components/modal.js";
 import { logAudit } from "../services/admin-store.js";
+import { getEdition, editionLabel } from "../services/edition.repo.js";
 import {
-  getEdition,
-  updateEdition,
-  readEditions,
-  editionLabel,
-} from "../services/edition.repo.js";
+  createOccasion,
+  updateOccasion,
+  toggleOccasion,
+  deleteOccasion,
+} from "../services/edition.api.js";
 
 export const title = "Occasions";
 export const perm = "occasions.view";
@@ -125,13 +126,7 @@ export async function init(root, { admin, edition, can }) {
     onAction: (key, o) => handlers[key](o),
   });
   const refresh = () => table.setRows(rows());
-  const mutate = (fn) => {
-    updateEdition(edition.id, (e) => {
-      e.occasions ??= [];
-      fn(e);
-    });
-    refresh();
-  };
+
   const isLink = (v) =>
     !v || /^https?:\/\/\S+$/.test(v) || /^[a-z0-9_-]+\.html(\?\S*)?$/i.test(v);
 
@@ -202,19 +197,14 @@ export async function init(root, { admin, edition, can }) {
       ),
     ],
   };
-  const apply = (o, v, id) => {
-    Object.assign(o, {
-      name: v.name.trim(),
-      tagline: v.tagline.trim(),
-      description: v.description.trim(),
-      icon: v.icon.trim() || "fa-star",
-      enabled: v.enabled,
-    });
-    o.link = {
-      label: o.link?.label ?? "Learn more",
-      href: v.linkHref.trim() || `occasion.html?id=${id}`,
-    };
-    o.actions =
+  const payload = (v, linkLabel = "Learn more") => ({
+    name: v.name.trim(),
+    tagline: v.tagline.trim(),
+    description: v.description.trim(),
+    icon: v.icon.trim() || "fa-star",
+    enabled: v.enabled,
+    link: { label: linkLabel, href: v.linkHref.trim() },
+    actions:
       v.actionLabel.trim() && v.actionHref.trim()
         ? [
             {
@@ -223,10 +213,12 @@ export async function init(root, { admin, edition, can }) {
               variant: "gold",
             },
           ]
-        : [];
-    const t = fromInput(v.eventDate);
-    o.timeline = t ? { ceremony: t } : {};
-  };
+        : [],
+    timeline: fromInput(v.eventDate)
+      ? { ceremony: fromInput(v.eventDate) }
+      : {},
+  });
+
   const valuesOf = (o) => ({
     ...o,
     eventDate: toInput(o.timeline?.ceremony),
@@ -243,18 +235,17 @@ export async function init(root, { admin, edition, can }) {
         "_blank",
         "noopener",
       ),
-    toggle(o) {
-      mutate((e) => {
-        const x = e.occasions.find((y) => y.id === o.id);
-        x.enabled = !x.enabled;
-      });
-      logAudit(
-        admin,
-        o.enabled ? "Hid occasion" : "Published occasion",
-        o.name,
-      );
+    async toggle(o) {
+      try {
+        await toggleOccasion(o.id);
+      } catch (err) {
+        await notify.warning("Couldn’t update", err.message);
+        return;
+      }
+      refresh();
       notify.toast("success", o.enabled ? "Hidden" : "Now live");
     },
+
     edit: (o) =>
       openFormModal({
         title: `Edit ${o.name}`,
@@ -262,14 +253,8 @@ export async function init(root, { admin, edition, can }) {
         schema,
         values: valuesOf(o),
         async onSubmit(v) {
-          mutate((e) =>
-            apply(
-              e.occasions.find((y) => y.id === o.id),
-              v,
-              o.id,
-            ),
-          );
-          logAudit(admin, "Edited occasion", v.name);
+          await updateOccasion(o.id, payload(v, o.link?.label ?? "Learn more"));
+          refresh();
           notify.toast("success", "Occasion updated");
         },
       }),
@@ -283,10 +268,13 @@ export async function init(root, { admin, edition, can }) {
         }))
       )
         return;
-      mutate((e) => {
-        e.occasions = e.occasions.filter((y) => y.id !== o.id);
-      });
-      logAudit(admin, "Deleted occasion", o.name);
+      try {
+        await deleteOccasion(o.id);
+      } catch (err) {
+        await notify.warning("Couldn’t delete", err.message);
+        return;
+      }
+      refresh();
       notify.toast("success", "Deleted");
     },
   };
@@ -299,18 +287,8 @@ export async function init(root, { admin, edition, can }) {
       submitLabel: "Add occasion",
       values: { enabled: false },
       async onSubmit(v) {
-        const taken = new Set(
-          readEditions().editions.flatMap((e) =>
-            (e.occasions ?? []).map((o) => o.id),
-          ),
-        );
-        let id = slug(v.name) || "occasion";
-        if (taken.has(id))
-          id += `-${edition.id.replace(/\D/g, "") || Date.now().toString(36).slice(-4)}`;
-        const o = { id, type: "special" };
-        apply(o, v, id);
-        mutate((e) => e.occasions.push(o));
-        logAudit(admin, "Added occasion", v.name);
+        await createOccasion(payload(v));
+        refresh();
         notify.toast("success", "Occasion added");
       },
     }),

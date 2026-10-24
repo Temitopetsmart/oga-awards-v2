@@ -52,6 +52,67 @@ final class AdminApi
             TeamApi::resetRole($m[1]);
         }
 
+
+                // ---- invitations, audit log, "View as…" previews ----
+        if ($method === 'POST' && $path === '/admin/invitations') {
+            InviteApi::create();
+        }
+        if ($method === 'GET' && $path === '/admin/invitations') {
+            InviteApi::list();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/invitations/(\d+)/revoke$#', $path, $m)) {
+            InviteApi::revoke((int) $m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/audit') {
+            AuditApi::list();
+        }
+        if ($method === 'POST' && $path === '/admin/audit/export') {
+            AuditApi::exported();
+        }
+        if ($method === 'POST' && $path === '/admin/preview') {
+            AuditApi::preview();
+        }
+
+                // ---- editions ----
+        if ($method === 'POST' && $path === '/admin/editions') {
+            EditionApi::create();
+        }
+        if (preg_match('#^/admin/editions/([a-z0-9-]+)$#', $path, $m)) {
+            $method === 'PATCH'  && EditionApi::updateDetails($m[1]);
+            $method === 'DELETE' && EditionApi::delete($m[1]);
+        }
+        if ($method === 'PUT' && preg_match('#^/admin/editions/([a-z0-9-]+)/state$#', $path, $m)) {
+            EditionApi::saveState($m[1]);
+        }
+        if ($method === 'PUT' && preg_match('#^/admin/editions/([a-z0-9-]+)/voting$#', $path, $m)) {
+            EditionApi::saveVoting($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/editions/([a-z0-9-]+)/transition$#', $path, $m)) {
+            EditionApi::transition($m[1]);
+        }
+
+        // ---- categories and occasions ----
+        if ($method === 'GET' && $path === '/admin/categories') {
+            ContentApi::listCategories();
+        }
+        if ($method === 'POST' && $path === '/admin/categories') {
+            ContentApi::createCategory();
+        }
+        if (preg_match('#^/admin/categories/(\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && ContentApi::updateCategory((int) $m[1]);
+            $method === 'DELETE' && ContentApi::deleteCategory((int) $m[1]);
+        }
+        if ($method === 'POST' && $path === '/admin/occasions') {
+            ContentApi::createOccasion();
+        }
+        if (preg_match('#^/admin/occasions/([a-z0-9-]+)$#', $path, $m)) {
+            $method === 'PATCH'  && ContentApi::updateOccasion($m[1]);
+            $method === 'DELETE' && ContentApi::deleteOccasion($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/occasions/([a-z0-9-]+)/toggle$#', $path, $m)) {
+            ContentApi::toggleOccasion($m[1]);
+        }
+        
         Response::error('Not found', 404);
     }
 
