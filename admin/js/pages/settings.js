@@ -8,6 +8,7 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import { resolveState } from "../../../shared/js/services/event.service.js";
 import { logAudit } from "../services/admin-store.js";
 import { getEdition, editionLabel } from "../services/edition.repo.js";
+import { fetchSettings, saveSettings } from "../services/settings.api.js";
 import {
   updateEditionDetails,
   saveEditionState,
@@ -55,7 +56,7 @@ const card = (heading, body, id) =>
 export default async function settings({ edition: ed, can, access }) {
   const o = getEdition(ed.id);
   const editable = can("settings.edit");
-  const s = store.get(SETTINGS, {});
+  const s = await fetchSettings(ed.id);
   const c = { ...APP.contact, ...s.contact };
   const social = Object.fromEntries(
     (s.social ?? APP.social).map((x) => [x.label, x.href]),
@@ -459,25 +460,6 @@ export default async function settings({ edition: ed, can, access }) {
         `,
         "cardGatewaySettings",
       )}
-      ${access.isSuper
-        ? card(
-            "Demo data",
-            html` <p>
-                Everything in this admin is stored in
-                <strong>this browser only</strong> until the backend exists.
-                Resetting clears all demo data — editions, votes, tickets,
-                nominees, messages and team — and signs you out.
-              </p>
-              <button
-                class="btn btn-ghost"
-                id="resetBtn"
-                style="color:#ff8a82;border-color:rgba(229,88,79,.5)"
-              >
-                <i class="fa-solid fa-rotate-left me-1"></i>Reset all demo data
-              </button>`,
-            "cardDemo",
-          )
-        : ""}
     </div>
   </div>`;
 }
@@ -610,15 +592,17 @@ export async function init(root, { admin, edition: ed, can }) {
         ),
       },
       async onSubmit(v) {
-        store.set(SETTINGS, {
-          ...store.get(SETTINGS, {}),
-          contact: { email: v.email.trim(), phone: v.phone.trim() },
-          social: APP.social.map((x) => ({
+        await saveSettings("contact", {
+          email: v.email.trim(),
+          phone: v.phone.trim(),
+        });
+        await saveSettings(
+          "social",
+          APP.social.map((x) => ({
             ...x,
             href: (v[`social_${x.label}`] ?? "").trim(),
           })),
-        });
-        logAudit(admin, "Updated contact details");
+        );
         notify.toast("success", "Contact details saved");
       },
     });
@@ -659,29 +643,21 @@ export async function init(root, { admin, edition: ed, can }) {
         ],
       },
       async onSubmit(v) {
-        const current = store.get(SETTINGS, {});
-
-        store.set(SETTINGS, {
-          ...current,
-          communications: {
-            ...current.communications,
-            emailMode: v.emailMode,
-            smtpHost: v.smtpHost.trim(),
-            smtpPort: v.smtpPort,
-            smtpUsername: v.smtpUsername.trim(),
-            fromName: v.fromName.trim(),
-            fromEmail: v.fromEmail.trim(),
-            replyTo: v.replyTo.trim(),
-            whatsappGroupUrl: v.whatsappGroupUrl.trim(),
-            templateReceived: v.templateReceived,
-            templateShortlisted: v.templateShortlisted,
-            templateApproved: v.templateApproved,
-            templateUnsuccessful: v.templateUnsuccessful,
-            templateReconsideration: v.templateReconsideration,
-          },
+        await saveSettings("communications", {
+          emailMode: v.emailMode,
+          smtpHost: v.smtpHost.trim(),
+          smtpPort: v.smtpPort,
+          smtpUsername: v.smtpUsername.trim(),
+          fromName: v.fromName.trim(),
+          fromEmail: v.fromEmail.trim(),
+          replyTo: v.replyTo.trim(),
+          whatsappGroupUrl: v.whatsappGroupUrl.trim(),
+          templateReceived: v.templateReceived,
+          templateShortlisted: v.templateShortlisted,
+          templateApproved: v.templateApproved,
+          templateUnsuccessful: v.templateUnsuccessful,
+          templateReconsideration: v.templateReconsideration,
         });
-
-        logAudit(admin, "Updated recruitment communications settings");
         notify.toast("success", "Recruitment communications settings saved.");
       },
     });
@@ -702,35 +678,13 @@ export async function init(root, { admin, edition: ed, can }) {
         ],
       },
       async onSubmit(v) {
-        const current = store.get(SETTINGS, {});
-
-        store.set(SETTINGS, {
-          ...current,
-          gateway: {
-            provider: v.gatewayProvider,
-            environment: v.gatewayEnvironment,
-            publicKey: v.gatewayPublicKey.trim(),
-          },
+        await saveSettings("gateway", {
+          provider: v.gatewayProvider,
+          environment: v.gatewayEnvironment,
+          publicKey: v.gatewayPublicKey.trim(),
         });
-
-        logAudit(admin, "Updated payment gateway preferences");
         notify.toast("success", "Gateway preferences saved.");
       },
     });
   }
-  root.querySelector("#resetBtn")?.addEventListener("click", async () => {
-    if (
-      !(await notify.confirm({
-        title: "Reset all demo data?",
-        text: "This deletes every edition, vote, ticket, nominee, message and team change stored in this browser, and signs you out.",
-        confirmText: "Reset everything",
-        danger: true,
-      }))
-    )
-      return;
-    Object.keys(localStorage)
-      .filter((k) => k.startsWith("oga:"))
-      .forEach((k) => localStorage.removeItem(k));
-    location.assign("login.html");
-  });
 }

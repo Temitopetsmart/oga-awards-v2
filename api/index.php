@@ -7,6 +7,7 @@ use App\Cache;
 use App\Catalog;
 use App\Database;
 use App\Response;
+use App\SettingsApi;
 
 $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');                       // e.g. /oga-awards-v2/api
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
@@ -51,6 +52,7 @@ $public = [
     '/ticket-types' => [fn () => Catalog::ticketTypes(), 30],
     '/winners'      => [fn () => Catalog::winners(), 30],
     '/committee'    => [fn () => Catalog::committee(), 60],
+    '/settings'     => [fn () => SettingsApi::publicView(), 60],
     '/about'        => [fn () => Catalog::staticFile('about'), 300],
     '/content'      => [fn () => Catalog::staticFile('content'), 300],
     '/faqs'         => [fn () => Catalog::staticFile('faqs'), 300],

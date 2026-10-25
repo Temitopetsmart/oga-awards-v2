@@ -2,6 +2,7 @@ import { ROOT } from "../../../shared/js/config/app.config.js";
 import { html } from "../../../shared/js/core/dom.js";
 import { go } from "../../../shared/js/core/nav.js";
 import { store } from "../../../shared/js/core/store.js";
+import { mediaUrl } from "../../../shared/js/core/media.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { field } from "../../../shared/js/components/form-fields.js";
 import { avatar } from "../../../shared/js/components/cards.js";
@@ -11,6 +12,7 @@ import { getCategories } from "../../../shared/js/services/catalog.service.js";
 import {
   currentNominee,
   updateNominee,
+  uploadNomineePhoto,
   logoutNominee,
   findNomineeById,
   listMyEntries,
@@ -46,7 +48,7 @@ const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((level) => ({
 export default async function dashboard(ctx, { params }) {
   const viewAsId = params.get("viewAs");
 
-  if (viewAsId && !store.get("admin:session")) {
+  if (viewAsId && !store.get("admin:me")) {
     return notice({
       icon: "fa-user-lock",
       title: "Admin sign-in needed",
@@ -55,7 +57,7 @@ export default async function dashboard(ctx, { params }) {
     });
   }
 
-  const me = viewAsId ? findNomineeById(viewAsId) : currentNominee();
+  const me = viewAsId ? await findNomineeById(viewAsId) : currentNominee();
 
   if (!me) {
     if (viewAsId) {
@@ -386,7 +388,7 @@ export default async function dashboard(ctx, { params }) {
                               >
                                 <div id="photoPreview">
                                   <img
-                                    src="${me.photo || ""}"
+                                    src="${mediaUrl(me.photo)}"
                                     alt="Profile photo preview"
                                     class="rounded-circle"
                                     width="100"
@@ -533,9 +535,11 @@ export function init(root, ctx, { params }) {
   const photoPreview = root.querySelector("#photoPreview");
 
   let selectedPhoto = null;
+  let selectedFile = null;
 
   photoInput?.addEventListener("change", () => {
     selectedPhoto = null;
+    selectedFile = null;
 
     if (photoPreview) {
       photoPreview.replaceChildren();
@@ -563,6 +567,7 @@ export function init(root, ctx, { params }) {
     const reader = new FileReader();
 
     reader.onload = () => {
+      selectedFile = file;
       selectedPhoto = String(reader.result);
 
       const image = document.createElement("img");
@@ -604,8 +609,8 @@ export function init(root, ctx, { params }) {
             department: values.department.trim(),
             level: values.level,
             bio: values.bio.trim(),
-            ...(selectedPhoto ? { photo: selectedPhoto } : {}),
           });
+          if (selectedFile) await uploadNomineePhoto(selectedFile);
 
           const modalElement = root.querySelector("#editProfileModal");
 

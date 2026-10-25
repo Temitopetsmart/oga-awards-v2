@@ -104,14 +104,16 @@ export function init(root) {
       const result = await requestPasswordReset(values.email);
 
       tokenOutput.textContent = result.token;
-      notice.hidden = false;
+      notice.hidden = !result.token; // the code is only shown on a local test server
 
       completeForm.elements.email.value = values.email;
       completeForm.elements.token.value = result.token;
 
       await notify.success(
-        "Reset token created",
-        "Demo mode only: use the temporary token shown on this page.",
+        result.demoOnly ? "Reset token created" : "Check your email",
+        result.demoOnly
+          ? "Test server only: use the temporary token shown on this page."
+          : "If an account exists for that email, a reset code has been sent. Enter it below.",
       );
     },
   });

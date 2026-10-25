@@ -136,6 +136,7 @@ final class Catalog
             'name'       => $n['name'],
             'department' => $n['department'],
             'photo'      => $n['photo_path'],
+            'thumb'      => Photos::thumbOf($n['photo_path']),
             'status'     => 'approved',
         ], $rows);
     }

@@ -111,3 +111,23 @@ if (APP.data.source === "json")
   } catch {
     /* ignore */
   }
+
+/**
+ * With the PHP backend, contact details and social links come from the server (set in Admin → Settings).
+ * Top-level await: the page waits for this one small, cached request, so the footer is right on first paint.
+ */
+if (APP.data.source === "api")
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    const res = await fetch(`${APP.data.apiBase}/settings`, {
+      signal: ctl.signal,
+    });
+    clearTimeout(timer);
+    const site = res.ok ? await res.json() : null;
+    if (site?.contact) Object.assign(APP.contact, site.contact);
+    if (Array.isArray(site?.social) && site.social.length)
+      APP.social = site.social;
+  } catch {
+    /* keep the defaults if the server can't be reached */
+  }

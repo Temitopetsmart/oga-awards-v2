@@ -1,171 +1,68 @@
+// admin/js/services/nominee.repo.js — nominees now live on the server.
 import { store } from "../../../shared/js/core/store.js";
-import { collection } from "./admin-store.js";
-import { viewing, inEdition } from "./scope.js";
+import { adminApi, adminUpload } from "./admin-api.js";
+import { restoreSession } from "./admin-auth.service.js";
+import { viewing } from "./scope.js";
 
-const seeds = collection("nominees", {
-  seed: "nominees",
-  prefix: "NOM-",
-});
-
-const LEGACY_KEY = "nominees";
-const ENTRIES_KEY = "nominee-entries";
-const ACCOUNTS_KEY = "nominee-accounts";
-
-const legacyRegistrations = () => store.get(LEGACY_KEY, []);
-const entries = () => store.get(ENTRIES_KEY, []);
-const accounts = () => store.get(ACCOUNTS_KEY, []);
-
-function accountFor(entry) {
-  return accounts().find((account) => account.id === entry.accountId) ?? null;
-}
-
-function entryForAdmin(entry) {
-  const account = accountFor(entry);
-
-  return {
-    ...entry,
-    email: account?.email ?? entry.email ?? "",
-    emailVerified: Boolean(account?.emailVerified),
-    source: "registration",
-  };
-}
-
+/** All nominees of an edition (every status), with self-registered ones carrying their account email. */
 export async function listNominees(editionId = viewing()) {
-  const [seeded] = await Promise.all([seeds.all()]);
-
-  const oldRegistrations = legacyRegistrations()
-    .filter((n) => inEdition(n, editionId))
-    .map((n) => ({ ...n, source: "registration" }));
-
-  const accountEntries = entries()
-    .filter((n) => inEdition(n, editionId))
-    .map(entryForAdmin);
-
-  const base = seeded
-    .filter((n) => inEdition(n, editionId))
-    .map((n) => ({ ...n, source: "admin" }));
-
-  const seen = new Set();
-  const combined = [];
-
-  for (const nominee of [...accountEntries, ...oldRegistrations, ...base]) {
-    if (seen.has(nominee.id)) continue;
-    seen.add(nominee.id);
-    combined.push(nominee);
+  try {
+    const r = await adminApi(
+      `/admin/nominees?edition=${encodeURIComponent(editionId)}`,
+    );
+    return r.nominees;
+  } catch {
+    return []; // no access to nominees in that edition
   }
-
-  return combined;
 }
 
-export const pendingNomineeCount = (editionId = viewing()) => {
-  const pending = new Set();
+/** Pending count for the sidebar badge. Refreshed with every sign-in check and after every save. */
+export const pendingNomineeCount = (editionId = viewing()) =>
+  store.get("admin:pending", {})?.[editionId] ?? 0;
 
-  for (const nominee of [...entries(), ...legacyRegistrations()]) {
-    if (nominee.status !== "pending" || !inEdition(nominee, editionId)) {
-      continue;
-    }
+const FIELDS = [
+  "name",
+  "department",
+  "categoryId",
+  "status",
+  "bio",
+  "level",
+  "phone",
+];
 
-    pending.add(String(nominee.legacyId || nominee.id));
-  }
-
-  return pending.size;
-};
-
-export async function setNomineeStatus(id, status) {
-  const newEntries = entries();
-  const entry = newEntries.find((n) => n.id === id);
-
-  if (entry) {
-    store.set(
-      ENTRIES_KEY,
-      newEntries.map((n) => (n.id === id ? { ...n, status } : n)),
-    );
-    return;
-  }
-
-  const legacy = legacyRegistrations();
-  const old = legacy.find((n) => n.id === id);
-
-  if (old) {
-    store.set(
-      LEGACY_KEY,
-      legacy.map((n) => (n.id === id ? { ...n, status } : n)),
-    );
-    return;
-  }
-
-  await seeds.update(id, { status });
+async function write(path, method, body = {}) {
+  const r = await adminApi(path, {
+    method,
+    body: { edition: viewing(), ...body },
+  });
+  await restoreSession(); // re-reads the pending badge and everything else
+  return r;
 }
 
+/** One id or a list of ids. Approve / reject / set pending. */
+export const setNomineeStatus = (ids, status) =>
+  write("/admin/nominees/status", "POST", { ids: [].concat(ids), status });
+
+/** id = null adds a new nominee; otherwise edits the nominee. */
 export async function saveNominee(id, data) {
-  const newEntries = entries();
-  const entry = newEntries.find((n) => n.id === id);
-
-  if (entry) {
-    const allowed = [
-      "name",
-      "phone",
-      "department",
-      "level",
-      "categoryId",
-      "bio",
-      "status",
-    ];
-
-    const patch = {};
-    for (const key of allowed) {
-      if (Object.hasOwn(data, key)) patch[key] = data[key];
-    }
-
-    store.set(
-      ENTRIES_KEY,
-      newEntries.map((n) => (n.id === id ? { ...n, ...patch } : n)),
-    );
-    return;
-  }
-
-  const legacy = legacyRegistrations();
-  const old = legacy.find((n) => n.id === id);
-
-  if (old) {
-    store.set(
-      LEGACY_KEY,
-      legacy.map((n) => (n.id === id ? { ...n, ...data } : n)),
-    );
-    return;
-  }
-
-  if (id) {
-    await seeds.update(id, data);
-  } else {
-    await seeds.create({
-      occasionId: viewing(),
-      photo: null,
-      ...data,
-    });
-  }
+  const body = Object.fromEntries(
+    FIELDS.filter((k) => Object.hasOwn(data, k)).map((k) => [k, data[k]]),
+  );
+  if (id) await write(`/admin/nominees/${id}`, "PATCH", body);
+  else await write("/admin/nominees", "POST", body);
 }
 
-export async function removeNominee(id) {
-  const newEntries = entries();
+export const removeNominee = (id) => write(`/admin/nominees/${id}`, "DELETE");
 
-  if (newEntries.some((n) => n.id === id)) {
-    store.set(
-      ENTRIES_KEY,
-      newEntries.filter((n) => n.id !== id),
-    );
-    return;
-  }
-
-  const legacy = legacyRegistrations();
-
-  if (legacy.some((n) => n.id === id)) {
-    store.set(
-      LEGACY_KEY,
-      legacy.filter((n) => n.id !== id),
-    );
-    return;
-  }
-
-  await seeds.remove(id);
+/** file: a File from an <input type="file">. The server checks and resizes it. */
+export async function uploadNomineePhoto(id, file) {
+  if (file.size > 5 * 1024 * 1024)
+    throw new Error("That photo is too large (maximum 5 MB).");
+  const form = new FormData();
+  form.append("photo", file);
+  await adminUpload(`/admin/nominees/${id}/photo`, form);
+  await restoreSession();
 }
+
+export const removeNomineePhoto = (id) =>
+  write(`/admin/nominees/${id}/photo`, "DELETE");

@@ -13,6 +13,8 @@ import {
   setNomineeStatus,
   saveNominee,
   removeNominee,
+  uploadNomineePhoto,
+  removeNomineePhoto,
 } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
 import { logAudit } from "../services/admin-store.js";
@@ -132,6 +134,19 @@ export async function init(root, { admin, can }) {
         when: (n) => n.status !== "rejected",
       },
       { key: "edit", label: "Edit", icon: "fa-pen", perm: "nominees.edit" },
+      {
+        key: "photo",
+        label: "Change photo",
+        icon: "fa-camera",
+        perm: "nominees.edit",
+      },
+      {
+        key: "removePhoto",
+        label: "Remove photo",
+        icon: "fa-eraser",
+        perm: "nominees.edit",
+        when: (n) => Boolean(n.photo),
+      },
       {
         key: "delete",
         label: "Delete",
@@ -283,6 +298,42 @@ export async function init(root, { admin, can }) {
           await refresh();
         },
       }),
+
+    photo(n) {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/jpeg,image/png,image/webp";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          await uploadNomineePhoto(n.id, file);
+          notify.toast("success", "Photo updated");
+          await refresh();
+        } catch (err) {
+          await notify.warning("Couldn’t upload the photo", err.message);
+        }
+      });
+      input.click();
+    },
+    async removePhoto(n) {
+      if (
+        !(await notify.confirm({
+          title: `Remove ${n.name}’s photo?`,
+          confirmText: "Remove",
+          danger: true,
+        }))
+      )
+        return;
+      try {
+        await removeNomineePhoto(n.id);
+        notify.toast("success", "Photo removed");
+        await refresh();
+      } catch (err) {
+        await notify.warning("Couldn’t remove the photo", err.message);
+      }
+    },
+
     async delete(n) {
       if (
         !(await notify.confirm({
@@ -293,8 +344,12 @@ export async function init(root, { admin, can }) {
         }))
       )
         return;
-      await removeNominee(n.id);
-      logAudit(admin, "Deleted nominee", n.name);
+      try {
+        await removeNominee(n.id);
+      } catch (err) {
+        await notify.warning("Couldn’t delete", err.message);
+        return;
+      }
       notify.toast("success", "Nominee deleted");
       refresh();
     },
@@ -310,7 +365,10 @@ export async function init(root, { admin, can }) {
       }))
     )
       return;
-    for (const n of list) await setNomineeStatus(n.id, status);
+    await setNomineeStatus(
+      list.map((n) => n.id),
+      status,
+    );
     logAudit(
       admin,
       `${key === "approve" ? "Approved" : "Rejected"} ${list.length} nominees`,

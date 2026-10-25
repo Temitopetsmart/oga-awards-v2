@@ -1,14 +1,24 @@
 import { ROOT } from "../config/app.config.js";
 import { html, initials, safeClass } from "../core/dom.js";
 
-const avatar = (n, large = false) =>
-  html`<span
+/** Photos are saved on the server as "uploads/…" paths; make them work from any page. Small cards use the thumbnail. */
+const mediaUrl = (p) =>
+  !p
+    ? ""
+    : /^(https?:)?\/\/|^data:/.test(p)
+      ? p
+      : ROOT + String(p).replace(/^\//, "");
+
+const avatar = (n, large = false) => {
+  const src = mediaUrl(large ? n.photo : (n.thumb ?? n.photo));
+  return html`<span
     class="oga-avatar ${large ? "oga-avatar--lg" : ""}"
     aria-hidden="true"
-    >${n.photo
-      ? html`<img src="${n.photo}" alt="" loading="lazy" />`
+    >${src
+      ? html`<img src="${src}" alt="" loading="lazy" />`
       : initials(n.name)}</span
   >`;
+};
 
 export const categoryCard = (c, href) =>
   html` <a class="oga-card" href="${href}">

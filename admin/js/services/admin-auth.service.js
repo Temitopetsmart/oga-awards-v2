@@ -18,6 +18,7 @@ const SESSION_KEYS = [
   "admin:roles",
   "admin:assignments",
   "admin:editions",
+  "admin:pending",
   VIEW_AS,
   "admin:viewing",
 ];
@@ -29,6 +30,7 @@ function hydrate(data) {
   store.set("admin:roles", data.roles);
   store.set("admin:assignments", data.assignments);
   store.set("admin:editions", data.editions);
+  store.set("admin:pending", data.pendingNominees ?? {});
 }
 
 const clearSession = () => SESSION_KEYS.forEach((k) => store.remove(k));

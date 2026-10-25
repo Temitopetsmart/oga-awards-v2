@@ -3,11 +3,20 @@ declare(strict_types=1);
 
 namespace App;
 
-/** Secure PHP session for the admin area, plus CSRF protection. */
+/** Secure PHP session plus CSRF protection, for both the admin and nominee sign-ins (separate cookies). */
 final class Session
 {
-    private const IDLE_SECONDS     = 7200;     // signed out after 2 hours of no activity
-    private const ABSOLUTE_SECONDS = 43200;    // and always after 12 hours
+    /** 'admin' (default) or 'nominee': separate cookie names and time limits, so the two never mix. */
+    private static string $scope = 'admin';
+    private const LIMITS = [
+        'admin'   => ['name' => 'oga_admin',   'idle' => 7200,  'absolute' => 43200],    // 2 h idle, 12 h max
+        'nominee' => ['name' => 'oga_nominee', 'idle' => 43200, 'absolute' => 604800],   // 12 h idle, 7 days max
+    ];
+
+    public static function useScope(string $scope): void
+    {
+        self::$scope = isset(self::LIMITS[$scope]) ? $scope : 'admin';
+    }
 
     public static function start(): void
     {
@@ -15,7 +24,7 @@ final class Session
             return;
         }
         $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-        session_name('oga_admin');
+        session_name(self::LIMITS[self::$scope]['name']);
         session_set_cookie_params([
             'lifetime' => 0,
             'path'     => '/',
@@ -28,9 +37,10 @@ final class Session
         session_start();
 
         $now = time();
+        $limits = self::LIMITS[self::$scope];
         $expired = isset($_SESSION['created'])
-            && (($now - ($_SESSION['last'] ?? $now)) > self::IDLE_SECONDS
-                || ($now - $_SESSION['created']) > self::ABSOLUTE_SECONDS);
+            && (($now - ($_SESSION['last'] ?? $now)) > $limits['idle']
+                || ($now - $_SESSION['created']) > $limits['absolute']);
         if ($expired) {
             self::destroy();
             session_start();

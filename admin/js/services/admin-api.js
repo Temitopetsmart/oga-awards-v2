@@ -51,3 +51,30 @@ export async function adminApi(
     throw userError(data?.error ?? "Something went wrong. Please try again.");
   return data;
 }
+
+/** Uploads a file (FormData). Same sign-in cookie and CSRF protection as every other change. */
+export async function adminUpload(path, formData) {
+  if (!csrf) await refreshCsrf();
+  const go = () =>
+    fetch(`${APP.data.apiBase}${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF-Token": csrf ?? "" },
+      credentials: "same-origin",
+      body: formData,
+    });
+  let res = await go();
+  if (res.status === 419) {
+    await refreshCsrf();
+    res = await go();
+  }
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* not JSON */
+  }
+  if (data?.csrf) setCsrf(data.csrf);
+  if (!res.ok)
+    throw userError(data?.error ?? "Something went wrong. Please try again.");
+  return data;
+}

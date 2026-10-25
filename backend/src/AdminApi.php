@@ -113,6 +113,36 @@ final class AdminApi
             ContentApi::toggleOccasion($m[1]);
         }
         
+                // ---- nominees ----
+        if ($method === 'GET' && $path === '/admin/nominees') {
+            NomineeApi::list();
+        }
+        if ($method === 'POST' && $path === '/admin/nominees') {
+            NomineeApi::create();
+        }
+        if ($method === 'POST' && $path === '/admin/nominees/status') {
+            NomineeApi::setStatus();
+        }
+        if ($method === 'GET' && preg_match('#^/admin/nominees/(\d+)$#', $path, $m)) {
+            NomineeApi::preview((int) $m[1]);
+        }
+        if (preg_match('#^/admin/nominees/(\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && NomineeApi::update((int) $m[1]);
+            $method === 'DELETE' && NomineeApi::delete((int) $m[1]);
+        }
+        if (preg_match('#^/admin/nominees/(\d+)/photo$#', $path, $m)) {
+            $method === 'POST'   && NomineeApi::uploadPhoto((int) $m[1]);
+            $method === 'DELETE' && NomineeApi::removePhoto((int) $m[1]);
+        }
+
+        // ---- site settings ----
+        if ($method === 'GET' && $path === '/admin/settings') {
+            SettingsApi::read();
+        }
+        if ($method === 'PUT' && preg_match('#^/admin/settings/([a-z]+)$#', $path, $m)) {
+            SettingsApi::save($m[1]);
+        }
+
         Response::error('Not found', 404);
     }
 
@@ -216,7 +246,17 @@ final class AdminApi
             ];
         }
 
+        $pending = [];
+        foreach ($allowedIds as $id) {
+            if (Access::can($person, 'nominees.view', $id)) {
+                $q = $pdo->prepare("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = ? AND status = 'pending'");
+                $q->execute([$id]);
+                $pending[$slugById[$id]] = (int) $q->fetchColumn();
+            }
+        }
+
         return [
+            'pendingNominees' => (object) $pending,
             'authenticated' => true,
             'csrf'          => Session::csrf(),
             'person'        => [

@@ -1,0 +1,10 @@
+# Uploaded photos only. Never run scripts from here, never list the folder, and let browsers keep photos for a year
+# (every upload gets a new random file name, so a changed photo is never served from an old cache).
+Options -Indexes -ExecCGI
+<FilesMatch "\.(php|phtml|phar|php[0-9]?|pl|py|cgi|sh)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>
