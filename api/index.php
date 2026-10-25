@@ -44,6 +44,18 @@ if (str_starts_with($path, '/admin/')) {
     App\AdminApi::handle($method, $path);
 }
 
+
+ // ---- Nominee account area (registration, login, profile) ----
+if (str_starts_with($path, '/nominee/')) {
+    App\AccountApi::handle($method, $path);
+}
+
+// ---- Admin area (sign-in, session, permissions) ----
+if (str_starts_with($path, '/admin/')) {
+    App\AdminApi::handle($method, $path);
+}
+
+
 // ---- Public read-only data (same names and shapes as the V2 /data/*.json files) ----
 $public = [
     '/editions'     => [fn () => Catalog::editions(), 30],
