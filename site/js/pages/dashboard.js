@@ -18,6 +18,7 @@ import {
   listMyEntries,
   switchNomineeEntry,
   createNomineeEntry,
+  confirmRegistration,
   requestEmailVerification,
   verifyNomineeEmail,
 } from "../../../shared/js/services/auth.service.js";
@@ -47,6 +48,25 @@ const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((level) => ({
 
 export default async function dashboard(ctx, { params }) {
   const viewAsId = params.get("viewAs");
+
+  // Back from paying the registration fee for a new edition: the server checks the payment before anything is created.
+  if (params.get("pay") === "return" && params.get("tx_ref")) {
+    const ref = params.get("tx_ref");
+    const cancelled = params.get("status") === "cancelled";
+    history.replaceState(null, "", location.pathname);
+    if (cancelled) {
+      notify.toast("info", "Payment cancelled. You have not been charged.");
+    } else {
+      try {
+        await confirmRegistration(ref);
+      } catch (err) {
+        await notify.warning(
+          "We couldn’t confirm your payment yet",
+          err.message,
+        );
+      }
+    }
+  }
 
   if (viewAsId && !store.get("admin:me")) {
     return notice({
@@ -640,10 +660,14 @@ export function init(root, ctx, { params }) {
       },
 
       async onSubmit(values) {
-        await createNomineeEntry({
+        const r = await createNomineeEntry({
           occasionId: ctx.occasion.id,
           categoryId: values.categoryId,
         });
+        if (r?.paymentRequired) {
+          location.assign(r.paymentLink); // this edition charges a fee: go and pay
+          await new Promise(() => {}); // the browser is leaving
+        }
 
         await notify.success(
           "New edition entry created",

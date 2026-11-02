@@ -1,23 +1,24 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { money, number, formatDate } from "../../../shared/js/core/format.js";
 import { rules } from "../../../shared/js/core/validate.js";
-import { store } from "../../../shared/js/core/store.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { statCard } from "../components/stat-card.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
-import { collection, logAudit } from "../services/admin-store.js";
-import { scoped, inEdition } from "../services/scope.js";
-
+import {
+  fetchTickets,
+  fetchTicketTypes,
+  createTicketType,
+  updateTicketType,
+  deleteTicketType,
+  overrideTicket,
+  setTicketTable,
+} from "../services/ticket.admin.api.js";
 export const title = "Tickets";
 export const perm = "tickets.view";
 export const crumbs = ["Events", "Tickets"];
-const types = collection("ticket-types", {
-  seed: "ticket-types",
-  prefix: "TT-",
-});
 
 export default async function tickets({ can }) {
   return html` <div class="row g-3 mb-4" id="tkStats"></div>
@@ -87,17 +88,19 @@ export default async function tickets({ can }) {
 
 export async function init(root, { admin, edition, can }) {
   const money$ = can("finance.view");
+  let data = await fetchTickets();
+  let typeList = await fetchTicketTypes();
   const orders = () =>
-    scoped(store.get("ticket-orders", []))
+    data.orders
       .map((o) => ({
         ...o,
         id: o.reference,
         buyer: o.name ?? "—",
         at: o.createdAt ?? "",
       }))
-      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      .sort((a, b) => b.at.localeCompare(a.at));
   const issued = () =>
-    scoped(store.get("tickets", [])).map((t) => ({
+    data.tickets.map((t) => ({
       ...t,
       id: t.code,
       state: t.used ? "used" : "unused",
@@ -259,6 +262,12 @@ export async function init(root, { admin, edition, can }) {
       { key: "typeName", label: "Type", sort: true },
       { key: "orderReference", label: "Order" },
       {
+        key: "seat",
+        label: "Seat",
+        render: (t) => (t.seats > 1 ? `${t.seat} of ${t.seats}` : "—"),
+      },
+      { key: "tableLabel", label: "Table", render: (t) => t.tableLabel ?? "—" },
+      {
         key: "state",
         label: "Check-in",
         sort: true,
@@ -272,9 +281,34 @@ export async function init(root, { admin, edition, can }) {
         icon: "fa-right-to-bracket",
         perm: "tickets.override",
       },
+      {
+        key: "setTable",
+        label: "Set table",
+        icon: "fa-chair",
+        perm: "tickets.manageTypes",
+      },
     ],
     empty: "No tickets issued yet in this edition.",
-    async onAction(_, t) {
+    async onAction(key, t) {
+      if (key === "setTable") {
+        openFormModal({
+          title: `Table for group ${t.groupCode}`,
+          fields: [
+            {
+              name: "tableLabel",
+              label: "Table or seating note",
+              help: "Applies to everyone in this group. Gate staff see it when any of their tickets is scanned.",
+            },
+          ],
+          values: { tableLabel: t.tableLabel ?? "" },
+          async onSubmit(v) {
+            await setTicketTable(t.groupCode, v.tableLabel.trim());
+            notify.toast("success", "Table saved");
+            await refresh();
+          },
+        });
+        return;
+      }
       const next = !t.used;
       if (
         !(await notify.confirm({
@@ -286,33 +320,21 @@ export async function init(root, { admin, edition, can }) {
         }))
       )
         return;
-      store.set(
-        "tickets",
-        store
-          .get("tickets", [])
-          .map((x) =>
-            x.code === t.code
-              ? {
-                  ...x,
-                  used: next,
-                  usedAt: next ? new Date().toISOString() : null,
-                }
-              : x,
-          ),
-      );
-      logAudit(
-        admin,
-        next ? "Manually checked in ticket" : "Undid ticket check-in",
-        t.code,
-      );
-      refresh();
+      try {
+        await overrideTicket(t.code, next);
+      } catch (err) {
+        await notify.warning("Couldn’t update the ticket", err.message);
+        return;
+      }
+      await refresh();
     },
   });
 
   const typeRows = async () =>
-    (await types.all())
-      .filter((t) => inEdition(t))
-      .map((t) => ({ ...t, status: t.active === false ? "hidden" : "live" }));
+    typeList.map((t) => ({
+      ...t,
+      status: t.active === false ? "hidden" : "live",
+    }));
   const typesTable = new DataTable(root.querySelector("#typesTable"), {
     can,
     rows: await typeRows(),
@@ -379,6 +401,14 @@ export async function init(root, { admin, edition, can }) {
       attrs: 'min="1" max="50"',
     },
     {
+      name: "seats",
+      label: "Seats per ticket",
+      type: "number",
+      required: true,
+      attrs: 'min="1" max="50"',
+      help: "1 = one seat. Use 4 for a table of 4: the buyer gets 4 separate tickets (one per seat), all linked to one group.",
+    },
+    {
       name: "perks",
       label: "Perks",
       type: "textarea",
@@ -397,19 +427,24 @@ export async function init(root, { admin, edition, can }) {
     name: [rules.required(), rules.max(60)],
     price: [rules.required(), whole(0, 10000000)],
     maxPerOrder: [rules.required(), whole(1, 50)],
+    seats: [rules.required(), whole(1, 50)],
   };
   const clean = (v) => ({
     name: v.name.trim(),
     description: v.description.trim(),
     price: Number(v.price),
     maxPerOrder: Number(v.maxPerOrder),
+    seats: Number(v.seats),
     perks: v.perks
       .split("\n")
       .map((p) => p.trim())
       .filter(Boolean),
     active: v.active,
   });
-  const refreshTypes = async () => typesTable.setRows(await typeRows());
+  const refreshTypes = async () => {
+    typeList = await fetchTicketTypes();
+    typesTable.setRows(await typeRows());
+  };
 
   const typeHandlers = {
     edit: (t) =>
@@ -423,8 +458,7 @@ export async function init(root, { admin, edition, can }) {
           active: t.active !== false,
         },
         async onSubmit(v) {
-          await types.update(t.id, clean(v));
-          logAudit(admin, "Edited ticket type", v.name);
+          await updateTicketType(t.id, clean(v));
           notify.toast("success", "Ticket type updated");
           await refreshTypes();
         },
@@ -439,10 +473,14 @@ export async function init(root, { admin, edition, can }) {
         }))
       )
         return;
-      await types.remove(t.id);
-      logAudit(admin, "Deleted ticket type", t.name);
+      try {
+        await deleteTicketType(t.id);
+      } catch (err) {
+        await notify.warning("Couldn’t delete", err.message);
+        return;
+      }
       notify.toast("success", "Deleted");
-      refreshTypes();
+      await refreshTypes();
     },
   };
   root.querySelector("#addType")?.addEventListener("click", () =>
@@ -451,17 +489,17 @@ export async function init(root, { admin, edition, can }) {
       fields,
       schema,
       submitLabel: "Add ticket type",
-      values: { maxPerOrder: 10, active: true },
+      values: { maxPerOrder: 10, seats: 1, active: true },
       async onSubmit(v) {
-        await types.create({ occasionId: edition.id, ...clean(v) });
-        logAudit(admin, "Added ticket type", v.name);
+        await createTicketType(clean(v));
         notify.toast("success", "Ticket type added");
         await refreshTypes();
       },
     }),
   );
 
-  const refresh = () => {
+  const refresh = async () => {
+    data = await fetchTickets();
     ordersTable.setRows(orders());
     issuedTable.setRows(issued());
     stats();
@@ -480,7 +518,6 @@ export async function init(root, { admin, edition, can }) {
       { label: "Status", key: "status" },
       { label: "Date", key: "at" },
     ]);
-    logAudit(admin, "Exported ticket orders");
   });
   stats();
 }

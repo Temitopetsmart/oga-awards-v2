@@ -72,6 +72,12 @@ export default async function ticket(ctx, { params }) {
                 </h2>
                 <p class="mb-1">Ticket holder</p>
                 <p class="fs-5 text-white mb-3">${t.holder}</p>
+                ${t.seats > 1
+                  ? html`<p class="mb-1">
+                      Seat ${t.seat} of ${t.seats} · group ${t.groupCode}
+                    </p>`
+                  : ""}
+                ${t.tableLabel ? html`<p class="mb-1">${t.tableLabel}</p>` : ""}
                 <p class="mb-1">Ticket code</p>
                 <p class="oga-ticket__code fs-5 mb-0">${t.code}</p>
               </div>

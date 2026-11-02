@@ -104,8 +104,17 @@ function selectedEntry() {
 
 export const currentNominee = () => build(selectedEntry());
 
+/** The edition charges a registration fee: the server gives us the provider's payment page instead of an account. */
+const paymentStep = (r) => ({
+  paymentRequired: true,
+  paymentLink: r.paymentLink,
+  amount: r.amount,
+  reference: r.reference,
+});
+
 export async function registerNominee(data) {
   const r = await call("/nominee/register", { method: "POST", body: data });
+  if (r.paymentRequired) return paymentStep(r);
   hydrate(r);
   store.set(SELECTED, r.entries.at(-1).id);
   return currentNominee();
@@ -210,6 +219,7 @@ export async function createNomineeEntry({ occasionId, categoryId }) {
     method: "POST",
     body: { occasionId, categoryId },
   });
+  if (r.paymentRequired) return paymentStep(r);
   hydrate(r);
   store.set(SELECTED, r.entryId);
   return currentNominee();
@@ -232,4 +242,30 @@ export async function verifyNomineeEmail(token) {
   });
   await restoreNomineeSession(); // pick up "verified"
   return r;
+}
+
+/**
+ * The buyer is back from the payment page. The server checks the payment with the provider; only the browser
+ * that started it is signed in. Returns { signedIn, note }.
+ */
+export async function confirmRegistration(reference) {
+  const r = await call("/nominee/register/confirm", {
+    method: "POST",
+    body: { reference },
+  });
+  if (r.status !== "paid")
+    throw userError(
+      r.status === "failed"
+        ? (r.note ??
+            "The payment did not go through. You have not been charged.")
+        : "We haven’t received confirmation of your payment yet. If you were charged, your registration will be completed automatically within a few minutes — keep your reference: " +
+            reference,
+    );
+  if (r.problem) throw userError(r.note);
+  if (r.authenticated) {
+    hydrate(r);
+    store.set(SELECTED, r.entries.at(-1).id);
+    return { signedIn: true };
+  }
+  return { signedIn: false, note: r.note };
 }

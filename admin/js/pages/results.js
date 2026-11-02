@@ -1,33 +1,26 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { number } from "../../../shared/js/core/format.js";
-import { store } from "../../../shared/js/core/store.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { ROOT } from "../../../shared/js/config/app.config.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
-import { collection, logAudit } from "../services/admin-store.js";
-import { scoped } from "../services/scope.js";
+import { fetchResults, saveWinners } from "../services/vote.admin.api.js";
 import { editionLabel } from "../services/edition.repo.js";
 
 export const title = "Results";
 export const perm = "results.view";
 export const crumbs = ["Awards", "Results"];
-const winners = collection("winners", { seed: "winners", prefix: "WIN-" });
 
 export default async function results({ edition, can }) {
-  const [nominees, cats, published] = await Promise.all([
+  const [nominees, cats, results] = await Promise.all([
     listNominees(),
     listCategories(),
-    winners.all(),
+    fetchResults(),
   ]);
-  const tally = {};
-  scoped(store.get("vote-orders", []))
-    .filter((o) => o.status === "paid")
-    .forEach((o) => {
-      tally[o.nomineeId] = (tally[o.nomineeId] ?? 0) + o.votes;
-    });
+  const tally = results.tally;
+  const published = results.winners;
   const editable = can("results.save");
 
   const sections = cats
@@ -41,9 +34,8 @@ export default async function results({ edition, can }) {
       const tie =
         list.length > 1 && list[0].votes > 0 && list[0].votes === list[1].votes;
       const current =
-        published.find(
-          (w) => w.categoryId === c.id && w.occasionId === edition.id,
-        )?.nomineeId ?? (tie || !list[0]?.votes ? "" : list[0].id);
+        published.find((w) => w.categoryId === c.id)?.nomineeId ??
+        (tie || !list[0]?.votes ? "" : list[0].id);
       return { c, list, total, tie, current };
     });
 
@@ -185,28 +177,16 @@ export async function init(root, { admin, edition }) {
       }))
     )
       return;
-    const others = (await winners.all()).filter(
-      (w) => w.occasionId !== edition.id,
-    ); // other editions are never touched
-    await winners.replace([
-      ...others,
-      ...rows.map((r, i) => ({
-        id: `WIN-${edition.id}-${i + 1}`,
-        occasionId: edition.id,
-        ...r,
-      })),
-    ]);
-    logAudit(admin, "Saved winners", `${rows.length} categories`);
+    try {
+      await saveWinners(rows);
+    } catch (err) {
+      await notify.warning("Couldn’t save the winners", err.message);
+      return;
+    }
     notify.toast("success", "Winners saved");
   });
 
   root.querySelector("#exportBtn")?.addEventListener("click", () => {
-    const tally = {};
-    scoped(store.get("vote-orders", []))
-      .filter((o) => o.status === "paid")
-      .forEach((o) => {
-        tally[o.nomineeId] = (tally[o.nomineeId] ?? 0) + o.votes;
-      });
     const rows = nominees
       .filter((n) => n.status === "approved")
       .map((n) => ({
@@ -227,6 +207,5 @@ export async function init(root, { admin, edition }) {
         { label: "Winner", key: "winner" },
       ],
     );
-    logAudit(admin, "Exported results");
   });
 }

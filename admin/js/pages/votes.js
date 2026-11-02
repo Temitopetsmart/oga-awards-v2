@@ -1,7 +1,6 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { money, number, formatDate } from "../../../shared/js/core/format.js";
 import { rules } from "../../../shared/js/core/validate.js";
-import { store, uid } from "../../../shared/js/core/store.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
@@ -10,13 +9,16 @@ import { statCard } from "../components/stat-card.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
-import { logAudit } from "../services/admin-store.js";
-import { scoped } from "../services/scope.js";
+import {
+  fetchVotes,
+  addManualVotes,
+  voidOrder,
+  recheckOrder,
+} from "../services/vote.admin.api.js";
 
 export const title = "Votes";
 export const perm = "votes.view";
 export const crumbs = ["Awards", "Votes"];
-const KEY = "vote-orders";
 
 export default async function votes({ can }) {
   return html` <div class="row g-3 mb-4" id="voteStats"></div>
@@ -50,13 +52,8 @@ export async function init(root, { admin, edition, can }) {
   ]);
   const nameOf = (id) => nominees.find((n) => n.id === id)?.name ?? "(removed)";
   const catOf = (id) => cats.find((c) => c.id === id)?.name ?? "—";
-  const all = () => store.get(KEY, []);
-  const mine = () => scoped(all());
-  const patch = (ref, data) =>
-    store.set(
-      KEY,
-      all().map((o) => (o.reference === ref ? { ...o, ...data } : o)),
-    );
+  let orders = await fetchVotes();
+  const mine = () => orders;
   const load = () =>
     mine()
       .map((o) => ({
@@ -214,7 +211,8 @@ export async function init(root, { admin, edition, can }) {
     empty: "No votes yet in this edition.",
     onAction: (key, o) => handlers[key](o),
   });
-  const refresh = () => {
+  const refresh = async () => {
+    orders = await fetchVotes();
     table.setRows(load());
     stats();
   };
@@ -265,16 +263,20 @@ export async function init(root, { admin, edition, can }) {
     async paid(o) {
       if (
         !(await notify.confirm({
-          title: `Mark ${o.reference} as paid?`,
-          text: "Only do this after confirming the payment with the payment provider.",
-          confirmText: "Mark as paid",
+          title: `Re-check ${o.reference} with the payment provider?`,
+          text: "We ask the provider again. The order is counted only if the provider confirms a successful payment.",
+          confirmText: "Re-check payment",
         }))
       )
         return;
-      patch(o.reference, { status: "paid" });
-      logAudit(admin, "Marked vote order paid", o.reference);
-      notify.toast("success", "Marked as paid");
-      refresh();
+      try {
+        await recheckOrder(o.reference);
+      } catch (err) {
+        await notify.warning("Not paid yet", err.message);
+        return;
+      }
+      notify.toast("success", "Payment confirmed and counted");
+      await refresh();
     },
     async void(o) {
       if (
@@ -286,10 +288,14 @@ export async function init(root, { admin, edition, can }) {
         }))
       )
         return;
-      patch(o.reference, { status: "void" });
-      logAudit(admin, "Voided vote order", o.reference);
+      try {
+        await voidOrder(o.reference);
+      } catch (err) {
+        await notify.warning("Couldn’t void the order", err.message);
+        return;
+      }
       notify.toast("info", "Order voided");
-      refresh();
+      await refresh();
     },
   };
 
@@ -307,7 +313,6 @@ export async function init(root, { admin, edition, can }) {
       { label: "Date", value: (o) => o.at },
       { label: "Reason", value: (o) => o.reason ?? "" },
     ]);
-    logAudit(admin, "Exported vote ledger");
   });
 
   root.querySelector("#manualBtn")?.addEventListener("click", () =>
@@ -355,31 +360,13 @@ export async function init(root, { admin, edition, can }) {
         reason: [rules.required(), rules.min(8)],
       },
       async onSubmit(v) {
-        const nominee = nominees.find((n) => n.id === v.nomineeId);
-        store.set(KEY, [
-          ...all(),
-          {
-            reference: uid("MAN-", 8),
-            editionId: edition.id,
-            nomineeId: nominee.id,
-            categoryId: nominee.categoryId,
-            votes: Number(v.votes),
-            amount: 0,
-            name: admin.name,
-            email: "",
-            status: "paid",
-            source: "manual",
-            reason: v.reason.trim(),
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-        logAudit(
-          admin,
-          `Added ${v.votes} manual votes`,
-          `${nominee.name} — ${v.reason.trim()}`,
-        );
+        await addManualVotes({
+          nomineeId: v.nomineeId,
+          votes: v.votes,
+          reason: v.reason.trim(),
+        });
         notify.toast("success", "Manual votes added");
-        refresh();
+        await refresh();
       },
     }),
   );

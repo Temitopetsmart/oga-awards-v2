@@ -87,6 +87,27 @@ final class Session
         session_destroy();
     }
 
+    /** Small notes kept in the visitor's session (e.g. "this browser started payment X"). */
+    public static function put(string $key, mixed $value): void
+    {
+        self::start();
+        $_SESSION[$key] = $value;
+    }
+
+    public static function pull(string $key): mixed
+    {
+        self::start();
+        $v = $_SESSION[$key] ?? null;
+        unset($_SESSION[$key]);
+        return $v;
+    }
+
+    public static function peek(string $key): mixed
+    {
+        self::start();
+        return $_SESSION[$key] ?? null;
+    }
+
     public static function personId(): ?int
     {
         self::start();

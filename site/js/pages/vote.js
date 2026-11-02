@@ -78,6 +78,11 @@ export default async function vote(ctx, { params }) {
     (cats.some((c) => c.id === params.get("category"))
       ? params.get("category")
       : "");
+  const back = new URLSearchParams(location.search);
+  S.returning =
+    back.get("pay") === "return"
+      ? { status: back.get("status"), ref: back.get("tx_ref") }
+      : null;
   return html`${hero}${pageBody(html`<div id="voteApp"></div>`, {
     width: "52rem",
   })}`;
@@ -85,7 +90,42 @@ export default async function vote(ctx, { params }) {
 
 export function init(root) {
   const el = root.querySelector("#voteApp");
-  if (el) render(el); // absent when the page is gated (voting not open)
+  if (!el) return; // absent when the page is gated (voting not open)
+  render(el);
+  if (S.returning) finishPayment(el);
+  // coming back with the browser's Back button from the payment page: start fresh
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) location.reload();
+  });
+}
+
+/** The buyer is back from the payment page. The server checks the payment with the provider before counting it. */
+async function finishPayment(el) {
+  const { status, ref } = S.returning;
+  S.returning = null;
+  history.replaceState(null, "", location.pathname); // a refresh must not repeat this
+  if (!ref) return;
+  if (status === "cancelled") {
+    notify.toast("info", "Payment cancelled. You have not been charged.");
+    return;
+  }
+  mount(
+    el,
+    html`<div class="oga-formcard text-center py-5">
+      <div class="spinner-border text-warning mb-3" role="status"></div>
+      <p class="mb-0">Confirming your payment…</p>
+    </div>`,
+  );
+  try {
+    S.order = await confirmOrder(ref);
+    S.nomineeId = S.order.nomineeId;
+    S.categoryId = S.order.categoryId;
+    S.step = 4;
+  } catch (err) {
+    await notify.warning("We couldn’t confirm your payment yet", err.message);
+    S.step = 1;
+  }
+  render(el);
 }
 
 const stepper = (current) =>

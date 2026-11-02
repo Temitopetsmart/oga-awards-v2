@@ -35,6 +35,7 @@ final class AccountApi
         if ($method === 'POST' && $path === '/nominee/login')    self::login();
         if ($method === 'POST' && $path === '/nominee/logout')   self::logout();
         if ($method === 'POST' && $path === '/nominee/entries')  self::apply();
+        if ($method === 'POST' && $path === '/nominee/register/confirm') self::confirmRegistration();
         if ($method === 'PATCH' && preg_match('#^/nominee/entries/(\d+)$#', $path, $m)) self::updateEntry((int) $m[1]);
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
@@ -133,7 +134,7 @@ final class AccountApi
         ];
     }
 
-    private static function queue(string $type, string $email, array $payload): void
+    public static function queue(string $type, string $email, array $payload): void
     {
         self::pdo()->prepare('INSERT INTO notification_outbox (type, recipient, payload) VALUES (?, ?, ?)')
             ->execute([$type, $email, json_encode($payload)]);
@@ -145,7 +146,7 @@ final class AccountApi
         return Env::get('APP_ENV') === 'local' && Env::bool('APP_DEBUG') ? ['devToken' => $token] : [];
     }
 
-    private static function newToken(int $accountId, string $type): string
+    public static function newToken(int $accountId, string $type): string
     {
         $pdo = self::pdo();
         $pdo->prepare('UPDATE account_tokens SET used_at = NOW() WHERE account_id = ? AND type = ? AND used_at IS NULL')->execute([$accountId, $type]);
@@ -208,11 +209,7 @@ final class AccountApi
         if ((int) $st->fetchColumn() === 0) {
             self::fail('Choose a category.', 422, ['fields' => ['categoryId' => 'Choose a category.']]);
         }
-        $fee = (float) ($ed['nominee_registration_fee'] ?? 0);
-        if ($fee > 0) {
-            // Fee payments are verified with Flutterwave (the payments phase). Until then a paid edition cannot take registrations.
-            self::fail('Registration for this edition has a fee of ₦' . number_format($fee) . '. Online payment is not switched on yet.', 402, ['code' => 'payment_required']);
-        }
+        
         return $ed;
     }
 
@@ -253,6 +250,9 @@ final class AccountApi
             self::fail('An account with this email already exists. Log in to continue.', 422, ['fields' => ['email' => 'Already registered — try logging in.']]);
         }
 
+        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
+            self::startPaidRegistration($ed, null, $email, $hash, ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'categoryId' => (int) $in['categoryId']], 'register.html');
+        }
         $accountId = Database::transaction(function (\PDO $db) use ($email, $hash, $ed, $in, $name, $phone, $dept, $level) {
             $db->prepare('INSERT INTO accounts (email, password_hash) VALUES (?, ?)')->execute([$email, $hash]);
             $aid = (int) $db->lastInsertId();
@@ -283,12 +283,81 @@ final class AccountApi
         $st = self::pdo()->prepare('SELECT * FROM nominee_entries WHERE account_id = ? ORDER BY id DESC LIMIT 1');
         $st->execute([$a['id']]);
         $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
+        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
+            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $prev['level'], 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard.html');
+        }
         self::pdo()->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')")
             ->execute([$ed['id'], $a['id'], (int) $in['categoryId'], $prev['name'], $prev['phone'], $prev['department'], $prev['level'], $prev['bio']]);
         $entryId = (string) self::pdo()->lastInsertId();
         Cache::flush();
         Audit::log(null, 'Nominee applied for a new edition', $a['email'], (int) $ed['id']);
         Response::json(['ok' => true, 'entryId' => $entryId] + self::sessionPayload($a));
+    }
+
+        /**
+     * The edition charges a registration fee: keep the details safe, send the person to pay, and create nothing yet.
+     * The account and entry are created by Registrations::complete() once Flutterwave has confirmed the money.
+     */
+    private static function startPaidRegistration(array $ed, ?int $accountId, string $email, ?string $hash, array $profile, string $returnPage): never
+    {
+        $fee = round((float) $ed['nominee_registration_fee'], 2);
+        $currency = $ed['currency'] ?: 'NGN';
+        $reference = 'REG-' . strtoupper(bin2hex(random_bytes(6)));
+        Database::transaction(function (\PDO $db) use ($ed, $accountId, $email, $hash, $profile, $fee, $currency, $reference) {
+            $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (?, 'nominee_fee', ?, ?, ?, ?, 'pending')")
+                ->execute([$ed['id'], $reference, $fee, $currency, $email]);
+            $paymentId = (int) $db->lastInsertId();
+            $db->prepare("INSERT INTO pending_registrations (reference, edition_id, account_id, email, password_hash, profile, payment_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')")
+                ->execute([$reference, $ed['id'], $accountId, $email, $hash, json_encode($profile, JSON_UNESCAPED_UNICODE), $paymentId]);
+        });
+        try {
+            $link = Flutterwave::createPayment([
+                'reference' => $reference, 'amount' => $fee, 'currency' => $currency, 'email' => $email, 'name' => $profile['name'],
+                'redirectUrl' => rtrim((string) Env::get('APP_URL', ''), '/') . '/' . $returnPage . '?pay=return', 'purpose' => 'nominee_fee',
+                'title' => $ed['name'] . ' ' . $ed['edition_label'] . ' — nominee registration', 'description' => 'Registration fee',
+            ]);
+        } catch (GatewayException $e) {
+            error_log((string) $e);
+            self::pdo()->prepare("UPDATE payments SET status = 'failed' WHERE reference = ?")->execute([$reference]);
+            self::pdo()->prepare("UPDATE pending_registrations SET status = 'failed', password_hash = NULL WHERE reference = ?")->execute([$reference]);
+            self::fail('The payment service is unavailable right now. You have not been charged. Please try again shortly.', 502);
+        }
+        Session::put('pending_reg', $reference);        // only THIS browser may be signed in when the payment is confirmed
+        Response::json(['ok' => true, 'paymentRequired' => true, 'reference' => $reference, 'amount' => $fee, 'paymentLink' => $link]);
+    }
+
+    /** The person came back from Flutterwave. We ask Flutterwave ourselves; only the browser that started it is signed in. */
+    private static function confirmRegistration(): never
+    {
+        $in = Request::json();
+        self::throttle('nominee-reg-confirm', Request::ip(), 240, 15, false);
+        self::record('nominee-reg-confirm', Request::ip(), true);
+        $ref = Request::str($in, 'reference', 80);
+        $st = self::pdo()->prepare('SELECT * FROM pending_registrations WHERE reference = ?');
+        $st->execute([$ref]);
+        if (!$st->fetch()) {
+            self::fail('We could not find that payment.', 404);
+        }
+        $result = PaymentService::settle($ref);
+        $st->execute([$ref]);
+        $row = $st->fetch();
+        if ($result['status'] !== 'paid') {
+            Response::json(['ok' => true, 'status' => $result['status'], 'note' => $result['note'] ?? null]);
+        }
+        if ($row['status'] !== 'completed') {
+            Response::json(['ok' => true, 'status' => 'paid', 'problem' => true,
+                'note' => "Your payment was received, but we could not finish your registration automatically. Please contact the organisers and quote this reference: $ref"]);
+        }
+        $account = self::pdo()->prepare('SELECT id, email, email_verified_at FROM accounts WHERE id = ?');
+        $account->execute([$row['account_id']]);
+        $a = $account->fetch();
+        if (Session::peek('pending_reg') === $ref) {
+            Session::pull('pending_reg');
+            Session::signIn((int) $a['id']);
+            Response::json(['ok' => true, 'status' => 'paid'] + self::sessionPayload($a));
+        }
+        Response::json(['ok' => true, 'status' => 'paid', 'authenticated' => false,
+            'note' => 'Your payment is confirmed and your account is ready. Log in with your email and password.']);
     }
 
     // ------------------------------------------------------ my entry, photo

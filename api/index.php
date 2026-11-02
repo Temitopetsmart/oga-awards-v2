@@ -44,6 +44,27 @@ if (str_starts_with($path, '/admin/')) {
     App\AdminApi::handle($method, $path);
 }
 
+// ---- Paying for votes (public) and the Flutterwave webhook ----
+if ($method === 'POST' && $path === '/votes/orders') {
+    App\VoteApi::createOrder();
+}
+if ($method === 'POST' && preg_match('#^/votes/orders/([A-Z0-9-]+)/confirm$#', $path, $m)) {
+    App\VoteApi::confirm($m[1]);
+}
+if ($method === 'POST' && $path === '/webhooks/flutterwave') {
+    App\VoteApi::webhook();
+}
+
+// ---- Buying and finding tickets (public) ----
+if ($method === 'POST' && $path === '/tickets/orders') {
+    App\TicketApi::createOrder();
+}
+if ($method === 'POST' && preg_match('#^/tickets/orders/([A-Z0-9-]+)/confirm$#', $path, $m)) {
+    App\TicketApi::confirm($m[1]);
+}
+if ($method === 'POST' && $path === '/tickets/lookup') {
+    App\TicketApi::lookup();
+}
 
  // ---- Nominee account area (registration, login, profile) ----
 if (str_starts_with($path, '/nominee/')) {

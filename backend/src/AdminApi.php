@@ -143,6 +143,53 @@ final class AdminApi
             SettingsApi::save($m[1]);
         }
 
+        // ---- votes and results ----
+        if ($method === 'GET' && $path === '/admin/votes') {
+            VoteAdminApi::ledger();
+        }
+        if ($method === 'POST' && $path === '/admin/votes/manual') {
+            VoteAdminApi::addManual();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/votes/([A-Z0-9-]+)/void$#', $path, $m)) {
+            VoteAdminApi::void($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/votes/([A-Z0-9-]+)/recheck$#', $path, $m)) {
+            VoteAdminApi::recheck($m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/results') {
+            VoteAdminApi::results();
+        }
+        if ($method === 'PUT' && $path === '/admin/results/winners') {
+            VoteAdminApi::saveWinners();
+        }
+
+        // ---- tickets and the gate scanner ----
+        if ($method === 'GET' && $path === '/admin/tickets') {
+            TicketAdminApi::list();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/tickets/([A-Z0-9-]+)/override$#', $path, $m)) {
+            TicketAdminApi::override($m[1]);
+        }
+        if ($method === 'PATCH' && preg_match('#^/admin/ticket-groups/([A-Z0-9-]+)$#', $path, $m)) {
+            TicketAdminApi::setTable($m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/ticket-types') {
+            TicketAdminApi::types();
+        }
+        if ($method === 'POST' && $path === '/admin/ticket-types') {
+            TicketAdminApi::createType();
+        }
+        if (preg_match('#^/admin/ticket-types/(\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && TicketAdminApi::updateType((int) $m[1]);
+            $method === 'DELETE' && TicketAdminApi::deleteType((int) $m[1]);
+        }
+        if ($method === 'POST' && $path === '/admin/scan') {
+            TicketAdminApi::scan();
+        }
+        if ($method === 'GET' && $path === '/admin/scan') {
+            TicketAdminApi::scanSummary();
+        }
+
         Response::error('Not found', 404);
     }
 

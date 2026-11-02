@@ -10,6 +10,7 @@ import {
   getTicketTypes,
   createTicketOrder,
   issueTickets,
+  pendingOrder,
   findTickets,
 } from "../../../shared/js/services/ticket.service.js";
 import { checkout } from "../../../shared/js/services/payment.service.js";
@@ -20,6 +21,21 @@ let types = [];
 let editionId = "";
 
 export default async function tickets(ctx) {
+  if (new URLSearchParams(location.search).get("pay") === "return") {
+    // Back from the payment page: show a waiting screen; init() confirms the payment with the server.
+    return html`${pageHero({
+      eyebrow: "Awards night",
+      title: "Confirming your payment",
+      lead: "One moment please…",
+      crumbs: [{ label: "Tickets" }],
+    })}${pageBody(
+      html`<div id="ticketReturn" class="text-center py-5">
+        <div class="spinner-border text-warning" role="status"></div>
+        <p class="mt-3 mb-0">Confirming your payment…</p>
+      </div>`,
+      { width: "44rem" },
+    )}`;
+  }
   const hero = pageHero({
     eyebrow: "Awards night",
     title: "Get your tickets",
@@ -89,7 +105,40 @@ export default async function tickets(ctx) {
   )}`;
 }
 
+async function finishPurchase(el) {
+  const back = new URLSearchParams(location.search);
+  const ref = back.get("tx_ref");
+  history.replaceState(null, "", location.pathname); // a refresh must not repeat this
+  if (back.get("status") === "cancelled" || !ref) {
+    await notify.warning(
+      "Payment cancelled",
+      "You have not been charged. You can try again.",
+    );
+    go("tickets.html");
+    return;
+  }
+  try {
+    const { tickets: issued } = await issueTickets(ref);
+    await notify.success(
+      "Payment successful",
+      `Your ticket${issued.length > 1 ? "s are" : " is"} ready.`,
+    );
+    const pending = pendingOrder(ref);
+    go(
+      pending
+        ? `ticket.html?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(pending.email)}`
+        : "ticket.html",
+    );
+  } catch (err) {
+    await notify.warning("We couldn’t confirm your payment yet", err.message);
+    el.innerHTML =
+      '<p class="mb-0">Your tickets will be ready once the payment is confirmed. You can find them any time on the <a href="ticket.html">My tickets</a> page with your order reference and email.</p>';
+  }
+}
+
 export function init(root) {
+  const ret = root.querySelector("#ticketReturn");
+  if (ret) return finishPurchase(ret);
   const box = root.querySelector("#checkout");
   if (!box) return; // absent when ticket sales are off
   root.querySelector("#ticketTypes").addEventListener("click", (e) => {

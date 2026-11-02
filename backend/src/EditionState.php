@@ -34,7 +34,7 @@ final class EditionState
     /** The edition nominees can currently register for, or null. */
     public static function openForNominations(): ?array
     {
-        $e = Database::pdo()->query("SELECT e.*, s.nominee_registration_fee FROM editions e LEFT JOIN edition_settings s ON s.edition_id = e.id WHERE e.status = 'active'")->fetch();
+        $e = Database::pdo()->query("SELECT e.*, s.nominee_registration_fee, s.currency FROM editions e LEFT JOIN edition_settings s ON s.edition_id = e.id WHERE e.status = 'active'")->fetch();
         return $e && self::of($e) === 'nominations' ? $e : null;
     }
 }

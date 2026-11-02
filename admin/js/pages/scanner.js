@@ -1,9 +1,6 @@
 import { html, mount } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
-import { store } from "../../../shared/js/core/store.js";
-import { logAudit } from "../services/admin-store.js";
-import { editionOf } from "../services/scope.js";
-
+import { scanTicket, fetchScanSummary } from "../services/ticket.admin.api.js";
 export const title = "Gate scanner";
 export const perm = "scanner.use";
 export const crumbs = ["Events", "Gate scanner"];
@@ -85,26 +82,41 @@ export default async function scanner() {
 
 export function init(root, { admin, edition }) {
   const input = root.querySelector("#scanInput");
-  const show = (kind, detail = "") => {
+  const show = (kind, detail = "", info = null) => {
     const r = RESULT[kind];
+    const t = info?.ticket;
+    const group = info?.group ?? [];
     mount(
       root.querySelector("#scanResult"),
       html`<div class="oga-scan ${r.cls}" role="status" aria-live="assertive">
         <i class="fa-solid ${r.icon}" aria-hidden="true"></i>
         <h2>${r.head}</h2>
         <p class="mb-0 mt-2">${detail || r.sub || ""}</p>
+        ${t?.tableLabel
+          ? html`<p class="fs-4 mb-0 mt-3"><strong>${t.tableLabel}</strong></p>`
+          : ""}
+        ${t && t.seats > 1
+          ? html`<p class="mb-0 mt-2">
+              Seat ${t.seat} of ${t.seats} · group ${t.groupCode}<br />
+              ${group
+                .map((g) => `${g.seat}${g.checkedIn ? " ✓" : " –"}`)
+                .join("   ")}
+              (✓ = already inside)
+            </p>`
+          : ""}
       </div>`,
     );
   };
-  const counts = () => {
-    const all = store
-      .get("tickets", [])
-      .filter((t) => editionOf(t) === edition.id);
-    root.querySelector("#inCount").textContent = all.filter(
-      (t) => t.used,
-    ).length;
-    root.querySelector("#inOf").textContent = `of ${all.length} issued`;
-    const scans = store.get("admin:scans", []).slice(0, 8);
+  const counts = async () => {
+    let summary;
+    try {
+      summary = await fetchScanSummary();
+    } catch {
+      return;
+    }
+    root.querySelector("#inCount").textContent = summary.checkedIn;
+    root.querySelector("#inOf").textContent = `of ${summary.issued} issued`;
+    const scans = summary.recent;
     mount(
       root.querySelector("#recent"),
       scans.length
@@ -139,40 +151,26 @@ export function init(root, { admin, edition }) {
     );
   };
 
-  function verify(raw) {
+  async function verify(raw) {
     const code = String(raw).trim().toUpperCase();
     if (!code) return;
-    const tickets = store.get("tickets", []);
-    const t = tickets.find((x) => x.code === code);
-    let result = "bad";
-    let detail = `No ticket matches “${code}”.`;
-    if (t && editionOf(t) !== edition.id) {
-      result = "bad";
-      detail = `This ticket is for a different edition, not ${edition.name} ${edition.edition}.`;
-    } else if (t && !t.used) {
-      t.used = true;
-      t.usedAt = new Date().toISOString();
-      t.usedBy = admin.name;
-      store.set("tickets", tickets);
-      result = "valid";
-      detail = `${t.holder} · ${t.typeName}`;
-    } else if (t) {
-      result = "used";
-      detail = `${t.holder} · scanned ${formatDate(t.usedAt, {
+    let r;
+    try {
+      r = await scanTicket(code); // the server decides, and two phones can never both admit the same ticket
+    } catch (err) {
+      show("bad", err.message);
+      return;
+    }
+    const kind =
+      r.result === "valid" ? "valid" : r.result === "used" ? "used" : "bad";
+    let detail = r.detail;
+    if (kind === "used" && r.ticket?.usedAt)
+      detail = `${r.ticket.holder} · scanned ${formatDate(r.ticket.usedAt, {
         dateStyle: "medium",
         timeStyle: "short",
-      })}`;
-    }
-    store.set(
-      "admin:scans",
-      [
-        { code, result, holder: t?.holder, at: new Date().toISOString() },
-        ...store.get("admin:scans", []),
-      ].slice(0, 50),
-    );
-    if (result === "valid") logAudit(admin, "Checked in ticket", code);
-    show(result, detail);
-    counts();
+      })}${r.ticket.usedBy ? ` by ${r.ticket.usedBy}` : ""}`;
+    show(kind, detail, r);
+    await counts();
   }
 
   root.querySelector("#scanForm").addEventListener("submit", (e) => {

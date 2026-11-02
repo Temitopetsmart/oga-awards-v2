@@ -10,6 +10,7 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import { getCategories } from "../../../shared/js/services/catalog.service.js";
 import {
   registerNominee,
+  confirmRegistration,
   currentNominee,
 } from "../../../shared/js/services/auth.service.js";
 import { pageHero, pageBody, stateGate } from "../sections/page-sections.js";
@@ -25,6 +26,23 @@ export default async function register(ctx) {
     go("dashboard.html");
     return null;
   }
+
+  if (new URLSearchParams(location.search).get("pay") === "return") {
+    // Back from the payment page: show a waiting screen; init() confirms the payment with the server.
+    return html`${pageHero({
+      eyebrow: "Nominations",
+      title: "Confirming your payment",
+      lead: "One moment please…",
+      crumbs: [{ label: "Register" }],
+    })}${pageBody(
+      html`<div id="regReturn" class="text-center py-5">
+        <div class="spinner-border text-warning" role="status"></div>
+        <p class="mt-3 mb-0">Confirming your payment…</p>
+      </div>`,
+      { width: "44rem" },
+    )}`;
+  }
+
   const hero = pageHero({
     eyebrow: "Nominations",
     title: "Register as a nominee",
@@ -124,7 +142,43 @@ export default async function register(ctx) {
   )}`;
 }
 
+async function finishRegistration(el) {
+  const back = new URLSearchParams(location.search);
+  const ref = back.get("tx_ref");
+  history.replaceState(null, "", location.pathname); // a refresh must not repeat this
+  if (back.get("status") === "cancelled" || !ref) {
+    await notify.warning(
+      "Payment cancelled",
+      "You have not been charged. You can try again.",
+    );
+    go("register.html");
+    return;
+  }
+  try {
+    const r = await confirmRegistration(ref);
+    if (r.signedIn) {
+      await notify.success(
+        "Welcome aboard!",
+        "Your payment is confirmed and your account is created.",
+      );
+      go("dashboard.html");
+    } else {
+      await notify.success(
+        "Payment confirmed",
+        r.note ?? "Your account is ready. Log in to continue.",
+      );
+      go("login.html");
+    }
+  } catch (err) {
+    await notify.warning("We couldn’t confirm your payment yet", err.message);
+    el.innerHTML =
+      '<p class="mb-0">Your registration will be completed automatically once the payment is confirmed. You can <a href="login.html">log in</a> in a few minutes.</p>';
+  }
+}
+
 export function init(root, ctx) {
+  const ret = root.querySelector("#regReturn");
+  if (ret) return finishRegistration(ret);
   const form = root.querySelector("#registerForm");
   if (!form) return;
   bindForm(form, {
@@ -143,7 +197,14 @@ export function init(root, ctx) {
       terms: [rules.required("You must accept to continue.")],
     },
     async onSubmit(values) {
-      await registerNominee({ ...values, occasionId: ctx.occasion.id });
+      const r = await registerNominee({
+        ...values,
+        occasionId: ctx.occasion.id,
+      });
+      if (r.paymentRequired) {
+        location.assign(r.paymentLink); // this edition charges a fee: go and pay
+        await new Promise(() => {}); // the browser is leaving
+      }
       await notify.success(
         "Welcome aboard!",
         "Your account is created and pending review.",
