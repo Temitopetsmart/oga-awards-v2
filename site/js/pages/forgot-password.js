@@ -96,6 +96,14 @@ export function init(root) {
   const notice = root.querySelector("#resetDemoNotice");
   const tokenOutput = root.querySelector("#resetDemoToken");
 
+  // The link in the reset email carries ?email=...&token=...: fill the form in for the person.
+  const linkParams = new URLSearchParams(location.search);
+  if (linkParams.get("token")) {
+    completeForm.elements.email.value = linkParams.get("email") || "";
+    completeForm.elements.token.value = linkParams.get("token");
+    history.replaceState(null, "", location.pathname); // do not leave the code in the address bar
+  }
+
   bindForm(requestForm, {
     schema: {
       email: [rules.required(), rules.email()],

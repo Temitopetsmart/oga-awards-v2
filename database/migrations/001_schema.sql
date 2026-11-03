@@ -57,6 +57,7 @@ CREATE TABLE occasions (
   icon         VARCHAR(60) NULL,
   enabled      TINYINT(1) NOT NULL DEFAULT 0,
   link_href    VARCHAR(255) NULL,
+  link_label   VARCHAR(100) NULL,
   description  TEXT NULL,
   actions      JSON NULL,
   UNIQUE KEY uq_occ (edition_id, slug),

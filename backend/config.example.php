@@ -18,9 +18,11 @@ return [
     'FLW_WEBHOOK_HASH' => '',
 
     // Email / SMTP (used from phase 7)
-    'SMTP_HOST'     => '',
+    'SMTP_HOST'     => 'smtp.gmail.com',
     'SMTP_PORT'     => '587',
-    'SMTP_USER'     => '',
-    'SMTP_PASSWORD' => '',
-    'MAIL_FROM'     => '',
+    'SMTP_USER'     => 'theprowriteservices@gmail.com',
+    'SMTP_PASSWORD' => 'owzdnjnntyehibdb',
+    'SMTP_SECURE'    => 'tls',   // 'tls' for port 587, 'ssl' for port 465
+    'MAIL_FROM'     => 'theprowriteservices@gmail.com',
+    'MAIL_FROM_NAME' => 'OGA Awards',
 ];

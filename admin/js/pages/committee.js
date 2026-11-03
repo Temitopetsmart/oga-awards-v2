@@ -1,40 +1,30 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
 import { rules } from "../../../shared/js/core/validate.js";
-import { store } from "../../../shared/js/core/store.js";
 import { getResource } from "../../../shared/js/core/http.js";
+import { mediaUrl } from "../../../shared/js/core/media.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
+import { COMMITTEE_STAGES } from "../../../shared/js/services/committee-recruitment.service.js";
 import {
-  COMMITTEE_STAGES,
-  listCommitteeApplications,
-  updateCommitteeApplication,
+  loadCommittee,
   getRecruitmentConfig,
+  listCommitteeApplications,
+  listCommitteeMembers,
+  listAddablePeople,
   saveRecruitmentConfig,
-  queueCommitteeNotification,
-} from "../../../shared/js/services/committee-recruitment.service.js";
-
-import { logAudit } from "../services/admin-store.js";
-import {
-  listPeople,
-  getPerson,
-  getRole,
-  listAssignments,
-  saveAssignments,
-  listAllAssignments,
-  upsertAssignment,
-  addPerson,
-  hasAdminAccess,
-} from "../services/team.repo.js";
-import { scoped } from "../services/scope.js";
+  applicationAction,
+  addCommitteeMember,
+  editCommitteeMember,
+  removeCommitteeMember,
+} from "../services/committee.api.js";
 
 export const title = "Committee";
 export const perm = "committee.view";
 export const crumbs = ["People", "Committee"];
-const APPS = "committee-applications";
 
 export default async function committee({ can }) {
   return html`<div class="card">
@@ -101,25 +91,28 @@ export default async function committee({ can }) {
   </div>`;
 }
 
-export async function init(root, { admin, edition, can }) {
+export async function init(root, { edition, can }) {
+  // Everything below reads from what the server returned; every change goes to the server and reloads it.
+  await loadCommittee(edition.id);
+
   const units = (await getResource("committee")).units;
   const unitName = (id) => units.find((u) => u.id === id)?.name ?? "—";
   const unitOptions = units.map((u) => ({ value: u.id, label: u.name }));
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  const fail = (e) => notify.failure(e);
 
-  /* ---- Members of this edition's committee */
   const members = () =>
-    listAssignments(edition.id)
-      .filter((a) => a.position)
-      .map((a) => {
-        const p = getPerson(a.personId);
-        return {
-          ...a,
-          name: p?.name ?? "(removed)",
-          unitName: unitName(a.unitId),
-          roles: a.roleIds.map((r) => getRole(r)?.name).filter(Boolean),
-          visibleKey: a.visible ? "live" : "hidden",
-        };
-      });
+    listCommitteeMembers().map((m) => ({
+      ...m,
+      unitName: unitName(m.unitId),
+      visibleKey: m.visible ? "live" : "hidden",
+    }));
+  const apps = () =>
+    listCommitteeApplications().map((a) => ({
+      ...a,
+      unitName: unitName(a.unitId),
+    }));
+
   const membersTable = new DataTable(root.querySelector("#membersTable"), {
     can,
     rows: members(),
@@ -138,15 +131,11 @@ export async function init(root, { admin, edition, can }) {
       },
       { key: "unitName", label: "Unit", sort: true },
       {
-        key: "roles",
+        key: "hasAccess",
         label: "Admin access",
         render: (m) =>
-          m.roles.length
-            ? html`<span class="oga-chips"
-                >${m.roles.map(
-                  (r) => html`<span class="oga-chip">${r}</span>`,
-                )}</span
-              >`
+          m.hasAccess
+            ? html`<span class="oga-chip">Has access</span>`
             : html`<span class="text-secondary">None</span>`,
       },
       {
@@ -170,69 +159,31 @@ export async function init(root, { admin, edition, can }) {
     onAction: (key, m) => memberHandlers[key](m),
   });
 
-  /* ---- Applications */
-
-  const apps = () =>
-    listCommitteeApplications(edition.id).map((application) => ({
-      ...application,
-      status: application.status ?? "submitted",
-      unitName: unitName(application.unitId),
-    }));
-
-  const patchApp = (application, patch, note = "") =>
-    updateCommitteeApplication(
-      application.id,
-      edition.id,
-      { ...patch, historyNote: note },
-      admin?.name ?? "Admin",
-    );
-
-  const queueNotice = (application, type, details = {}) =>
-    queueCommitteeNotification(application, type, details);
-
   const renderRecruitmentSummary = () => {
-    const config = getRecruitmentConfig(edition.id);
-    const rows = apps();
-    const count = (status) => rows.filter((a) => a.status === status).length;
-    const target = Number(config.targetApplicants || 100);
-
     const el = root.querySelector("#recruitmentSummary");
     if (!el) return;
-
-    el.innerHTML = `
-    <div class="row g-3 mb-3">
+    const rows = apps();
+    const count = (status) => rows.filter((a) => a.status === status).length;
+    const target = Number(getRecruitmentConfig().targetApplicants || 100);
+    const card = (label, value) => `
       <div class="col-6 col-lg-3">
         <div class="card card-body">
-          <small class="text-secondary">Applications</small>
-          <strong class="fs-4">${rows.length} / ${target}</strong>
+          <small class="text-secondary">${label}</small>
+          <strong class="fs-4">${value}</strong>
         </div>
-      </div>
-      <div class="col-6 col-lg-3">
-        <div class="card card-body">
-          <small class="text-secondary">Shortlisted</small>
-          <strong class="fs-4">${count("shortlisted")}</strong>
-        </div>
-      </div>
-      <div class="col-6 col-lg-3">
-        <div class="card card-body">
-          <small class="text-secondary">Approved</small>
-          <strong class="fs-4">${count("approved") + count("appointed")}</strong>
-        </div>
-      </div>
-      <div class="col-6 col-lg-3">
-        <div class="card card-body">
-          <small class="text-secondary">Reserve</small>
-          <strong class="fs-4">${count("reserve") + count("reconsideration")}</strong>
-        </div>
-      </div>
-    </div>
-  `;
+      </div>`;
+    el.innerHTML = `<div class="row g-3 mb-3">
+      ${card("Applications", `${rows.filter((a) => a.status !== "withdrawn").length} / ${target}`)}
+      ${card("Shortlisted", count("shortlisted"))}
+      ${card("Approved", count("approved") + count("appointed"))}
+      ${card("Reserve", count("reserve") + count("reconsideration"))}
+    </div>`;
   };
+
   const appsTable = new DataTable(root.querySelector("#appsTable"), {
     can,
     rows: apps(),
     searchKeys: ["name", "email", "department", "unitName"],
-
     filters: [
       {
         key: "status",
@@ -243,7 +194,6 @@ export async function init(root, { admin, edition, can }) {
         })),
       },
     ],
-
     columns: [
       {
         key: "name",
@@ -284,7 +234,6 @@ export async function init(root, { admin, edition, can }) {
           a.createdAt ? formatDate(a.createdAt, { dateStyle: "medium" }) : "—",
       },
     ],
-
     actions: [
       {
         key: "view",
@@ -315,7 +264,6 @@ export async function init(root, { admin, edition, can }) {
         perm: "committee.review",
         when: (a) => a.status === "screened" && a.screeningResult === "passed",
       },
-
       {
         key: "appoint",
         label: "Appoint to committee",
@@ -324,7 +272,6 @@ export async function init(root, { admin, edition, can }) {
         perm: "committee.review",
         when: (a) => a.status === "approved",
       },
-
       {
         key: "reserve",
         label: "Move to reserve list",
@@ -347,21 +294,23 @@ export async function init(root, { admin, edition, can }) {
         when: (a) => ["approved", "appointed"].includes(a.status),
       },
     ],
-
     empty:
       "No applications yet in this edition. They arrive from the Committee page on the public site.",
     onAction: (key, a) => appHandlers[key](a),
   });
 
-  const refreshMembers = () => membersTable.setRows(members());
-  const refreshApps = () => appsTable.setRows(apps());
+  const refreshAll = () => {
+    membersTable.setRows(members());
+    appsTable.setRows(apps());
+    renderRecruitmentSummary();
+  };
   renderRecruitmentSummary();
 
+  /* ---- Recruitment settings */
   root
     .querySelector("#recruitmentSettingsBtn")
     ?.addEventListener("click", () => {
-      const c = getRecruitmentConfig(edition.id);
-
+      const c = getRecruitmentConfig();
       openFormModal({
         title: "Recruitment settings",
         submitLabel: "Save recruitment settings",
@@ -375,72 +324,49 @@ export async function init(root, { admin, edition, can }) {
             name: "opensAt",
             label: "Applications open",
             type: "datetime-local",
-            value: c.opensAt,
           },
           {
             name: "closesAt",
             label: "Applications close",
             type: "datetime-local",
-            value: c.closesAt,
           },
           {
             name: "targetApplicants",
             label: "Expected applicant target",
             type: "number",
-            value: c.targetApplicants,
           },
-          {
-            name: "screeningDate",
-            label: "Screening date",
-            type: "date",
-            value: c.screeningDate,
-          },
-          {
-            name: "screeningTime",
-            label: "Screening time",
-            type: "time",
-            value: c.screeningTime,
-          },
-          {
-            name: "screeningVenue",
-            label: "Screening venue",
-            value: c.screeningVenue,
-          },
+          { name: "screeningDate", label: "Screening date", type: "date" },
+          { name: "screeningTime", label: "Screening time", type: "time" },
+          { name: "screeningVenue", label: "Screening venue" },
           {
             name: "screeningInstructions",
             label: "Screening instructions",
             type: "textarea",
-            value: c.screeningInstructions,
           },
           {
             name: "approvalMessage",
             label: "Approval message",
             type: "textarea",
-            value: c.approvalMessage,
           },
           {
             name: "onboardingMessage",
             label: "Onboarding instructions",
             type: "textarea",
-            value: c.onboardingMessage,
           },
           {
             name: "unsuccessfulMessage",
             label: "Unsuccessful application message",
             type: "textarea",
-            value: c.unsuccessfulMessage,
           },
           {
             name: "reserveMessage",
             label: "Reserve list message",
             type: "textarea",
-            value: c.reserveMessage,
           },
           {
             name: "whatsappGroupUrl",
             label: "Committee WhatsApp group link",
             type: "url",
-            value: c.whatsappGroupUrl,
           },
           {
             type: "switch",
@@ -449,9 +375,8 @@ export async function init(root, { admin, edition, can }) {
           },
           {
             name: "photoMaxSizeKB",
-            label: "Maximum photo size (KB)",
+            label: "Maximum photo size (KB, up to 5120)",
             type: "number",
-            value: c.photoMaxSizeKB,
           },
         ],
         values: c,
@@ -467,19 +392,20 @@ export async function init(root, { admin, edition, can }) {
           ],
         },
         async onSubmit(v) {
-          saveRecruitmentConfig(edition.id, {
+          await saveRecruitmentConfig(edition.id, {
             ...v,
             enabled: Boolean(v.enabled),
+            photoUploadsEnabled: Boolean(v.photoUploadsEnabled),
             targetApplicants: Number(v.targetApplicants),
+            photoMaxSizeKB: Number(v.photoMaxSizeKB),
           });
-
-          logAudit(admin, "Updated committee recruitment settings", edition.id);
           notify.toast("success", "Recruitment settings saved.");
           renderRecruitmentSummary();
         },
       });
     });
 
+  /* ---- Committee members */
   const positionFields = [
     {
       name: "position",
@@ -507,21 +433,20 @@ export async function init(root, { admin, edition, can }) {
         schema: positionSchema,
         values: m,
         async onSubmit(v) {
-          upsertAssignment(m.personId, edition.id, {
+          await editCommitteeMember(edition.id, m.id, {
             position: v.position.trim(),
             unitId: v.unitId,
-            visible: v.visible,
+            visible: Boolean(v.visible),
           });
-          logAudit(admin, "Edited committee member", m.name);
           notify.toast("success", "Member updated");
-          refreshMembers();
+          refreshAll();
         },
       }),
     async remove(m) {
       if (
         !(await notify.confirm({
           title: `Remove ${m.name}?`,
-          text: hasAdminAccess(m)
+          text: m.hasAccess
             ? "They leave the committee list but keep their admin access."
             : "They’ll disappear from this edition’s committee.",
           confirmText: "Remove",
@@ -529,17 +454,21 @@ export async function init(root, { admin, edition, can }) {
         }))
       )
         return;
-      if (hasAdminAccess(m))
-        upsertAssignment(m.personId, edition.id, {
-          position: "",
-          unitId: "",
-          visible: false,
-        });
-      else saveAssignments(listAllAssignments().filter((a) => a.id !== m.id));
-      logAudit(admin, "Removed committee member", m.name);
-      notify.toast("success", "Removed");
-      refreshMembers();
+      try {
+        await removeCommitteeMember(edition.id, m.id);
+        notify.toast("success", "Removed");
+        refreshAll();
+      } catch (e) {
+        fail(e);
+      }
     },
+  };
+
+  /* ---- Applications: every stage change is made (and checked) on the server */
+  const act = async (a, action, fields, message) => {
+    await applicationAction(edition.id, a.id, action, fields);
+    notify.toast("success", message);
+    refreshAll();
   };
 
   const appHandlers = {
@@ -549,7 +478,7 @@ export async function init(root, { admin, edition, can }) {
         body: html`
           ${a.photo
             ? html`<img
-                src="${a.photo}"
+                src="${mediaUrl(a.thumb || a.photo)}"
                 alt="${a.name}"
                 class="rounded mb-3"
                 style="width:120px;height:120px;object-fit:cover"
@@ -578,7 +507,11 @@ export async function init(root, { admin, edition, can }) {
             </div>
             <div>
               <dt>Screening result</dt>
-              <dd>${a.screeningResult ?? "Not recorded"}</dd>
+              <dd>
+                ${a.screeningResult ?? "Not recorded"}${a.screeningNote
+                  ? ` — ${a.screeningNote}`
+                  : ""}
+              </dd>
             </div>
           </dl>
           <h3 class="h6 mt-3">Motivation</h3>
@@ -588,8 +521,9 @@ export async function init(root, { admin, edition, can }) {
             ${(a.history ?? []).map(
               (item) => html`
                 <li>
-                  ${COMMITTEE_STAGES[item.stage] ?? item.stage} — ${item.at}
-                  ${item.note ? `: ${item.note}` : ""}
+                  ${COMMITTEE_STAGES[item.stage] ?? item.stage} —
+                  ${when(item.at)}
+                  (${item.actor})${item.note ? `: ${item.note}` : ""}
                 </li>
               `,
             )}
@@ -600,7 +534,7 @@ export async function init(root, { admin, edition, can }) {
     shortlist: (a) =>
       openFormModal({
         title: `Shortlist ${a.name}`,
-        submitLabel: "Shortlist and queue notification",
+        submitLabel: "Shortlist and email the applicant",
         fields: [
           {
             name: "note",
@@ -611,47 +545,12 @@ export async function init(root, { admin, edition, can }) {
           },
         ],
         async onSubmit(v) {
-          const config = getRecruitmentConfig(edition.id);
-
-          if (
-            !config.screeningDate ||
-            !config.screeningTime ||
-            !config.screeningVenue
-          ) {
-            throw new Error(
-              "Set the screening date, time and venue in Recruitment settings first.",
-            );
-          }
-
-          patchApp(
+          await act(
             a,
-            {
-              status: "shortlisted",
-              screening: {
-                date: config.screeningDate,
-                time: config.screeningTime,
-                venue: config.screeningVenue,
-                instructions: config.screeningInstructions,
-              },
-            },
-            "Shortlisted for screening",
+            "shortlist",
+            { note: v.note },
+            "Applicant shortlisted; email queued.",
           );
-
-          queueNotice(a, "shortlisted", {
-            date: config.screeningDate,
-            time: config.screeningTime,
-            venue: config.screeningVenue,
-            instructions: config.screeningInstructions,
-            message: v.note,
-          });
-
-          logAudit(admin, "Shortlisted committee applicant", a.name);
-          notify.toast(
-            "success",
-            "Applicant shortlisted; notification queued in demo.",
-          );
-          refreshApps();
-          renderRecruitmentSummary();
         },
       }),
 
@@ -674,103 +573,51 @@ export async function init(root, { admin, edition, can }) {
         ],
         schema: { result: [rules.required("Choose an outcome.")] },
         async onSubmit(v) {
-          if (v.result === "pending") {
-            patchApp(
-              a,
-              {
-                status: "shortlisted",
-                screeningResult: "pending",
-                screeningNote: v.note,
-              },
-              "Screening requires further review",
-            );
-          } else if (v.result === "passed") {
-            patchApp(
-              a,
-              {
-                status: "screened",
-                screeningResult: "passed",
-                screeningNote: v.note,
-              },
-              "Screening passed",
-            );
-          } else {
-            patchApp(
-              a,
-              {
-                status: "unsuccessful",
-                screeningResult: "failed",
-                screeningNote: v.note,
-              },
-              "Did not pass screening",
-            );
-
-            queueNotice(a, "unsuccessful", {
-              message: getRecruitmentConfig(edition.id).unsuccessfulMessage,
-            });
-          }
-
-          logAudit(admin, "Recorded committee screening result", a.name);
-          notify.toast("success", "Screening result saved.");
-          refreshApps();
-          renderRecruitmentSummary();
+          await act(
+            a,
+            "screen",
+            { result: v.result, note: v.note },
+            "Screening result saved.",
+          );
         },
       }),
 
-    approve: (a) =>
+    approve: (a) => {
+      const c = getRecruitmentConfig();
       openFormModal({
         title: `Approve ${a.name}`,
-        submitLabel: "Approve and queue notification",
+        submitLabel: "Approve and email the applicant",
         fields: [
           {
             name: "message",
             label: "Approval message",
             type: "textarea",
-            value: getRecruitmentConfig(edition.id).approvalMessage,
+            value: c.approvalMessage,
           },
           {
             name: "onboarding",
             label: "Onboarding instructions",
             type: "textarea",
-            value: getRecruitmentConfig(edition.id).onboardingMessage,
+            value: c.onboardingMessage,
           },
         ],
         async onSubmit(v) {
-          patchApp(
+          await act(
             a,
-            {
-              status: "approved",
-              decision: "approved",
-              decisionReason: v.message,
-              onboardingMessage: v.onboarding,
-            },
-            "Approved after screening",
+            "approve",
+            { message: v.message, onboarding: v.onboarding },
+            "Applicant approved; email queued.",
           );
-
-          queueNotice(a, "approved", {
-            message: v.message,
-            onboarding: v.onboarding,
-            whatsappGroupUrl: getRecruitmentConfig(edition.id).whatsappGroupUrl,
-          });
-
-          logAudit(admin, "Approved committee applicant", a.name);
-          notify.toast("success", "Approval notification queued in demo.");
-          refreshApps();
-          renderRecruitmentSummary();
         },
-      }),
+      });
+    },
 
     appoint: (a) =>
       openFormModal({
         title: `Appoint ${a.name}`,
         submitLabel: "Appoint to committee",
         fields: [
-          {
-            name: "position",
-            label: "Committee position",
-            required: true,
-            value: "",
-          },
+          { name: "position", label: "Committee position", required: true },
           {
             name: "unitId",
             label: "Committee unit",
@@ -783,84 +630,22 @@ export async function init(root, { admin, edition, can }) {
             label: "Show on the public Committee page",
           },
         ],
-        values: {
-          position: "",
-          unitId: a.unitId || "",
-          visible: true,
-        },
+        values: { position: "", unitId: a.unitId || "", visible: true },
         schema: {
           position: [rules.required(), rules.max(60)],
           unitId: [rules.required("Choose a committee unit.")],
         },
         async onSubmit(v) {
-          const existing = listPeople().find(
-            (person) =>
-              person.email &&
-              person.email.trim().toLowerCase() ===
-                a.email.trim().toLowerCase(),
-          );
-
-          const person =
-            existing ||
-            addPerson({
-              name: a.name,
-              email: a.email,
-              active: true,
-            });
-
-          if (existing && !existing.active) {
-            throw new Error(
-              "This person is inactive in Team & Access. Activate them before appointment.",
-            );
-          }
-
-          const currentAssignment = listAssignments(edition.id).find(
-            (assignment) => assignment.personId === person.id,
-          );
-
-          upsertAssignment(person.id, edition.id, {
-            position: v.position.trim(),
-            unitId: v.unitId,
-            visible: Boolean(v.visible),
-            roleIds: currentAssignment?.roleIds ?? [],
-            grants: currentAssignment?.grants ?? [],
-            denies: currentAssignment?.denies ?? [],
-          });
-
-          patchApp(
+          await act(
             a,
+            "appoint",
             {
-              status: "appointed",
-              decision: "appointed",
-              appointedAt: new Date().toISOString(),
-              appointedPersonId: person.id,
-              appointedPosition: v.position.trim(),
-              appointedUnitId: v.unitId,
+              position: v.position.trim(),
+              unitId: v.unitId,
+              visible: Boolean(v.visible),
             },
-            `Appointed as ${v.position.trim()}`,
+            "Applicant appointed; email queued.",
           );
-
-          queueNotice(a, "appointed", {
-            position: v.position.trim(),
-            unitId: v.unitId,
-            message:
-              "Congratulations. You have been appointed to the committee.",
-          });
-
-          logAudit(
-            admin,
-            "Appointed committee applicant",
-            `${a.name} · ${v.position.trim()}`,
-          );
-
-          notify.toast(
-            "success",
-            "Applicant appointed. Notification queued in demo.",
-          );
-
-          refreshMembers();
-          refreshApps();
-          renderRecruitmentSummary();
         },
       }),
 
@@ -873,25 +658,16 @@ export async function init(root, { admin, edition, can }) {
             name: "note",
             label: "Reserve message",
             type: "textarea",
-            value: getRecruitmentConfig(edition.id).reserveMessage,
+            value: getRecruitmentConfig().reserveMessage,
           },
         ],
         async onSubmit(v) {
-          patchApp(
+          await act(
             a,
-            {
-              status: "reserve",
-              decision: "reserve",
-              decisionReason: v.note,
-            },
-            "Placed on reserve list",
+            "reserve",
+            { note: v.note },
+            "Moved to the reserve list; email queued.",
           );
-
-          queueNotice(a, "reserve", { message: v.note });
-          logAudit(admin, "Placed committee applicant on reserve list", a.name);
-          notify.toast("success", "Reserve notification queued in demo.");
-          refreshApps();
-          renderRecruitmentSummary();
         },
       }),
 
@@ -908,59 +684,13 @@ export async function init(root, { admin, edition, can }) {
           },
         ],
         schema: { note: [rules.required()] },
-
         async onSubmit(v) {
-          const reason = String(v.note ?? "").trim();
-
-          if (!reason) {
-            throw new Error(
-              "Enter the reason for the withdrawal or forfeiture.",
-            );
-          }
-
-          patchApp(
+          await act(
             a,
-            {
-              status: "withdrawn",
-              decisionReason: reason,
-              withdrawnAt: new Date().toISOString(),
-            },
-            "Applicant withdrew or forfeited their position",
+            "reconsider",
+            { note: v.note },
+            "Applicant is being reconsidered.",
           );
-
-          if (a.appointedPersonId) {
-            const assignment = listAssignments(edition.id).find(
-              (item) => item.personId === a.appointedPersonId,
-            );
-
-            if (assignment) {
-              upsertAssignment(a.appointedPersonId, edition.id, {
-                position: "",
-                unitId: "",
-                visible: false,
-              });
-            }
-          }
-
-          queueNotice(a, "withdrawn", {
-            message: reason,
-            note: "Withdrawal notification queued in demo; no email sent.",
-          });
-
-          logAudit(
-            admin,
-            "Recorded committee withdrawal or forfeiture",
-            a.name,
-          );
-
-          notify.toast(
-            "success",
-            "Withdrawal recorded. Review the reserve list for a replacement.",
-          );
-
-          refreshMembers();
-          refreshApps();
-          renderRecruitmentSummary();
         },
       }),
 
@@ -978,33 +708,17 @@ export async function init(root, { admin, edition, can }) {
         ],
         schema: { note: [rules.required()] },
         async onSubmit(v) {
-          patchApp(
+          await act(
             a,
-            {
-              status: "withdrawn",
-              decisionReason: v.note,
-              withdrawnAt: new Date().toISOString(),
-            },
-            "Applicant withdrew or forfeited their position",
-          );
-
-          logAudit(admin, "Recorded committee withdrawal", a.name);
-          notify.toast(
-            "success",
+            "withdraw",
+            { note: v.note },
             "Withdrawal recorded. You can now consider reserve applicants.",
           );
-          refreshApps();
-          renderRecruitmentSummary();
         },
       }),
   };
 
-  root.querySelector("#addMember")?.addEventListener("click", () => {
-    const taken = new Set(
-      listAssignments(edition.id)
-        .filter((a) => a.position)
-        .map((a) => a.personId),
-    );
+  root.querySelector("#addMember")?.addEventListener("click", () =>
     openFormModal({
       title: "Add committee member",
       submitLabel: "Add member",
@@ -1016,9 +730,7 @@ export async function init(root, { admin, edition, can }) {
           required: true,
           options: [
             { value: "new", label: "+ A new person" },
-            ...listPeople()
-              .filter((p) => p.active && !taken.has(p.id))
-              .map((p) => ({ value: p.id, label: p.name })),
+            ...listAddablePeople().map((p) => ({ value: p.id, label: p.name })),
           ],
         },
         {
@@ -1040,19 +752,16 @@ export async function init(root, { admin, edition, can }) {
         ],
       },
       async onSubmit(v) {
-        const person =
-          v.personId === "new"
-            ? addPerson({ name: v.name })
-            : getPerson(v.personId);
-        upsertAssignment(person.id, edition.id, {
+        await addCommitteeMember(edition.id, {
+          personId: v.personId,
+          name: v.name,
           position: v.position.trim(),
           unitId: v.unitId,
-          visible: v.visible,
+          visible: Boolean(v.visible),
         });
-        logAudit(admin, "Added committee member", person.name);
         notify.toast("success", "Member added");
-        refreshMembers();
+        refreshAll();
       },
-    });
-  });
+    }),
+  );
 }

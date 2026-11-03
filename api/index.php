@@ -44,6 +44,14 @@ if (str_starts_with($path, '/admin/')) {
     App\AdminApi::handle($method, $path);
 }
 
+// ---- Committee recruitment (public) ----
+if ($method === 'GET' && $path === '/committee/recruitment') {
+    App\CommitteeApi::publicWindow();
+}
+if ($method === 'POST' && $path === '/committee/applications') {
+    App\CommitteeApi::apply();
+}
+
 // ---- Paying for votes (public) and the Flutterwave webhook ----
 if ($method === 'POST' && $path === '/votes/orders') {
     App\VoteApi::createOrder();

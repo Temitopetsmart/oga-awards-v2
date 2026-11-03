@@ -136,10 +136,9 @@ final class AccountApi
 
     public static function queue(string $type, string $email, array $payload): void
     {
-        self::pdo()->prepare('INSERT INTO notification_outbox (type, recipient, payload) VALUES (?, ?, ?)')
-            ->execute([$type, $email, json_encode($payload)]);
+        Outbox::queueAndSend($type, $email, $payload);
     }
-
+    
     /** In local development only, the one-time code is handed back so you can test without email. */
     private static function devToken(string $token): array
     {

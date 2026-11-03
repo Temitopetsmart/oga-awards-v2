@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS pending_registrations (
+  id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  reference     VARCHAR(80) NOT NULL,
+  edition_id    BIGINT UNSIGNED NOT NULL,
+  account_id    BIGINT UNSIGNED NULL,
+  email         VARCHAR(190) NOT NULL,
+  password_hash VARCHAR(255) NULL,
+  profile       JSON NOT NULL,
+  payment_id    BIGINT UNSIGNED NOT NULL,
+  status        ENUM('pending','completed','failed') NOT NULL DEFAULT 'pending',
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at  DATETIME NULL,
+  UNIQUE KEY uq_pr_ref (reference),
+  UNIQUE KEY uq_pr_payment (payment_id),
+  KEY ix_pr_email (email),
+  KEY fk_pr_edition (edition_id),
+  KEY fk_pr_account (account_id),
+  CONSTRAINT fk_pr_account FOREIGN KEY (account_id) REFERENCES accounts(id),
+  CONSTRAINT fk_pr_edition FOREIGN KEY (edition_id) REFERENCES editions(id),
+  CONSTRAINT fk_pr_payment FOREIGN KEY (payment_id) REFERENCES payments(id)
+) ENGINE=InnoDB;

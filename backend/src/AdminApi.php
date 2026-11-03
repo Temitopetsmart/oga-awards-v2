@@ -190,6 +190,24 @@ final class AdminApi
             TicketAdminApi::scanSummary();
         }
 
+        // ---- Committee recruitment ----
+        if ($method === 'GET' && $path === '/admin/committee') {
+            CommitteeApi::overview();
+        }
+        if ($method === 'PUT' && $path === '/admin/committee/config') {
+            CommitteeApi::saveConfig();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/committee/applications/(\d+)$#', $path, $m)) {
+            CommitteeApi::act((int) $m[1]);
+        }
+        if ($method === 'POST' && $path === '/admin/committee/members') {
+            CommitteeApi::addMember();
+        }
+        if (preg_match('#^/admin/committee/members/(\d+)$#', $path, $m)) {
+            $method === 'PATCH' && CommitteeApi::editMember((int) $m[1]);
+            $method === 'DELETE' && CommitteeApi::removeMember((int) $m[1]);
+        }
+
         Response::error('Not found', 404);
     }
 

@@ -66,6 +66,13 @@ final class InviteApi
         });
 
         Audit::log((int) $actor['id'], 'Created admin invitation', "$email · {$ed['name']} {$ed['edition_label']}", (int) $ed['id'], ['roles' => $slugs]);
+
+        Outbox::queueAndSend('admin_invitation', $email, [
+            'token'       => $token,
+            'editionName' => trim($ed['name'] . ' ' . $ed['edition_label']),
+            'expiresAt'   => (new \DateTimeImmutable($expires))->format('j M Y, g:i A'),
+        ], (int) $ed['id']);
+
         Response::json(['ok' => true, 'invitation' => [
             'id'        => (string) $id,
             'token'     => $token,                         // shown once; only the hash is stored

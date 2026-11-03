@@ -8,7 +8,6 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import { hasFeature } from "../../../shared/js/services/event.service.js";
 import {
   getApplicationWindow,
-  listCommitteeApplications,
   submitRecruitmentApplication,
 } from "../../../shared/js/services/committee-recruitment.service.js";
 import { pageHero, pageBody } from "../sections/page-sections.js";
@@ -21,45 +20,12 @@ const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((level) => ({
   label: level,
 }));
 
-function readPhoto(file, config) {
-  return new Promise((resolve, reject) => {
-    if (!file || !file.size) {
-      resolve("");
-      return;
-    }
-
-    if (!config.photoUploadsEnabled) {
-      reject(new Error("Photo uploads are currently disabled."));
-      return;
-    }
-
-    if (!config.allowedPhotoTypes.includes(file.type)) {
-      reject(new Error("Upload a JPG, PNG or WebP image."));
-      return;
-    }
-
-    if (file.size > Number(config.photoMaxSizeKB) * 1024) {
-      reject(
-        new Error(`Your photo must not exceed ${config.photoMaxSizeKB} KB.`),
-      );
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Could not read the photo."));
-    reader.readAsDataURL(file);
-  });
-}
-
 export default async function committee(ctx) {
   const data = await getCommittee(ctx.occasion.id);
-  const window = getApplicationWindow(ctx.occasion.id);
+  const window = await getApplicationWindow(ctx.occasion.id);
   const featureEnabled = hasFeature(ctx.occasion, "committeeRecruitment");
   const open = featureEnabled && window.open;
-  const applications = listCommitteeApplications(ctx.occasion.id);
-  const existingApplicationCount = applications.length;
+  const existingApplicationCount = window.received;
   const config = window.config;
 
   return html`
@@ -248,12 +214,15 @@ export function init(root, ctx) {
   const form = root.querySelector("#applyForm");
   if (!form) return;
 
-  const config = getApplicationWindow(ctx.occasion.id).config;
+  const configPromise = getApplicationWindow(ctx.occasion.id).then(
+    (w) => w.config,
+  );
   const photoInput = form.querySelector("#applicantPhoto");
   const preview = form.querySelector("#photoPreview");
 
-  photoInput?.addEventListener("change", () => {
+  photoInput?.addEventListener("change", async () => {
     const file = photoInput.files?.[0];
+    const config = await configPromise;
 
     if (!file) {
       preview?.classList.add("d-none");
@@ -290,7 +259,7 @@ export function init(root, ctx) {
     },
 
     async onSubmit(values) {
-      const latestWindow = getApplicationWindow(ctx.occasion.id);
+      const latestWindow = await getApplicationWindow(ctx.occasion.id);
 
       if (!latestWindow.open) {
         throw new Error(
@@ -298,21 +267,17 @@ export function init(root, ctx) {
         );
       }
 
-      const file = photoInput?.files?.[0];
-      const photo = await readPhoto(file, latestWindow.config);
-
-      submitRecruitmentApplication({
-        ...values,
-        photo: photo || null,
-        editionId: ctx.occasion.id,
-      });
+      await submitRecruitmentApplication(
+        { ...values, editionId: ctx.occasion.id },
+        photoInput?.files?.[0],
+      );
 
       form.reset();
       preview?.classList.add("d-none");
 
       await notify.success(
         "Application submitted",
-        "Your application has been recorded. An application confirmation is queued in this demo; no real email has been sent yet.",
+        "Your application has been received. A confirmation will be sent to the email address you gave.",
       );
     },
   });
