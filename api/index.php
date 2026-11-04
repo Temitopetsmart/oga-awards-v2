@@ -44,6 +44,11 @@ if (str_starts_with($path, '/admin/')) {
     App\AdminApi::handle($method, $path);
 }
 
+// ---- Contact form (public) ----
+if ($method === 'POST' && $path === '/contact') {
+    App\MessagesApi::submit();
+}
+
 // ---- Committee recruitment (public) ----
 if ($method === 'GET' && $path === '/committee/recruitment') {
     App\CommitteeApi::publicWindow();

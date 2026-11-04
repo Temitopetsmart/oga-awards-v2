@@ -1,16 +1,14 @@
 import { ROOT } from "../../../shared/js/config/app.config.js";
 import { html } from "../../../shared/js/core/dom.js";
 import { money, number, formatDate } from "../../../shared/js/core/format.js";
-import { store } from "../../../shared/js/core/store.js";
 import { loadScript } from "../../../shared/js/core/load.js";
 import { getHomeContext } from "../../../shared/js/services/event.service.js";
 import { statCard } from "../components/stat-card.js";
 import { statusBadge } from "../components/badges.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
-import { getAudit } from "../services/admin-store.js";
+import { adminApi } from "../services/admin-api.js";
 import { editionLabel } from "../services/edition.repo.js";
-import { scoped } from "../services/scope.js";
 
 export const title = "Dashboard";
 export const perm = "dashboard.view";
@@ -21,35 +19,23 @@ const CHART_JS =
 let chartData = { labels: [], values: [] };
 
 export default async function dashboard({ edition, can, admin }) {
-  const [pub, nominees, cats] = await Promise.all([
+  const [pub, nominees, cats, stats] = await Promise.all([
     getHomeContext(),
     listNominees(),
     listCategories(),
+    adminApi(`/admin/dashboard?edition=${encodeURIComponent(edition.id)}`),
   ]);
-  const paidVotes = scoped(store.get("vote-orders", [])).filter(
-    (o) => o.status === "paid",
-  );
-  const ticketOrders = scoped(store.get("ticket-orders", [])).filter(
-    (o) => o.status === "paid",
-  );
-  const apps = scoped(store.get("committee-applications", []));
-  const messages = scoped(store.get("contact-messages", []));
   const pending = nominees.filter((n) => n.status === "pending");
 
-  const byCat = {};
-  paidVotes.forEach((o) => {
-    byCat[o.categoryId] = (byCat[o.categoryId] ?? 0) + o.votes;
-  });
+  const byCat = Object.fromEntries(
+    (stats.byCategory ?? []).map((c) => [c.categoryId, c.votes]),
+  );
   chartData = {
     labels: cats.filter((c) => byCat[c.id]).map((c) => c.name),
     values: cats.filter((c) => byCat[c.id]).map((c) => byCat[c.id]),
   };
-  const votes = paidVotes.reduce((s, o) => s + o.votes, 0);
-  const activity = can("audit.view")
-    ? getAudit()
-        .filter((a) => a.editionId === edition.id || !a.editionId)
-        .slice(0, 6)
-    : [];
+  const votes = stats.votes ?? 0;
+  const activity = stats.activity ?? [];
   const isLive = pub.occasion.id === edition.id;
 
   const tiles = [
@@ -70,7 +56,7 @@ export default async function dashboard({ edition, can, admin }) {
           label: "Paid votes",
           value: number(votes),
           sub: can("finance.view")
-            ? `${money(paidVotes.reduce((s, o) => s + o.amount, 0))} collected`
+            ? `${money(stats.voteAmount ?? 0)} collected`
             : "",
         })}
       </div>`,
@@ -79,9 +65,9 @@ export default async function dashboard({ edition, can, admin }) {
         ${statCard({
           icon: "fa-ticket",
           label: "Tickets sold",
-          value: number(ticketOrders.reduce((s, o) => s + o.qty, 0)),
+          value: number(stats.ticketsSold ?? 0),
           sub: can("finance.view")
-            ? `${money(ticketOrders.reduce((s, o) => s + o.amount, 0))} revenue`
+            ? `${money(stats.ticketRevenue ?? 0)} revenue`
             : "",
         })}
       </div>`,
@@ -92,8 +78,8 @@ export default async function dashboard({ edition, can, admin }) {
           label: "Categories",
           value: number(cats.length),
           sub: [
-            can("committee.view") && `${apps.length} applications`,
-            can("messages.view") && `${messages.length} messages`,
+            can("committee.view") && `${stats.applications ?? 0} applications`,
+            can("messages.view") && `${stats.messages ?? 0} messages`,
           ]
             .filter(Boolean)
             .join(" · "),

@@ -1,18 +1,29 @@
-import { store, delay, uid } from "../core/store.js";
+import { userError } from "../core/store.js";
+import { APP } from "../config/app.config.js";
 
-/** DEMO adapter for simple submissions. Replace with PHP API calls later; keep the signatures. */
-const save = async (key, prefix, data) => {
-  await delay(600);
-  const record = {
-    id: uid(prefix),
-    ...data,
-    createdAt: new Date().toISOString(),
-  };
-  store.set(key, [...store.get(key, []), record]);
-  return record;
-};
-
-export const submitCommitteeApplication = (data) =>
-  save("committee-applications", "APP-", data);
-export const sendContactMessage = (data) =>
-  save("contact-messages", "MSG-", data);
+/** The public contact form, sent to the PHP backend. The server validates it again and limits how often one connection can send. */
+export async function sendContactMessage(data) {
+  let res;
+  try {
+    res = await fetch(`${APP.data.apiBase}/contact`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(data),
+    });
+  } catch {
+    throw userError("Could not reach the server. Check your connection.");
+  }
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* not JSON */
+  }
+  if (!res.ok || json?.ok === false)
+    throw userError(json?.error ?? "Something went wrong. Please try again.");
+  return json;
+}

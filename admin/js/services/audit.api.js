@@ -15,6 +15,14 @@ export const recordAuditExport = () =>
     body: { edition: viewing() },
   }).catch(() => {});
 
+/** Things the browser does by itself (CSV exports, previewing a nominee dashboard): the server checks the permission and logs them. */
+export const recordActivity = (kind, target = "") =>
+  adminApi("/admin/activity", {
+    method: "POST",
+    body: { edition: viewing(), kind, target },
+    keepalive: true,
+  }).catch(() => {});
+
 /** "View as…" previews: action is "start" or "stop"; target looks like "role:role-editor" or "person:12". */
 export const logPreview = (action, target = "") =>
   adminApi("/admin/preview", {

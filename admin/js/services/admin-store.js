@@ -1,5 +1,6 @@
 import { getSeed } from "../../../shared/js/core/http.js";
 import { store, uid } from "../../../shared/js/core/store.js";
+import { recordActivity } from "./audit.api.js";
 
 /**
  * DEMO data store for the admin (localStorage). Each collection is seeded once from a
@@ -51,22 +52,11 @@ export function collection(name, { seed = null, prefix = "ID-" } = {}) {
   };
 }
 
-/* Audit trail: who did what, in which edition, newest first (capped). */
-const AUDIT = "admin:audit";
-export function logAudit(
-  admin,
-  action,
-  target = "",
-  editionId = store.get("admin:viewing") ?? null,
-) {
-  const entry = {
-    id: uid("AUD-"),
-    at: new Date().toISOString(),
-    admin: admin?.name ?? "System",
-    action,
-    target,
-    editionId,
-  };
-  store.set(AUDIT, [entry, ...store.get(AUDIT, [])].slice(0, 1000));
+/* The audit trail lives on the server, which records every change itself. The only thing the browser still
+   reports is previewing a nominee's dashboard (CSV exports are reported from main.js). Everything else is a no-op. */
+const BROWSER_SIDE = { "Previewed nominee dashboard": "preview:nominee" };
+export function logAudit(admin, action, target = "") {
+  const kind = BROWSER_SIDE[action];
+  if (kind) recordActivity(kind, target);
 }
-export const getAudit = () => store.get(AUDIT, []);
+export const getAudit = () => [];

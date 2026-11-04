@@ -190,6 +190,21 @@ final class AdminApi
             TicketAdminApi::scanSummary();
         }
 
+        // ---- Dashboard, messages, activity log ----
+        if ($method === 'GET' && $path === '/admin/dashboard') {
+            DashboardApi::stats();
+        }
+        if ($method === 'POST' && $path === '/admin/activity') {
+            DashboardApi::record();
+        }
+        if ($method === 'GET' && $path === '/admin/messages') {
+            MessagesApi::list();
+        }
+        if (preg_match('#^/admin/messages/(\d+)$#', $path, $m)) {
+            $method === 'PATCH' && MessagesApi::update((int) $m[1]);
+            $method === 'DELETE' && MessagesApi::delete((int) $m[1]);
+        }
+
         // ---- Committee recruitment ----
         if ($method === 'GET' && $path === '/admin/committee') {
             CommitteeApi::overview();
@@ -320,8 +335,14 @@ final class AdminApi
             }
         }
 
+        $badges = [];
+        foreach ($allowedIds as $id) {
+            $badges[$slugById[$id]] = DashboardApi::badges($person, $id);
+        }
+
         return [
             'pendingNominees' => (object) $pending,
+            'badges' => (object) array_map(fn ($b) => (object) $b, $badges),
             'authenticated' => true,
             'csrf'          => Session::csrf(),
             'person'        => [

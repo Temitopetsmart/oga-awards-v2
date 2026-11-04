@@ -1,17 +1,19 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
-import { store } from "../../../shared/js/core/store.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openInfoModal } from "../components/modal.js";
-import { logAudit } from "../services/admin-store.js";
-import { scoped } from "../services/scope.js";
+import {
+  loadMessages,
+  listMessages,
+  setMessageRead,
+  deleteMessage,
+} from "../services/messages.api.js";
 
 export const title = "Messages";
 export const perm = "messages.view";
 export const crumbs = ["People", "Messages"];
-const KEY = "contact-messages";
 
 export default async function messages() {
   return html`<div class="card">
@@ -22,17 +24,13 @@ export default async function messages() {
   </div>`;
 }
 
-export async function init(root, { admin, can }) {
+export async function init(root, { edition, can }) {
+  await loadMessages(edition.id);
   const rows = () =>
-    scoped(store.get(KEY, []))
-      .map((m) => ({ ...m, status: m.read ? "read" : "unread" }))
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const patch = (id, p) =>
-    store.set(
-      KEY,
-      store.get(KEY, []).map((m) => (m.id === id ? { ...m, ...p } : m)),
-    );
+    listMessages().map((m) => ({ ...m, status: m.read ? "read" : "unread" }));
   const manage = can("messages.manage");
+  const fail = (e) => notify.failure(e);
+
   const table = new DataTable(root.querySelector("#msgTable"), {
     can,
     rows: rows(),
@@ -112,12 +110,18 @@ export async function init(root, { admin, can }) {
     onAction: (key, m) => handlers[key](m),
   });
   const refresh = () => table.setRows(rows());
+
+  const mark = async (m, read) => {
+    try {
+      await setMessageRead(edition.id, m.id, read);
+      refresh();
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   const handlers = {
-    view(m) {
-      if (manage) {
-        patch(m.id, { read: true });
-        refresh();
-      }
+    async view(m) {
       openInfoModal({
         title: m.subject,
         body: html`<p class="text-secondary mb-3">
@@ -125,16 +129,13 @@ export async function init(root, { admin, can }) {
           </p>
           <p style="white-space:pre-wrap">${m.message}</p>`,
       });
+      if (manage && !m.read) await mark(m, true);
     },
-    reply(m) {
-      patch(m.id, { read: true });
-      refresh();
+    async reply(m) {
+      if (!m.read) await mark(m, true);
       window.location.href = `mailto:${encodeURIComponent(m.email).replace("%40", "@")}?subject=${encodeURIComponent(`Re: ${m.subject}`)}`;
     },
-    toggle(m) {
-      patch(m.id, { read: !m.read });
-      refresh();
-    },
+    toggle: (m) => mark(m, !m.read),
     async delete(m) {
       if (
         !(await notify.confirm({
@@ -145,13 +146,13 @@ export async function init(root, { admin, can }) {
         }))
       )
         return;
-      store.set(
-        KEY,
-        store.get(KEY, []).filter((x) => x.id !== m.id),
-      );
-      logAudit(admin, "Deleted message", m.subject);
-      notify.toast("success", "Deleted");
-      refresh();
+      try {
+        await deleteMessage(edition.id, m.id);
+        notify.toast("success", "Deleted");
+        refresh();
+      } catch (e) {
+        fail(e);
+      }
     },
   };
 }

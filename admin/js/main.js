@@ -21,7 +21,7 @@ import {
   listPeople,
   listRoles,
 } from "./services/team.repo.js";
-import { logPreview } from "./services/audit.api.js";
+import { logPreview, recordActivity } from "./services/audit.api.js";
 import { buildAccess } from "./core/access.js";
 import { renderShell, setPageHeader } from "./core/layout.js";
 import { openFormModal } from "./components/modal.js";
@@ -36,6 +36,18 @@ import { rules } from "../../shared/js/core/validate.js";
  */
 const page = document.body.dataset.page;
 const root = document.getElementById("admin-root");
+
+// Every CSV export is recorded on the server (the server checks the person may export that data).
+const EXPORTS = {
+  "oga-nominees.csv": "nominees",
+  "oga-votes.csv": "votes",
+  "oga-ticket-orders.csv": "tickets",
+  "oga-results.csv": "results",
+};
+document.addEventListener("oga:export", (e) => {
+  const kind = EXPORTS[e.detail?.filename];
+  if (kind) recordActivity(`export:${kind}`);
+});
 
 await restoreSession();
 const person = currentAdmin();

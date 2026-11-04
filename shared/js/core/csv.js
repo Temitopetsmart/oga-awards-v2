@@ -27,5 +27,8 @@ export function downloadCsv(filename, rows, columns) {
   document.body.append(a);
   a.click();
   a.remove();
+  document.dispatchEvent(
+    new CustomEvent("oga:export", { detail: { filename } }),
+  ); // the admin logs exports on the server
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
