@@ -15,7 +15,8 @@ use App\Mailer;
 use App\Outbox;
 
 if (!Mailer::configured()) {
-    exit("Email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SECURE and MAIL_FROM in backend/config.php\n");
+    exit("Email is not configured. Check the SMTP settings in the admin dashboard.\n");
 }
+
 $r = Outbox::sendPending(100);
 echo "Sent: {$r['sent']}  Failed: {$r['failed']}  Expired: {$r['expired']}  Skipped: {$r['skipped']}\n";

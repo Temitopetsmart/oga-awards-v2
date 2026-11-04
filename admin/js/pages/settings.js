@@ -1,4 +1,4 @@
-import { html } from "../../../shared/js/core/dom.js";
+import { html, esc } from "../../../shared/js/core/dom.js";
 import { APP, STATES } from "../../../shared/js/config/app.config.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { store } from "../../../shared/js/core/store.js";
@@ -305,6 +305,29 @@ export default async function settings({ edition: ed, can, access }) {
                 col: "col-md-4",
               })}
               ${field({
+                label: "SMTP encryption",
+                name: "smtpEncryption",
+                options: [
+                  { value: "tls", label: "TLS (usually port 587)" },
+                  { value: "ssl", label: "SSL (usually port 465)" },
+                  { value: "none", label: "None" },
+                ],
+                value: s.communications?.smtpEncryption ?? "tls",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "SMTP password",
+                name: "smtpPassword",
+                type: "password",
+                value: "",
+                autocomplete: "new-password",
+                placeholder: "Enter a new SMTP password",
+                help: s.communications?.smtpPasswordConfigured
+                  ? "A password is already saved. Leave blank to keep the existing password."
+                  : "Enter your SMTP password to enable authenticated delivery.",
+                col: "col-md-6",
+              })}
+              ${field({
                 label: "Sender name",
                 name: "fromName",
                 value: s.communications?.fromName ?? "OGA Awards",
@@ -326,12 +349,10 @@ export default async function settings({ edition: ed, can, access }) {
               })}
             </div>
 
-            <div class="alert alert-warning">
-              <strong>Security:</strong> SMTP passwords, email API keys and
-              payment gateway secrets must be stored on the server, not in
-              browser storage. This page saves non-secret configuration only. A
-              backend connection and server-side secret configuration are
-              required before emails can actually be sent.
+            <div class="alert alert-info">
+              SMTP credentials are stored securely on the server. The password
+              is encrypted before it is saved and is never sent back to this
+              page. Leave the password field blank to keep the current password.
             </div>
 
             <h3 class="h6 mt-4">WhatsApp and onboarding</h3>
@@ -470,7 +491,7 @@ export async function init(root, { admin, edition: ed, can }) {
     const o = getEdition(ed.id);
     const el = root.querySelector("#liveState");
     if (o.status !== "active") {
-      el.innerHTML = `<strong>${editionLabel(o)}</strong> is <em>${o.status}</em>, so the public site isn’t following it. These dates take effect once it’s the active edition.`;
+      el.innerHTML = `<strong>${esc(editionLabel(o))}</strong> is <em>${o.status}</em>, so the public site isn’t following it. These dates take effect once it’s the active edition.`;
       return;
     }
     const { state, source } = resolveState(o, { allowPreview: false });
@@ -648,6 +669,8 @@ export async function init(root, { admin, edition: ed, can }) {
           smtpHost: v.smtpHost.trim(),
           smtpPort: v.smtpPort,
           smtpUsername: v.smtpUsername.trim(),
+          smtpEncryption: v.smtpEncryption,
+          smtpPassword: v.smtpPassword,
           fromName: v.fromName.trim(),
           fromEmail: v.fromEmail.trim(),
           replyTo: v.replyTo.trim(),

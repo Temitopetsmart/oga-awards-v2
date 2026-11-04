@@ -83,7 +83,15 @@ final class Outbox
 
         $comms = self::communications();
         try {
-            Mailer::send((string) $row['recipient'], $msg['subject'], $msg['html'], $msg['text'], $comms['replyTo'] ?? null, $comms['fromName'] ?? null);
+            Mailer::send(
+                (string) $row['recipient'],
+                $msg['subject'],
+                $msg['html'],
+                $msg['text'],
+                $comms['replyTo'] ?? null,
+                $comms['fromName'] ?? null,
+                $comms['fromEmail'] ?? null
+            );
         } catch (\Throwable $e) {
             $attempts = (int) $row['attempts'] + 1;
             $reason   = mb_substr($e->getMessage(), 0, 480);

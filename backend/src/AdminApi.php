@@ -27,6 +27,11 @@ final class AdminApi
             self::me();
         }
 
+        // Everything below needs a signed-in admin. Checked once, here, before any route looks at the request.
+        if (Auth::person() === null) {
+            Response::error('Please sign in.', 401);
+        }
+
         // ---- team, access and roles ----
         if ($method === 'POST' && $path === '/admin/people') {
             TeamApi::addPerson();

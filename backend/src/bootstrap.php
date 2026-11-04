@@ -15,7 +15,8 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
-Env::load(dirname(__DIR__) . '/config.php');
+// OGA_CONFIG lets the automated tests (tests/run.php) point at a separate test database. Leave it unset normally.
+Env::load((string) (getenv('OGA_CONFIG') ?: dirname(__DIR__) . '/config.php'));
 
 date_default_timezone_set(Env::get('APP_TIMEZONE', 'Africa/Lagos'));
 $debug = Env::bool('APP_DEBUG', false);

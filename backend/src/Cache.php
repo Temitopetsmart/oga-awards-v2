@@ -11,7 +11,7 @@ final class Cache
 {
     private static function dir(): string
     {
-        $dir = dirname(__DIR__) . '/storage/cache';
+                $dir = (string) (Env::get('CACHE_DIR') ?: dirname(__DIR__) . '/storage/cache');   // CACHE_DIR is only set by the tests
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }

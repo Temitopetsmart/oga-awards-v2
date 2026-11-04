@@ -23,7 +23,7 @@ final class Photos
 
     public static function root(): string
     {
-        return dirname(__DIR__, 2) . '/uploads';
+                return (string) (Env::get('UPLOAD_DIR') ?: dirname(__DIR__, 2) . '/uploads');   // UPLOAD_DIR is only set by the tests
     }
 
     /** "uploads/x/ab/c0ffee.webp" -> "uploads/x/ab/c0ffee_t.webp" */

@@ -6,51 +6,84 @@ namespace App;
 use PHPMailer\PHPMailer\Exception as MailException;
 use PHPMailer\PHPMailer\PHPMailer;
 
-/** Sends one email through SMTP. Credentials come only from backend/config.php. */
 final class Mailer
 {
     public static function configured(): bool
     {
-        return (string) Env::get('SMTP_HOST', '') !== '' && (string) Env::get('MAIL_FROM', '') !== '';
+        return SmtpSettings::configured();
     }
 
-    /** @throws \RuntimeException when the message could not be sent */
-    public static function send(string $to, string $subject, string $html, string $text, ?string $replyTo = null, ?string $fromName = null): void
-    {
+    public static function send(
+        string $to,
+        string $subject,
+        string $html,
+        string $text,
+        ?string $replyTo = null,
+        ?string $fromName = null,
+        ?string $fromEmail = null
+    ): void {
         if (!self::configured()) {
-            throw new \RuntimeException('Email is not configured (SMTP_HOST and MAIL_FROM in backend/config.php).');
-        }
-        $lib = dirname(__DIR__) . '/lib/PHPMailer/src/';
-        foreach (['Exception', 'PHPMailer', 'SMTP'] as $f) {
-            require_once $lib . $f . '.php';
+            throw new \RuntimeException(
+                'Email is not configured. Check the SMTP settings in the admin dashboard.'
+            );
         }
 
-        $m = new PHPMailer(true);
+        $smtp = SmtpSettings::connection();
+
+        $lib = dirname(__DIR__) . '/lib/PHPMailer/src/';
+
+        foreach (['Exception', 'PHPMailer', 'SMTP'] as $file) {
+            require_once $lib . $file . '.php';
+        }
+
+        $mail = new PHPMailer(true);
+
         try {
-            $m->isSMTP();
-            $m->Host       = (string) Env::get('SMTP_HOST');
-            $m->Port       = (int) Env::get('SMTP_PORT', '587');
-            $user          = (string) Env::get('SMTP_USER', '');
-            $m->SMTPAuth   = $user !== '';
-            $m->Username   = $user;
-            $m->Password   = (string) Env::get('SMTP_PASSWORD', '');
-            $secure        = strtolower((string) Env::get('SMTP_SECURE', 'tls'));
-            $m->SMTPSecure = $secure === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : ($secure === 'tls' ? PHPMailer::ENCRYPTION_STARTTLS : '');
-            $m->SMTPAutoTLS = $secure === 'tls';
-            $m->Timeout    = 10;
-            $m->CharSet    = 'UTF-8';
-            $m->setFrom((string) Env::get('MAIL_FROM'), $fromName ?: (string) Env::get('MAIL_FROM_NAME', 'OGA Awards'));
-            if ($replyTo) {
-                $m->addReplyTo($replyTo);
+            $mail->isSMTP();
+            $mail->Host = $smtp['host'];
+            $mail->Port = $smtp['port'];
+
+            $mail->SMTPAuth = $smtp['username'] !== '';
+            $mail->Username = $smtp['username'];
+            $mail->Password = $smtp['password'];
+
+            $secure = strtolower($smtp['encryption']);
+
+            $mail->SMTPSecure = match ($secure) {
+                'ssl' => PHPMailer::ENCRYPTION_SMTPS,
+                'tls' => PHPMailer::ENCRYPTION_STARTTLS,
+                default => '',
+            };
+
+            $mail->SMTPAutoTLS = $secure === 'tls';
+            $mail->Timeout = 10;
+            $mail->CharSet = 'UTF-8';
+
+            if (!$fromEmail || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                throw new \RuntimeException('A valid sender email is required.');
             }
-            $m->addAddress($to);
-            $m->isHTML(true);
-            $m->Subject = $subject;
-            $m->Body    = $html;
-            $m->AltBody = $text;
-            $m->send();
+
+            $mail->setFrom(
+                $fromEmail,
+                $fromName ?: 'OGA Awards'
+            );
+
+            if ($replyTo && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($replyTo);
+            }
+
+            $mail->addAddress($to);
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = $html;
+            $mail->AltBody = $text;
+
+            $mail->send();
+
         } catch (MailException $e) {
-            throw new \RuntimeException($m->ErrorInfo !== '' ? $m->ErrorInfo : $e->getMessage());
+            throw new \RuntimeException(
+                $mail->ErrorInfo !== '' ? $mail->ErrorInfo : $e->getMessage()
+            );
         }
     }
 }

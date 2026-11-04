@@ -33,13 +33,24 @@ final class SettingsApi
         return ['contact' => $s['contact'] ?? new \stdClass(), 'social' => $s['social'] ?? []];
     }
 
-    public static function read(): never
-    {
+    public static function read(): never {
         Access::require('settings.view', (string) ($_GET['edition'] ?? ''));
-        $s = self::all();
-        Response::json(['ok' => true, 'settings' => array_map(fn ($k) => $s[$k] ?? null, array_combine(self::SECTIONS, self::SECTIONS))]);
-    }
 
+        $s = self::all();
+
+        $settings = array_map(
+            fn ($k) => $s[$k] ?? null,
+            array_combine(self::SECTIONS, self::SECTIONS)
+        );
+
+        // Return SMTP connection details without ever returning the password.
+        $settings['communications'] = array_merge(
+            (array) ($settings['communications'] ?? []),
+            SmtpSettings::publicSettings()
+        );
+
+        Response::json(['ok' => true, 'settings' => $settings]);
+    }
     private static function email(array $in, string $key, bool $required = false): string
     {
         $v = mb_strtolower(Request::str($in, $key, 190));
@@ -83,36 +94,31 @@ final class SettingsApi
 
             case 'communications':
                 $mode = (string) ($v['emailMode'] ?? '');
+
                 if (!in_array($mode, ['smtp', 'domain', 'api'], true)) {
                     self::fail('Choose an email delivery method.');
                 }
-                $port = (string) ($v['smtpPort'] ?? '');
-                if ($mode === 'smtp' && (!ctype_digit($port) || (int) $port < 1 || (int) $port > 65535)) {
-                    self::fail('Enter a valid SMTP port.');
-                }
-                $host = Request::str($v, 'smtpHost', 190);
-                if ($host !== '' && !preg_match('/^[A-Za-z0-9.-]+$/', $host)) {
-                    self::fail('Enter a valid SMTP host name.');
-                }
+
                 $out = [
                     'emailMode'        => $mode,
-                    'smtpHost'         => $host,
-                    'smtpPort'         => $port,
-                    'smtpUsername'     => Request::str($v, 'smtpUsername', 190),
                     'fromName'         => Request::str($v, 'fromName', 100),
                     'fromEmail'        => self::email($v, 'fromEmail'),
                     'replyTo'          => self::email($v, 'replyTo'),
                     'whatsappGroupUrl' => self::https($v, 'whatsappGroupUrl'),
                 ];
+
                 foreach (self::TEMPLATES as $t) {
                     $text = (string) ($v[$t] ?? '');
+
                     if (mb_strlen($text) > 4000) {
                         self::fail('A message template can be at most 4000 characters.');
                     }
+
                     $out[$t] = $text;
                 }
-                return $out;
 
+                return $out;
+                
             case 'gateway':
                 $provider = (string) ($v['provider'] ?? '');
                 $env = (string) ($v['environment'] ?? '');
@@ -141,7 +147,17 @@ final class SettingsApi
         if ($section === 'gateway' && (int) $actor['is_super_admin'] !== 1) {
             self::fail('Only a Super admin can change payment gateway preferences.', 403);
         }
-        $value = self::clean($section, (array) ($in['value'] ?? []));
+        $inputValue = (array) ($in['value'] ?? []);
+
+            $value = self::clean($section, $inputValue);
+
+            if ($section === 'communications') {
+                try {
+                    SmtpSettings::save($inputValue, (int) $actor['id']);
+                } catch (\InvalidArgumentException $e) {
+                    self::fail($e->getMessage());
+                }
+            }
         Database::pdo()->prepare(
             'INSERT INTO site_settings (setting_key, value, updated_by) VALUES (?, ?, ?)
              ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)'
