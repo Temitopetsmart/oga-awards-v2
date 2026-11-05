@@ -120,7 +120,7 @@ final class VoteApi
         try {
             $link = Flutterwave::createPayment([
                 'reference' => $reference, 'amount' => $amount, 'currency' => $currency, 'email' => $email, 'name' => $name,
-                'redirectUrl' => self::appUrl() . 'vote.html?pay=return', 'purpose' => 'vote',
+                'redirectUrl' => self::appUrl() . 'vote?pay=return', 'purpose' => 'vote',
                 'title' => $ed['name'] . ' ' . $ed['edition_label'] . ' — votes', 'description' => "$votes vote(s) for {$nominee['name']}",
             ]);
         } catch (GatewayException $e) {

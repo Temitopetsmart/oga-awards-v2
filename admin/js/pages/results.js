@@ -46,7 +46,7 @@ export default async function results({ edition, can }) {
         edition’s state is “Winners
         announced”${can("settings.view")
           ? html` (change it in
-              <a href="${ROOT}admin/settings.html">Settings</a>)`
+              <a href="${ROOT}admin/settings">Settings</a>)`
           : ""}.</span
       >
       <span class="d-flex gap-2"

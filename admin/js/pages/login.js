@@ -43,7 +43,7 @@ export default async function login() {
       </form>
 
       <p class="text-center mt-4 mb-0">
-        <a href="${ROOT}index.html">← Back to ${APP.brand.name}</a>
+        <a href="${ROOT}">← Back to ${APP.brand.name}</a>
       </p>
     </div>
   </div>`;

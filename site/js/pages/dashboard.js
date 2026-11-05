@@ -73,7 +73,7 @@ export default async function dashboard(ctx, { params }) {
       icon: "fa-user-lock",
       title: "Admin sign-in needed",
       text: "Sign in to the admin to preview a nominee’s dashboard.",
-      actions: [{ label: "Admin sign-in", href: "admin/login.html" }],
+      actions: [{ label: "Admin sign-in", href: "admin/login" }],
     });
   }
 
@@ -84,11 +84,11 @@ export default async function dashboard(ctx, { params }) {
       return notice({
         icon: "fa-user-slash",
         title: "Nominee not found",
-        actions: [{ label: "Back", href: "index.html" }],
+        actions: [{ label: "Back", href: "./" }],
       });
     }
 
-    go("login.html");
+    go("login");
     return null;
   }
 
@@ -108,7 +108,7 @@ export default async function dashboard(ctx, { params }) {
   const canApply = !readOnly && ctx.state === "nominations" && !hasCurrentEntry;
 
   const status = STATUS[me.status] ?? STATUS.pending;
-  const profileUrl = `${ROOT}nominee.html?id=${encodeURIComponent(me.id)}`;
+  const profileUrl = `${ROOT}nominee?id=${encodeURIComponent(me.id)}`;
 
   return html`
     ${readOnly
@@ -206,7 +206,7 @@ export default async function dashboard(ctx, { params }) {
 
               <p class="small text-secondary mt-3 mb-0">
                 Change password:
-                <a href="change-password.html">Update your password</a>
+                <a href="change-password">Update your password</a>
               </p>
             </div>
           `
@@ -525,7 +525,7 @@ export function init(root, ctx, { params }) {
       })
     ) {
       logoutNominee();
-      go("login.html");
+      go("login");
     }
   });
 

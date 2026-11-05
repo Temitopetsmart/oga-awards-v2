@@ -25,7 +25,7 @@ export default async function results(ctx) {
         waiting && ctx.countdown
           ? html`<div class="mt-3">${countdownPanel(ctx.countdown)}</div>`
           : "",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     })}`;
   }
   const winners = await getWinners(ctx.occasion.id);

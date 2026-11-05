@@ -48,19 +48,19 @@ export default async function vote(ctx, { params }) {
       icon: "fa-lock",
       title: "Voting has closed",
       text: "Thank you to everyone who voted. Winners will be announced soon.",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     },
     results: {
       icon: "fa-trophy",
       title: "Voting is over",
       text: "The winners have been announced.",
-      actions: [{ label: "See the winners", href: "results.html" }],
+      actions: [{ label: "See the winners", href: "results" }],
     },
     default: {
       icon: "fa-hourglass-half",
       title: "Voting isn’t open yet",
       text: "Check back when voting opens — the countdown is on the home page.",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     },
   });
   if (closed) return html`${hero}${closed}`;
@@ -446,7 +446,7 @@ function stepDone() {
     <p class="oga-ticket__code fs-5">${S.order.reference}</p>
     <div class="d-flex flex-wrap gap-3 justify-content-center mt-4">
       <button class="btn btn-gold" id="voteAgain">Vote for someone else</button>
-      <a class="btn btn-ghost" href="${ROOT}index.html">Back home</a>
+      <a class="btn btn-ghost" href="${ROOT}">Back home</a>
     </div>
   </div>`;
 }

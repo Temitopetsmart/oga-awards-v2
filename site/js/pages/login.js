@@ -13,7 +13,7 @@ export const title = "Nominee Login";
 
 export default async function login() {
   if (currentNominee()) {
-    go("dashboard.html");
+    go("dashboard");
     return null;
   }
 
@@ -43,7 +43,7 @@ export default async function login() {
           })}
 
           <p class="text-end mb-3">
-            <a href="forgot-password.html">Forgot password?</a>
+            <a href="forgot-password">Forgot password?</a>
           </p>
 
           <button class="btn btn-gold btn-lg w-100" type="submit">
@@ -51,7 +51,7 @@ export default async function login() {
           </button>
 
           <p class="text-center mt-3 mb-0">
-            New here? <a href="register.html">Register as a nominee</a>
+            New here? <a href="register">Register as a nominee</a>
           </p>
         </form>
       `,
@@ -71,7 +71,7 @@ export function init(root) {
     },
     async onSubmit(values) {
       await loginNominee(values);
-      go("dashboard.html");
+      go("dashboard");
     },
   });
 }

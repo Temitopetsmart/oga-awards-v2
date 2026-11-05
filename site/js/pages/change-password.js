@@ -14,7 +14,7 @@ export const title = "Change Password";
 
 export default function changePassword() {
   if (!currentNominee()) {
-    go("login.html");
+    go("login");
     return null;
   }
 
@@ -54,7 +54,7 @@ export default function changePassword() {
             Update password
           </button>
           <p class="text-center mt-3 mb-0">
-            <a href="dashboard.html">Back to dashboard</a>
+            <a href="dashboard">Back to dashboard</a>
           </p>
         </form>
       `,
@@ -87,7 +87,7 @@ export function init(root) {
         "Your password has been changed successfully.",
       );
 
-      go("dashboard.html");
+      go("dashboard");
     },
   });
 }

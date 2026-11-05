@@ -334,7 +334,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
     async viewAs(r) {
       setViewAs({ type: "person", id: r.personId });
       await logPreview("start", `person:${r.personId}`);
-      location.assign(`${ROOT}admin/index.html`);
+      location.assign(`${ROOT}admin/`);
     },
     async remove(r) {
       if (
@@ -503,7 +503,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           expiresInDays: Number(values.expiresInDays),
         });
 
-        const link = new URL(`${ROOT}accept-invite.html`, window.location.href);
+        const link = new URL(`${ROOT}accept-invite`, window.location.href);
         link.searchParams.set("token", invitation.token);
 
         await Swal.fire({

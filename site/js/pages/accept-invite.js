@@ -135,7 +135,7 @@ export async function init(root) {
           ? "Your admin account is ready. Sign in with your email and the password you just chose."
           : "Access added. Sign in with your existing password.",
       );
-      location.assign("admin/login.html");
+      location.assign("admin/login");
     },
   });
 }

@@ -24,7 +24,7 @@ class OgaHeader extends HTMLElement {
   }
 
   #render(ctx) {
-    const current = location.pathname.split("/").pop() || "index.html";
+    const current = location.pathname.split("/").pop() || "./";
     const items = APP.nav.filter(
       (n) =>
         (!n.states || (ctx && n.states.includes(ctx.state))) &&
@@ -40,7 +40,7 @@ class OgaHeader extends HTMLElement {
         <header class="oga-header">
           <nav class="navbar navbar-expand-lg" aria-label="Main">
             <div class="container">
-              <a class="navbar-brand" href="${ROOT}index.html">
+              <a class="navbar-brand" href="${ROOT}">
                 <img
                   src="${ROOT}${APP.brand.logo}"
                   alt=""

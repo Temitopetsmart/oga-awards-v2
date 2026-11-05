@@ -91,7 +91,7 @@ final class TicketApi
         try {
             $link = Flutterwave::createPayment([
                 'reference' => $reference, 'amount' => $amount, 'currency' => $currency, 'email' => $email, 'name' => $name,
-                'redirectUrl' => rtrim((string) Env::get('APP_URL', ''), '/') . '/tickets.html?pay=return', 'purpose' => 'ticket',
+                'redirectUrl' => rtrim((string) Env::get('APP_URL', ''), '/') . '/tickets?pay=return', 'purpose' => 'ticket',
                 'title' => $ed['name'] . ' ' . $ed['edition_label'] . ' — tickets', 'description' => "$qty × {$type['name']}",
             ]);
         } catch (GatewayException $e) {

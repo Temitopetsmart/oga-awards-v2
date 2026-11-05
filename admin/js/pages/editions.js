@@ -196,7 +196,7 @@ export function init(root, { admin, can }) {
     const act = btn.dataset.act;
     if (act === "view") {
       setViewing(e.id);
-      location.assign(`${ROOT}admin/index.html`);
+      location.assign(`${ROOT}admin/`);
       return;
     }
     if (!manage) return;

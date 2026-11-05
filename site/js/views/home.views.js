@@ -51,7 +51,7 @@ const nominations = (ctx, { categories }) =>
     alt: true,
     eyebrow: "Categories",
     cards: categories.map((c) =>
-      categoryCard(c, `${ROOT}categories.html#${c.id}`),
+      categoryCard(c, `${ROOT}categories#${c.id}`),
     ),
     emptyText: "Categories will be announced soon.",
   })}
@@ -67,7 +67,7 @@ const voting = (ctx, { categories, nominees }) =>
     alt: true,
     eyebrow: "Categories",
     cards: categories.map((c) =>
-      categoryCard(c, `${ROOT}vote.html?category=${encodeURIComponent(c.id)}`),
+      categoryCard(c, `${ROOT}vote?category=${encodeURIComponent(c.id)}`),
     ),
   })}
   ${cardGrid({
@@ -77,7 +77,7 @@ const voting = (ctx, { categories, nominees }) =>
     cards: nominees.slice(0, 8).map((n) =>
       nomineeCard(n, {
         category: categories.find((c) => c.id === n.categoryId),
-        voteHref: `${ROOT}vote.html?nominee=${encodeURIComponent(n.id)}`,
+        voteHref: `${ROOT}vote?nominee=${encodeURIComponent(n.id)}`,
       }),
     ),
     emptyText: "Nominees will appear here shortly.",

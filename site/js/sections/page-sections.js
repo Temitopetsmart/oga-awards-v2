@@ -9,7 +9,7 @@ export const pageHero = ({ eyebrow = "", title, lead = "", crumbs = [] }) =>
     <div class="container">
       <nav aria-label="Breadcrumb">
         <ol class="breadcrumb">
-          <li class="breadcrumb-item"><a href="${ROOT}index.html">Home</a></li>
+          <li class="breadcrumb-item"><a href="${ROOT}">Home</a></li>
           ${crumbs.map((c) =>
             c.href
               ? html`<li class="breadcrumb-item">
@@ -112,13 +112,13 @@ export const nomineeListCard = (n, { category, voting = false } = {}) =>
     <div class="d-flex flex-wrap gap-2 mt-3">
       <a
         class="btn btn-ghost btn-sm"
-        href="${ROOT}nominee.html?id=${encodeURIComponent(n.id)}"
+        href="${ROOT}nominee?id=${encodeURIComponent(n.id)}"
         >Profile</a
       >
       ${voting
         ? html`<a
             class="btn btn-gold btn-sm"
-            href="${ROOT}vote.html?nominee=${encodeURIComponent(n.id)}"
+            href="${ROOT}vote?nominee=${encodeURIComponent(n.id)}"
             >Vote</a
           >`
         : ""}

@@ -46,7 +46,7 @@ export default async function dashboard({ edition, can, admin }) {
           label: "Nominees",
           value: number(nominees.length),
           sub: `${pending.length} pending review`,
-          href: `${ROOT}admin/nominees.html`,
+          href: `${ROOT}admin/nominees`,
         })}
       </div>`,
     can("votes.view") &&
@@ -83,7 +83,7 @@ export default async function dashboard({ edition, can, admin }) {
           ]
             .filter(Boolean)
             .join(" · "),
-          href: `${ROOT}admin/categories.html`,
+          href: `${ROOT}admin/categories`,
         })}
       </div>`,
   ].filter(Boolean);
@@ -115,7 +115,7 @@ export default async function dashboard({ edition, can, admin }) {
           >
           <a
             class="btn btn-ghost btn-sm"
-            href="${ROOT}index.html"
+            href="${ROOT}"
             target="_blank"
             rel="noopener"
             >Open site</a
@@ -165,7 +165,7 @@ export default async function dashboard({ edition, can, admin }) {
                 <h2 class="card-title mb-0">Awaiting review</h2>
                 <a
                   class="btn btn-ghost btn-sm"
-                  href="${ROOT}admin/nominees.html"
+                  href="${ROOT}admin/nominees"
                   >Open queue</a
                 >
               </div>

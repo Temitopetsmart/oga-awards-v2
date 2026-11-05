@@ -215,7 +215,7 @@ final class ContentApi
             }
             $slug = $base . '-' . substr(bin2hex(random_bytes(2)), 0, 3);
         }
-        $href = $link[0] !== '' ? $link[0] : "occasion.html?id=$slug";
+        $href = $link[0] !== '' ? $link[0] : "occasion?id=$slug";
         self::pdo()->prepare('INSERT INTO occasions (edition_id, slug, type, name, tagline, description, icon, enabled, event_at, actions, link_href, link_label)
                               VALUES (?, ?, \'special\', ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$ed['id'], $slug, $f[0], $f[1], $f[2], $f[3], $f[4], $f[5], $f[6], $href, $link[1]]);
@@ -231,7 +231,7 @@ final class ContentApi
         $actor = Access::require('occasions.manage', $edSlug);
         $o = self::occasion($edSlug, $slug);
         [$f, $link] = self::occasionFields((array) ($in['occasion'] ?? []));
-        $href = $link[0] !== '' ? $link[0] : "occasion.html?id=$slug";
+        $href = $link[0] !== '' ? $link[0] : "occasion?id=$slug";
         self::pdo()->prepare('UPDATE occasions SET name = ?, tagline = ?, description = ?, icon = ?, enabled = ?, event_at = ?, actions = ?, link_href = ?, link_label = ? WHERE id = ?')
             ->execute([$f[0], $f[1], $f[2], $f[3], $f[4], $f[5], $f[6], $href, $link[1], $o['id']]);
         Cache::flush();

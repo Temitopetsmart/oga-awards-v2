@@ -40,7 +40,7 @@ export default async function occasions({ edition, can }) {
         its own page and a card on the home
         page.${can("settings.view")
           ? html` The main awards event is edited in
-              <a href="${ROOT}admin/settings.html">Settings</a>.`
+              <a href="${ROOT}admin/settings">Settings</a>.`
           : ""}</span
       >
     </div>
@@ -128,7 +128,7 @@ export async function init(root, { admin, edition, can }) {
   const refresh = () => table.setRows(rows());
 
   const isLink = (v) =>
-    !v || /^https?:\/\/\S+$/.test(v) || /^[a-z0-9_-]+\.html(\?\S*)?$/i.test(v);
+    !v || /^https?:\/\/\S+$/.test(v) || /^[a-z0-9_-]+(\/[a-z0-9_-]+)*(\.html)?([?#]\S*)?$/i.test(v);
 
   const fields = [
     { name: "name", label: "Name", required: true },
@@ -160,14 +160,14 @@ export async function init(root, { admin, edition, can }) {
       name: "linkHref",
       label: "Card links to",
       placeholder: "Leave empty to use its own page",
-      help: "A page like occasion.html?id=… or a full https:// address.",
+      help: "A page like occasion?id=… or a full https:// address.",
     },
     { name: "actionLabel", label: "Button text (optional)", col: "col-md-6" },
     {
       name: "actionHref",
       label: "Button links to",
       col: "col-md-6",
-      help: "e.g. https://… or contact.html",
+      help: "e.g. https://… or contact",
     },
     { type: "switch", name: "enabled", label: "Live on the public site" },
   ];
@@ -186,14 +186,14 @@ export async function init(root, { admin, edition, can }) {
       rules.custom((v) =>
         isLink(v?.trim())
           ? null
-          : "Use a page like occasion.html?id=x or a full https:// address.",
+          : "Use a page like occasion?id=x or a full https:// address.",
       ),
     ],
     actionHref: [
       rules.custom((v) =>
         isLink(v?.trim())
           ? null
-          : "Use a page like contact.html or a full https:// address.",
+          : "Use a page like contact or a full https:// address.",
       ),
     ],
   };
@@ -223,7 +223,7 @@ export async function init(root, { admin, edition, can }) {
     ...o,
     eventDate: toInput(o.timeline?.ceremony),
     linkHref:
-      o.link?.href === `occasion.html?id=${o.id}` ? "" : (o.link?.href ?? ""),
+      o.link?.href === `occasion?id=${o.id}` ? "" : (o.link?.href ?? ""),
     actionLabel: o.actions?.[0]?.label ?? "",
     actionHref: o.actions?.[0]?.href ?? "",
   });
@@ -231,7 +231,7 @@ export async function init(root, { admin, edition, can }) {
   const handlers = {
     preview: (o) =>
       window.open(
-        `${ROOT}occasion.html?id=${encodeURIComponent(o.id)}`,
+        `${ROOT}occasion?id=${encodeURIComponent(o.id)}`,
         "_blank",
         "noopener",
       ),

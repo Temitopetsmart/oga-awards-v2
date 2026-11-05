@@ -81,7 +81,7 @@ export default function forgotPassword() {
           </form>
 
           <p class="text-center mt-3 mb-0">
-            Remembered it? <a href="login.html">Return to login</a>
+            Remembered it? <a href="login">Return to login</a>
           </p>
         </div>
       `,
@@ -148,7 +148,7 @@ export function init(root) {
         "You can now log in using your new password.",
       );
 
-      location.href = "login.html";
+      location.href = "login";
     },
   });
 }

@@ -28,7 +28,7 @@ class OgaFooter extends HTMLElement {
         <div class="container">
           <div class="row gy-5 gx-lg-5">
             <div class="col-lg-5">
-              <a class="oga-footer__brand" href="${ROOT}index.html"
+              <a class="oga-footer__brand" href="${ROOT}"
                 >${APP.brand.name}</a
               >
               <p class="mt-3 mb-4">
@@ -83,8 +83,8 @@ class OgaFooter extends HTMLElement {
               reserved.</span
             >
             <span
-              ><a href="${ROOT}privacy.html">Privacy</a> ·
-              <a href="${ROOT}terms.html">Terms</a></span
+              ><a href="${ROOT}privacy">Privacy</a> ·
+              <a href="${ROOT}terms">Terms</a></span
             >
           </div>
         </div>

@@ -62,9 +62,15 @@ const notice = (icon, title, text) =>
 if (page === "login") {
   load(null);
 } else if (!person) {
-  location.replace(`${ROOT}admin/login.html`);
+  location.replace(`${ROOT}admin/login`);
 } else {
   start();
+}
+
+/** The admin page being viewed, in the same form as the menu links: "admin/" for the home page, "admin/votes" for the rest. */
+function adminPage() {
+  const last = location.pathname.replace(/\/+$/, "").split("/").pop();
+  return last === "admin" ? "admin/" : `admin/${last}`;
 }
 
 function start() {
@@ -72,7 +78,7 @@ function start() {
   const allowed = accessibleEditionIds(person, editions);
   if (!allowed.length) {
     logoutAdmin();
-    location.replace(`${ROOT}admin/login.html`);
+    location.replace(`${ROOT}admin/login`);
     return;
   }
   let id = store.get("admin:viewing");
@@ -91,7 +97,7 @@ function start() {
     root,
     access,
     editions.filter((e) => allowed.includes(e.id)),
-    `admin/${location.pathname.split("/").pop() || "index.html"}`,
+    adminPage(),
     { canPreview },
   );
 
@@ -113,7 +119,7 @@ function start() {
         await notify.confirm({ title: "Sign out?", confirmText: "Sign out" })
       ) {
         await logoutAdmin();
-        location.assign(`${ROOT}admin/login.html`);
+        location.assign(`${ROOT}admin/login`);
       }
       return;
     }
@@ -147,7 +153,7 @@ function openViewAs(edition) {
       const [type, tid] = v.target.split(":");
       setViewAs({ type, id: tid });
       await logPreview("start", v.target);
-      location.assign(`${ROOT}admin/index.html`);
+      location.assign(`${ROOT}admin/`);
     },
   });
 }

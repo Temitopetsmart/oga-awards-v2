@@ -23,14 +23,14 @@ export default async function ticket(ctx, { params }) {
     return html`${pageHero({
       title: "Your ticket",
       crumbs: [
-        { label: "Tickets", href: "tickets.html" },
+        { label: "Tickets", href: "tickets" },
         { label: "Your ticket" },
       ],
     })}${notice({
       icon: "fa-ticket",
       title: "No ticket selected",
       text: "Retrieve your ticket with your reference and email.",
-      actions: [{ label: "Go to tickets", href: "tickets.html" }],
+      actions: [{ label: "Go to tickets", href: "tickets" }],
     })}`;
 
   let list;
@@ -40,14 +40,14 @@ export default async function ticket(ctx, { params }) {
     return html`${pageHero({
       title: "Your ticket",
       crumbs: [
-        { label: "Tickets", href: "tickets.html" },
+        { label: "Tickets", href: "tickets" },
         { label: "Your ticket" },
       ],
     })}${notice({
       icon: "fa-circle-exclamation",
       title: "Ticket not found",
       text: err.userMessage ?? "We could not find that ticket.",
-      actions: [{ label: "Try again", href: "tickets.html" }],
+      actions: [{ label: "Try again", href: "tickets" }],
     })}`;
   }
   return html` ${pageHero({
@@ -55,7 +55,7 @@ export default async function ticket(ctx, { params }) {
     title: list.length > 1 ? `Your ${list.length} tickets` : "Your ticket",
     lead: "Show the QR code at the gate. Each code can be scanned once.",
     crumbs: [
-      { label: "Tickets", href: "tickets.html" },
+      { label: "Tickets", href: "tickets" },
       { label: "Your ticket" },
     ],
   })}
@@ -94,7 +94,7 @@ export default async function ticket(ctx, { params }) {
         <button class="btn btn-gold" id="printBtn">
           <i class="fa-solid fa-print me-2"></i>Print / save as PDF
         </button>
-        <a class="btn btn-ghost" href="${ROOT}index.html">Back home</a>
+        <a class="btn btn-ghost" href="${ROOT}">Back home</a>
       </div>`,
     { width: "48rem" },
   )}`;

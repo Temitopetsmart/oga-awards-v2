@@ -8,8 +8,8 @@ export default async function notFound() {
     title: "Page not found",
     text: "The page you’re looking for doesn’t exist or has moved.",
     actions: [
-      { label: "Back home", href: "index.html" },
-      { label: "FAQ", href: "faq.html", variant: "ghost" },
+      { label: "Back home", href: "./" },
+      { label: "FAQ", href: "faq", variant: "ghost" },
     ],
   });
 }

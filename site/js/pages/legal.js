@@ -12,7 +12,7 @@ export default async function legal() {
     return notice({
       icon: "fa-file-circle-question",
       title: "Document not found",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     });
   document.title = `${doc.title} — OGA`;
   return html` ${pageHero({

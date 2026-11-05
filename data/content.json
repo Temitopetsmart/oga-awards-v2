@@ -7,10 +7,10 @@
       "highlight": "our brightest.",
       "lead": "OGA recognises the students who lead, create and inspire across campus. Stay close — the next chapter is on its way.",
       "ctas": [
-        { "label": "About OGA", "href": "about.html", "variant": "ghost" },
+        { "label": "About OGA", "href": "about", "variant": "ghost" },
         {
           "label": "Join the Committee",
-          "href": "committee.html",
+          "href": "committee",
           "variant": "gold",
           "feature": "committeeRecruitment"
         }
@@ -48,10 +48,10 @@
       "ctas": [
         {
           "label": "Register as Nominee",
-          "href": "register.html",
+          "href": "register",
           "variant": "gold"
         },
-        { "label": "Nominee Login", "href": "login.html", "variant": "ghost" }
+        { "label": "Nominee Login", "href": "login", "variant": "ghost" }
       ],
       "sectionTitle": "How nominations work",
       "sectionLead": "Three simple steps from sign-up to the ballot.",
@@ -81,10 +81,10 @@
       "highlight": "who takes the crown.",
       "lead": "Pick your favourites and cast your votes securely. Every vote counts.",
       "ctas": [
-        { "label": "Vote Now", "href": "vote.html", "variant": "gold" },
+        { "label": "Vote Now", "href": "vote", "variant": "gold" },
         {
           "label": "Browse Categories",
-          "href": "categories.html",
+          "href": "categories",
           "variant": "ghost"
         }
       ],
@@ -117,7 +117,7 @@
       "highlight": "every single vote.",
       "lead": "Votes are being verified. The winners will be revealed soon — stay tuned.",
       "ctas": [
-        { "label": "How It Works", "href": "about.html", "variant": "ghost" }
+        { "label": "How It Works", "href": "about", "variant": "ghost" }
       ],
       "sectionTitle": "What happens next",
       "sectionLead": "We are making sure every result is accurate.",
@@ -147,7 +147,7 @@
       "ctas": [
         {
           "label": "See All Winners",
-          "href": "results.html",
+          "href": "results",
           "variant": "gold"
         }
       ],

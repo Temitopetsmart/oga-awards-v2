@@ -39,7 +39,7 @@
           "enabled": false,
           "link": {
             "label": "Visit Miss OGITECH",
-            "href": "occasion.html?id=miss-ogitech"
+            "href": "occasion?id=miss-ogitech"
           },
           "description": "Miss OGITECH is a separate pageant celebrating poise, intellect and purpose. Details, dates and entry information will be shared here.",
           "actions": []

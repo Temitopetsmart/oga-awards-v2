@@ -1,15 +1,43 @@
-# ---- Always on (development and production) ----
+# =====================================================================
+#  OGA Awards: root .htaccess
+#  Works on cPanel (domain root) and on XAMPP (also inside a sub-folder such as htdocs/oga-awards-v2).
+# =====================================================================
 
-# Never serve project internals, even if someone guesses the address.
+# ---- 1. Never serve project internals, even if someone guesses the address ----
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteRule ^(backend|database|docs|tests|\.git|node_modules)(/|$) - [F,L]
+  RewriteRule ^(backend|database|docs|tests|tools|\.git|node_modules)(/|$) - [F,L]
 </IfModule>
 <FilesMatch "(^\.(?!well-known)|\.(sql|md|mjs|log|bak|ini|lock|example\.php)$|^(composer|package)(-lock)?\.json$)">
   Require all denied
 </FilesMatch>
 
-# Safe browser defaults.
+# ---- 2. Clean addresses: /vote instead of /vote.html, /admin/login instead of /admin/login.html ----
+<IfModule mod_rewrite.c>
+  # The redirects below read the address from the original request line (THE_REQUEST), so they work the same
+  # at a domain root (cPanel) and inside a sub-folder (XAMPP htdocs/oga-awards-v2) with no RewriteBase to edit.
+  # THE_REQUEST only holds what the visitor asked for, so our own internal rewrites can never loop.
+
+  # (a) /index and /admin/index (with or without .html)  ->  /  and  /admin/
+  RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/(?:[^\s?]*/)?)index(?:\.html)?(?:[\s?])
+  RewriteRule ^ %1 [R=301,L]
+
+  # (b) /anything.html  ->  /anything   (permanent; a query string such as ?nominee=3 is kept)
+  RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]*)\.html(?:[\s?])
+  RewriteRule ^ %1 [R=301,L]
+
+  # (c) /vote/  ->  /vote   (a trailing slash on something that is not a folder)
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]+)/(?:[\s?])
+  RewriteRule ^ %1 [R=301,L]
+
+  # (d) /vote  ->  vote.html   (served internally; the address bar keeps the clean address)
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME}.html -f
+  RewriteRule ^(.+)$ $1.html [L]
+</IfModule>
+
+# ---- 3. Safe browser defaults ----
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
@@ -20,7 +48,7 @@
   Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == 'on'"
 </IfModule>
 
-# ---- Development only: DELETE this block before going live (it stops browsers caching JS/CSS) ----
+# ---- 4. Development only: DELETE this block before going live (it stops browsers caching JS/CSS) ----
 <IfModule mod_headers.c>
   <FilesMatch "\.(js|css|html)$">
     Header set Cache-Control "no-cache"

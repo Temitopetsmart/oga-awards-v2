@@ -39,10 +39,13 @@ try {
 $admin->exec("DROP DATABASE IF EXISTS `$testDb`");
 $admin->exec("CREATE DATABASE `$testDb` CHARACTER SET utf8mb4");
 $db = new PDO($dsn . ";dbname=$testDb", (string) $base['DB_USER'], (string) ($base['DB_PASS'] ?? ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['001_schema', '002_seed_permissions', '004_occasion_event_date', '005_pending_registrations', '006_committee_appointment'] as $m) {
-    $db->exec((string) file_get_contents("$root/database/migrations/$m.sql"));
-}
-passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/backend/tools/load-demo-data.php") . ' > ' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null'));
+$migrations = glob($root . '/database/migrations/*.sql');
+sort($migrations);
+foreach ($migrations as $file) {                       // every migration in order, except the old demo-data one
+    if (!str_contains(basename($file), 'demo_data')) {
+        $db->exec((string) file_get_contents($file));
+    }
+}passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/backend/tools/load-demo-data.php") . ' > ' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null'));
 
 $pw = 'Test-Pass-12345';
 $hash = password_hash($pw, PASSWORD_BCRYPT, ['cost' => 4]);

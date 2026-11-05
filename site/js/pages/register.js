@@ -23,7 +23,7 @@ const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((l) => ({
 
 export default async function register(ctx) {
   if (currentNominee()) {
-    go("dashboard.html");
+    go("dashboard");
     return null;
   }
 
@@ -55,8 +55,8 @@ export default async function register(ctx) {
       title: "Nominations aren’t open",
       text: "Registration is only available during the nomination window.",
       actions: [
-        { label: "Nominee login", href: "login.html" },
-        { label: "Back home", href: "index.html", variant: "ghost" },
+        { label: "Nominee login", href: "login" },
+        { label: "Back home", href: "./", variant: "ghost" },
       ],
     },
   });
@@ -135,7 +135,7 @@ export default async function register(ctx) {
         Create my account
       </button>
       <p class="text-center mt-3 mb-0">
-        Already registered? <a href="login.html">Log in</a>
+        Already registered? <a href="login">Log in</a>
       </p>
     </form>`,
     { width: "44rem" },
@@ -151,7 +151,7 @@ async function finishRegistration(el) {
       "Payment cancelled",
       "You have not been charged. You can try again.",
     );
-    go("register.html");
+    go("register");
     return;
   }
   try {
@@ -161,18 +161,18 @@ async function finishRegistration(el) {
         "Welcome aboard!",
         "Your payment is confirmed and your account is created.",
       );
-      go("dashboard.html");
+      go("dashboard");
     } else {
       await notify.success(
         "Payment confirmed",
         r.note ?? "Your account is ready. Log in to continue.",
       );
-      go("login.html");
+      go("login");
     }
   } catch (err) {
     await notify.warning("We couldn’t confirm your payment yet", err.message);
     el.innerHTML =
-      '<p class="mb-0">Your registration will be completed automatically once the payment is confirmed. You can <a href="login.html">log in</a> in a few minutes.</p>';
+      '<p class="mb-0">Your registration will be completed automatically once the payment is confirmed. You can <a href="login">log in</a> in a few minutes.</p>';
   }
 }
 
@@ -209,7 +209,7 @@ export function init(root, ctx) {
         "Welcome aboard!",
         "Your account is created and pending review.",
       );
-      go("dashboard.html");
+      go("dashboard");
     },
   });
 }

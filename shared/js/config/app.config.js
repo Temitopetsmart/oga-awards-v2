@@ -49,20 +49,20 @@ export const APP = {
    * the main occasion has this feature flag on. Omit both to always show.
    */
   nav: [
-    { label: "Home", href: "index.html" },
-    { label: "About", href: "about.html" },
+    { label: "Home", href: "./" },
+    { label: "About", href: "about" },
     {
       label: "Categories",
-      href: "categories.html",
+      href: "categories",
       states: ["nominations", "voting", "voting-closed", "results"],
     },
-    { label: "Vote", href: "vote.html", states: ["voting"] },
-    { label: "Winners", href: "results.html", states: ["results"] },
-    { label: "Tickets", href: "tickets.html", feature: "tickets" },
-    { label: "Hall of Fame", href: "editions.html" },
-    { label: "Gallery", href: "gallery.html" },
-    { label: "Committee", href: "committee.html" },
-    { label: "FAQ", href: "faq.html" },
+    { label: "Vote", href: "vote", states: ["voting"] },
+    { label: "Winners", href: "results", states: ["results"] },
+    { label: "Tickets", href: "tickets", feature: "tickets" },
+    { label: "Hall of Fame", href: "editions" },
+    { label: "Gallery", href: "gallery" },
+    { label: "Committee", href: "committee" },
+    { label: "FAQ", href: "faq" },
   ],
 };
 
@@ -72,25 +72,25 @@ export const STATES = {
     label: "Coming Soon",
     cta: {
       label: "Join the Committee",
-      href: "committee.html",
+      href: "committee",
       feature: "committeeRecruitment",
     },
   },
   nominations: {
     label: "Nominations Open",
-    cta: { label: "Register as Nominee", href: "register.html" },
+    cta: { label: "Register as Nominee", href: "register" },
   },
   voting: {
     label: "Voting Open",
-    cta: { label: "Vote Now", href: "vote.html" },
+    cta: { label: "Vote Now", href: "vote" },
   },
   "voting-closed": {
     label: "Voting Closed",
-    cta: { label: "How It Works", href: "about.html" },
+    cta: { label: "How It Works", href: "about" },
   },
   results: {
     label: "Winners Announced",
-    cta: { label: "See the Winners", href: "results.html" },
+    cta: { label: "See the Winners", href: "results" },
   },
 };
 

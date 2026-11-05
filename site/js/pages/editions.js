@@ -36,7 +36,7 @@ export default async function editions(ctx) {
     ? pageBody(
         html`<a
           class="oga-card oga-card--hover flex-row align-items-center gap-3"
-          href="${ROOT}index.html"
+          href="${ROOT}"
           style="height:auto"
         >
           <span class="oga-icon"
@@ -60,7 +60,7 @@ export default async function editions(ctx) {
           ({ e, winners, categories }) =>
             html` <a
               class="oga-card"
-              href="${ROOT}edition.html?id=${encodeURIComponent(e.id)}"
+              href="${ROOT}edition?id=${encodeURIComponent(e.id)}"
             >
               <span class="oga-badge mb-2">${e.year ?? ""}</span>
               <h3 class="mt-1">${e.name} ${e.edition}</h3>

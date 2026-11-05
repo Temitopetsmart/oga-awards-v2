@@ -125,7 +125,7 @@ export function renderShell(root, access, editions, current, { canPreview }) {
                 )}
                 ${access.can("editions.view")
                   ? html`<div class="dropdown-divider"></div>
-                      <a class="dropdown-item" href="${ROOT}admin/editions.html"
+                      <a class="dropdown-item" href="${ROOT}admin/editions"
                         ><span>Manage editions</span
                         ><i class="fa-solid fa-arrow-right small"></i
                       ></a>`
@@ -137,7 +137,7 @@ export function renderShell(root, access, editions, current, { canPreview }) {
             <li class="nav-item d-none d-md-block">
               <a
                 class="nav-link"
-                href="${ROOT}index.html"
+                href="${ROOT}"
                 target="_blank"
                 rel="noopener"
                 ><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>View
@@ -184,7 +184,7 @@ export function renderShell(root, access, editions, current, { canPreview }) {
 
       <aside class="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
         <div class="sidebar-brand">
-          <a class="brand-link" href="${ROOT}admin/index.html">
+          <a class="brand-link" href="${ROOT}admin/">
             <img src="${ROOT}${APP.brand.logo}" alt="" id="brandLogo" /><span
               ><em>OGA</em> Admin</span
             ></a
@@ -255,7 +255,7 @@ export function setPageHeader(title, crumbs = []) {
   mount(
     document.getElementById("pageCrumbs"),
     html` <li class="breadcrumb-item">
-        <a href="${ROOT}admin/index.html">Admin</a>
+        <a href="${ROOT}admin/">Admin</a>
       </li>
       ${crumbs.map(
         (c) =>

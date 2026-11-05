@@ -21,7 +21,7 @@ export default async function occasion(ctx, { params }) {
       icon: "fa-calendar-xmark",
       title: "This occasion isn’t available",
       text: "It may not be open yet.",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     });
   document.title = `${o.name} — ${ctx.occasion.name}`;
   const hasDates = Object.keys(o.timeline ?? {}).length > 0;

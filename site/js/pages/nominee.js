@@ -21,7 +21,7 @@ export default async function nominee(ctx, { params }) {
       icon: "fa-user-slash",
       title: "Nominee not found",
       text: "This profile does not exist or is not public yet.",
-      actions: [{ label: "Browse nominees", href: "categories.html" }],
+      actions: [{ label: "Browse nominees", href: "categories" }],
     });
   const cat = cats.find((c) => c.id === n.categoryId);
   document.title = `${n.name} — ${ctx.occasion.name} ${ctx.occasion.edition}`;
@@ -31,7 +31,7 @@ export default async function nominee(ctx, { params }) {
     eyebrow: cat?.name,
     title: n.name,
     crumbs: [
-      { label: "Categories", href: "categories.html" },
+      { label: "Categories", href: "categories" },
       { label: n.name },
     ],
   })}
@@ -51,7 +51,7 @@ export default async function nominee(ctx, { params }) {
           ${voting
             ? html`<a
                 class="btn btn-gold btn-lg"
-                href="${ROOT}vote.html?nominee=${encodeURIComponent(n.id)}"
+                href="${ROOT}vote?nominee=${encodeURIComponent(n.id)}"
                 ><i class="fa-solid fa-check-to-slot me-2"></i>Vote for
                 ${n.name.split(" ")[0]}</a
               >`

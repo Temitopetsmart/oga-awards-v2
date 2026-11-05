@@ -250,7 +250,7 @@ final class AccountApi
         }
 
         if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, null, $email, $hash, ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'categoryId' => (int) $in['categoryId']], 'register.html');
+            self::startPaidRegistration($ed, null, $email, $hash, ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'categoryId' => (int) $in['categoryId']], 'register');
         }
         $accountId = Database::transaction(function (\PDO $db) use ($email, $hash, $ed, $in, $name, $phone, $dept, $level) {
             $db->prepare('INSERT INTO accounts (email, password_hash) VALUES (?, ?)')->execute([$email, $hash]);
@@ -283,7 +283,7 @@ final class AccountApi
         $st->execute([$a['id']]);
         $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
         if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $prev['level'], 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard.html');
+            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $prev['level'], 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard');
         }
         self::pdo()->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')")
             ->execute([$ed['id'], $a['id'], (int) $in['categoryId'], $prev['name'], $prev['phone'], $prev['department'], $prev['level'], $prev['bio']]);

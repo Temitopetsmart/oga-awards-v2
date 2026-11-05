@@ -27,7 +27,7 @@ export default async function edition(ctx, { params }) {
       icon: "fa-clock-rotate-left",
       title: "Edition not found",
       text: "It may not be published yet.",
-      actions: [{ label: "Hall of Fame", href: "editions.html" }],
+      actions: [{ label: "Hall of Fame", href: "editions" }],
     });
   document.title = `${e.name} ${e.edition} — Hall of Fame`;
   const [winners, committee] = await Promise.all([
@@ -40,7 +40,7 @@ export default async function edition(ctx, { params }) {
     title: `${e.name} ${e.edition}`,
     lead: e.tagline,
     crumbs: [
-      { label: "Hall of Fame", href: "editions.html" },
+      { label: "Hall of Fame", href: "editions" },
       { label: `${e.name} ${e.edition}` },
     ],
   })}

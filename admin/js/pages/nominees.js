@@ -261,7 +261,7 @@ export async function init(root, { admin, can }) {
     viewAs: (n) => {
       logAudit(admin, "Previewed nominee dashboard", n.name);
       window.open(
-        `${ROOT}dashboard.html?viewAs=${encodeURIComponent(n.id)}`,
+        `${ROOT}dashboard?viewAs=${encodeURIComponent(n.id)}`,
         "_blank",
         "noopener",
       );

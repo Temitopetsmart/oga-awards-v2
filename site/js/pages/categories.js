@@ -28,7 +28,7 @@ export default async function categories(ctx) {
         icon: "fa-hourglass-half",
         title: "Categories are coming soon",
         text: "We’ll reveal the categories and nominees once nominations open.",
-        actions: [{ label: "Back home", href: "index.html" }],
+        actions: [{ label: "Back home", href: "./" }],
       },
     },
   );

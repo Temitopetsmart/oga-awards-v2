@@ -114,7 +114,7 @@ final class MailTemplates
                 if ($token === '') {
                     return null;
                 }
-                $link = self::url('forgot-password.html') . '?' . http_build_query(['email' => $recipient, 'token' => $token]);
+                $link = self::url('forgot-password') . '?' . http_build_query(['email' => $recipient, 'token' => $token]);
                 return [
                     'subject' => 'Reset your password',
                     'html'    => self::layout('Reset your password', '<p>We received a request to reset your password. The link below fills in your reset code. It expires in ' . $mins . ' minutes.</p>' . self::button($link, 'Choose a new password') . '<p>Reset code:</p>' . self::code($token)),
@@ -126,7 +126,7 @@ final class MailTemplates
                 if ($token === '') {
                     return null;
                 }
-                $link    = self::url('accept-invite.html') . '?' . http_build_query(['token' => $token]);
+                $link    = self::url('accept-invite') . '?' . http_build_query(['token' => $token]);
                 $edition = (string) ($p['editionName'] ?? 'the awards team');
                 $expires = (string) ($p['expiresAt'] ?? '');
                 return [

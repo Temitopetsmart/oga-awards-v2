@@ -13,5 +13,5 @@ export function withPreview(url) {
   return u.href;
 }
 
-/** Navigate to a project page, e.g. go('ticket.html?code=ABC'). */
+/** Navigate to a project page, e.g. go('ticket?code=ABC'). */
 export const go = (path) => location.assign(withPreview(ROOT + path));

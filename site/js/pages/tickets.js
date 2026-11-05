@@ -47,7 +47,7 @@ export default async function tickets(ctx) {
       icon: "fa-ticket",
       title: "Tickets aren’t on sale yet",
       text: "We’ll announce when ticket sales open.",
-      actions: [{ label: "Back home", href: "index.html" }],
+      actions: [{ label: "Back home", href: "./" }],
     })}`;
   }
   editionId = ctx.occasion.id;
@@ -114,7 +114,7 @@ async function finishPurchase(el) {
       "Payment cancelled",
       "You have not been charged. You can try again.",
     );
-    go("tickets.html");
+    go("tickets");
     return;
   }
   try {
@@ -126,13 +126,13 @@ async function finishPurchase(el) {
     const pending = pendingOrder(ref);
     go(
       pending
-        ? `ticket.html?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(pending.email)}`
-        : "ticket.html",
+        ? `ticket?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(pending.email)}`
+        : "ticket",
     );
   } catch (err) {
     await notify.warning("We couldn’t confirm your payment yet", err.message);
     el.innerHTML =
-      '<p class="mb-0">Your tickets will be ready once the payment is confirmed. You can find them any time on the <a href="ticket.html">My tickets</a> page with your order reference and email.</p>';
+      '<p class="mb-0">Your tickets will be ready once the payment is confirmed. You can find them any time on the <a href="ticket">My tickets</a> page with your order reference and email.</p>';
   }
 }
 
@@ -162,7 +162,7 @@ export function init(root) {
     async onSubmit({ ref, email }) {
       const found = await findTickets({ ref, email });
       go(
-        `ticket.html?ref=${encodeURIComponent(ref.trim())}&email=${encodeURIComponent(email.trim())}&n=${found.length}`,
+        `ticket?ref=${encodeURIComponent(ref.trim())}&email=${encodeURIComponent(email.trim())}&n=${found.length}`,
       );
     },
   });
@@ -250,7 +250,7 @@ function renderCheckout(box, type) {
         `Your ticket${issued.length > 1 ? "s are" : " is"} ready.`,
       );
       go(
-        `ticket.html?ref=${encodeURIComponent(order.reference)}&email=${encodeURIComponent(order.email)}`,
+        `ticket?ref=${encodeURIComponent(order.reference)}&email=${encodeURIComponent(order.email)}`,
       );
     },
   });
