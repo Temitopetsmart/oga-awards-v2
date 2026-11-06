@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // Applies any new numbered SQL files in database/migrations/ that have not been applied yet.
 // Run from the project folder:   C:\xampp\php\php.exe backend\tools\migrate.php
-// (003_demo_data.sql is sample data and is loaded separately by load-demo-data.php.)
+// (003 no longer exists: sample data now lives only in tests/fixtures/ and is never loaded on a real site.)
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit('Run this from the command line, not the browser.');
@@ -34,7 +34,7 @@ sort($files);
 $ran = 0;
 foreach ($files as $file) {
     $name = basename($file);
-    if (in_array($name, $applied, true) || $name === '003_demo_data.sql') {
+        if (in_array($name, $applied, true)) {
         continue;
     }
     echo "Applying $name ... ";

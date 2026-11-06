@@ -1,9 +1,8 @@
 import { store, uid } from "../../../shared/js/core/store.js";
-import { getSeed } from "../../../shared/js/core/http.js";
 import { ROLE_TEMPLATES, ALL_KEYS } from "../config/permissions.js";
 
 /**
- * People, roles and per-edition assignments. DEMO store; the backend will keep these in
+ * People, roles and per-edition assignments. cached in the browser from the server (GET /admin/me).
  * `people`, `roles` and `edition_assignments` tables. Keep the function names.
  *
  * people:      { id, name, email, active, superAdmin?, photo? }          (global)
@@ -15,91 +14,6 @@ import { ROLE_TEMPLATES, ALL_KEYS } from "../config/permissions.js";
 const PEOPLE = "admin:people";
 const ROLES = "admin:roles";
 const ASSIGN = "admin:assignments";
-
-export async function ensureTeam() {
-  if (
-    store.get(PEOPLE) !== null &&
-    store.get(ROLES) !== null &&
-    store.get(ASSIGN) !== null
-  )
-    return;
-  const committee = await getSeed("committee");
-  const demo = [
-    {
-      id: "adm-1",
-      name: "Super Admin",
-      email: "admin@oga.local",
-      superAdmin: true,
-    },
-    { id: "adm-2", name: "Demo Editor", email: "editor@oga.local" },
-    { id: "adm-3", name: "Demo Gate Staff", email: "gate@oga.local" },
-    { id: "adm-4", name: "Demo Treasurer", email: "treasurer@oga.local" },
-    { id: "adm-5", name: "Demo Secretary", email: "secretary@oga.local" },
-    {
-      id: "adm-6",
-      name: "Demo Publicity Director",
-      email: "publicity@oga.local",
-    },
-  ].map((p) => ({ active: true, seed: true, ...p }));
-  const asg = (personId, editionId, extra) => ({
-    id: uid("ASG-"),
-    personId,
-    editionId,
-    position: "",
-    unitId: "",
-    visible: false,
-    roleIds: [],
-    grants: [],
-    denies: [],
-    ...extra,
-  });
-  store.set(PEOPLE, [
-    ...demo,
-    ...committee.members.map((m) => ({
-      id: m.id,
-      name: m.name,
-      email: "",
-      active: true,
-      photo: m.photo ?? null,
-    })),
-  ]);
-  store.set(
-    ROLES,
-    ROLE_TEMPLATES.map((r) => ({ ...r, perms: [...r.perms], system: true })),
-  );
-  store.set(ASSIGN, [
-    ...committee.members.map((m) =>
-      asg(m.id, m.editionId, {
-        position: m.role,
-        unitId: m.unitId,
-        visible: true,
-      }),
-    ),
-    asg("adm-2", "oga-10", { roleIds: ["role-editor"] }),
-    asg("adm-3", "oga-10", { roleIds: ["role-gate"] }),
-    asg("adm-4", "oga-10", {
-      position: "Treasurer",
-      unitId: "u-exec",
-      roleIds: ["role-treasurer"],
-    }),
-    asg("adm-5", "oga-10", {
-      position: "Secretary",
-      unitId: "u-exec",
-      roleIds: ["role-secretary"],
-    }),
-    asg("adm-6", "oga-10", {
-      position: "Director of Publicity",
-      unitId: "u-media",
-      roleIds: ["role-publicity"],
-    }),
-    asg("adm-4", "oga-9", {
-      position: "Treasurer",
-      unitId: "u-exec",
-      roleIds: ["role-treasurer"],
-    }),
-    asg("adm-5", "oga-9", { position: "Member" }),
-  ]);
-}
 
 export const listPeople = () => store.get(PEOPLE, []);
 export const savePeople = (rows) => store.set(PEOPLE, rows);

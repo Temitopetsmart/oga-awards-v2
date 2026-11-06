@@ -15,6 +15,18 @@ const tileInner = (g) =>
 
 export default async function gallery() {
   items = await getResource("gallery");
+  if (!items.length)
+    return html`${pageHero({
+      eyebrow: "Memories",
+      title: "Gallery",
+      lead: "Moments from past editions of the awards.",
+      crumbs: [{ label: "Gallery" }],
+    })}
+    ${pageBody(
+      html`<p class="text-secondary text-center py-5 mb-0">
+        Photos from the awards will appear here soon.
+      </p>`,
+    )}`;
   const editions = [...new Set(items.map((g) => g.edition))];
   return html` ${pageHero({
     eyebrow: "Memories",
@@ -73,6 +85,7 @@ export default async function gallery() {
 }
 
 export function init(root) {
+  if (!root.querySelector("#galleryChips")) return; // empty gallery: nothing to wire up
   root.querySelector("#galleryChips").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-edition]");
     if (!btn) return;

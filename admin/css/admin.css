@@ -416,18 +416,6 @@ a.oga-stat:hover {
   font-style: normal;
   color: var(--oga-gold-400);
 }
-.oga-demo {
-  margin-top: 1.25rem;
-  padding: 0.85rem 1rem;
-  font-size: 0.82rem;
-  color: var(--oga-gold-200);
-  background: rgba(212, 175, 55, 0.08);
-  border: 1px dashed var(--oga-border-strong);
-  border-radius: var(--oga-radius-sm);
-}
-.oga-demo code {
-  color: var(--oga-gold-300);
-}
 
 /* AdminLTE adds a clearfix ::after to card headers, which breaks flex layouts */
 .card-header::after {

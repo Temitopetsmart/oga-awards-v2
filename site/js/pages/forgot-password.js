@@ -36,10 +36,10 @@ export default function forgotPassword() {
             </button>
           </form>
 
-          <div id="resetDemoNotice" class="alert alert-warning mt-3" hidden>
-            <strong>Demo mode:</strong> no email was sent. Use this temporary
+          <div id="resetDevNotice" class="alert alert-warning mt-3" hidden>
+            <strong>Test server:</strong> no email was sent. Use this temporary
             token to test the reset form:
-            <code id="resetDemoToken"></code>
+            <code id="resetDevToken"></code>
             <p class="small mb-0 mt-2">
               In production, this token must be delivered privately by email.
             </p>
@@ -93,8 +93,8 @@ export default function forgotPassword() {
 export function init(root) {
   const requestForm = root.querySelector("#requestResetForm");
   const completeForm = root.querySelector("#completeResetForm");
-  const notice = root.querySelector("#resetDemoNotice");
-  const tokenOutput = root.querySelector("#resetDemoToken");
+  const notice = root.querySelector("#resetDevNotice");
+  const tokenOutput = root.querySelector("#resetDevToken");
 
   // The link in the reset email carries ?email=...&token=...: fill the form in for the person.
   const linkParams = new URLSearchParams(location.search);
@@ -118,8 +118,8 @@ export function init(root) {
       completeForm.elements.token.value = result.token;
 
       await notify.success(
-        result.demoOnly ? "Reset token created" : "Check your email",
-        result.demoOnly
+        result.devOnly ? "Reset token created" : "Check your email",
+        result.devOnly
           ? "Test server only: use the temporary token shown on this page."
           : "If an account exists for that email, a reset code has been sent. Enter it below.",
       );

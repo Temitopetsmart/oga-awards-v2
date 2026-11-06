@@ -178,13 +178,13 @@ export default async function dashboard(ctx, { params }) {
                       id="verifyEmailBtn"
                       type="button"
                     >
-                      Verify email (demo)
+                      Verify email
                     </button>
 
                     <div id="verifyPanel" class="mt-3" hidden>
                       <p class="small text-secondary">
-                        Demo only — no email is sent. Use the temporary token
-                        shown below to verify this account.
+                        Test server only: no email is sent. Use the temporary
+                        token shown below to verify this account.
                       </p>
 
                       <p>
@@ -713,7 +713,7 @@ export function init(root, ctx, { params }) {
 
         await notify.success(
           "Email verified",
-          "Your demo account is now marked as verified.",
+          "Your account is now marked as verified.",
         );
 
         location.reload();

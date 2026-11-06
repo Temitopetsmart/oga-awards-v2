@@ -196,7 +196,7 @@ export async function requestPasswordReset(email) {
   return {
     token: r.devToken ?? "", // only present on a local development server; in production it is emailed
     expiresInMinutes: r.expiresInMinutes,
-    demoOnly: Boolean(r.devToken),
+    devOnly: Boolean(r.devToken),
   };
 }
 
@@ -231,7 +231,7 @@ export async function requestEmailVerification() {
   return {
     token: r.devToken ?? "",
     expiresInMinutes: r.expiresInMinutes,
-    demoOnly: Boolean(r.devToken),
+    devOnly: Boolean(r.devToken),
   };
 }
 

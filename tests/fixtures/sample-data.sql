@@ -1,0 +1,1 @@
+-- TEST FIXTURE ONLY. Sample editions, categories, nominees, tickets and people for tests/run.php. Never loaded by migrate.php or on a real site.

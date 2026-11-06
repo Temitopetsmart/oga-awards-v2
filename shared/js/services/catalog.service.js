@@ -59,49 +59,9 @@ export async function getWinners(occasionId) {
     .sort((a, b) => (a.category.order ?? 0) - (b.category.order ?? 0));
 }
 
-/**
- * Use edition-specific team assignments for the public committee.
- * Fall back to the committee seed when the admin demo data is unavailable.
- */
+/** The committee page: intro and units for everyone, and the members of one edition. */
 export async function getCommittee(editionId) {
   const file = await getResource("committee");
-
-  try {
-    const read = (key) =>
-      JSON.parse(localStorage.getItem(`oga:admin:${key}`) ?? "null");
-
-    const assignments = read("assignments");
-    const people = read("people");
-
-    if (Array.isArray(assignments) && Array.isArray(people)) {
-      const members = assignments
-        .filter(
-          (assignment) =>
-            assignment.editionId === editionId &&
-            assignment.position &&
-            assignment.visible !== false,
-        )
-        .map((assignment) => {
-          const person = people.find((item) => item.id === assignment.personId);
-
-          if (!person) return null;
-
-          return {
-            id: assignment.id,
-            name: person.name,
-            role: assignment.position,
-            unitId: assignment.unitId,
-            photo: person.photo ?? null,
-          };
-        })
-        .filter(Boolean);
-
-      return { ...file, members };
-    }
-  } catch {
-    // Use the bundled committee data if local demo data is unavailable.
-  }
-
   return {
     ...file,
     members: (file.members ?? []).filter(

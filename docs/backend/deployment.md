@@ -24,7 +24,7 @@
 ## Database
 
 - [ ] Create the database, then run `php backend/tools/migrate.php` (applies migrations 001 to 006)
-- [ ] `php backend/tools/create-super-admin.php`: use a long unique password; do NOT run `load-demo-data.php` in production
+- [ ] `php backend/tools/create-super-admin.php`: use a long unique password; a real site starts empty (one OGA 10.0 edition from migration 009); sample data exists only in tests/fixtures/
 - [ ] Daily backup: `mysqldump` of the database plus a copy of `uploads/`. Do one test restore.
 
 ## Payments

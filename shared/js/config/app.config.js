@@ -17,10 +17,8 @@ export const APP = {
   timezone: "Africa/Lagos",
   currency: { code: "NGN" },
 
-  /** Where data comes from. Switch to 'api' when the PHP backend is ready. */
+  /** Every page reads its data from the PHP API. */
   data: {
-    source: "api",
-    jsonPath: "data/",
     apiBase: new URL("api", ROOT).href,
   },
 
@@ -100,28 +98,9 @@ export const STATES = {
 };
 
 /**
- * DEMO BRIDGE: values saved from the admin (kept in this browser) override the defaults above.
- * APP is a const, but its properties are writable. Delete with the backend.
- */
-if (APP.data.source === "json")
-  try {
-    const read = (k) =>
-      JSON.parse(localStorage.getItem(`oga:admin:${k}`) ?? "null");
-    const settings = read("settings");
-    const editions = read("editions");
-    const active = editions?.editions?.find((e) => e.id === editions.active);
-    if (active?.voting) Object.assign(APP.voting, active.voting);
-    if (settings?.contact) Object.assign(APP.contact, settings.contact);
-    if (Array.isArray(settings?.social)) APP.social = settings.social;
-  } catch {
-    /* ignore */
-  }
-
-/**
  * With the PHP backend, contact details and social links come from the server (set in Admin → Settings).
  * Top-level await: the page waits for this one small, cached request, so the footer is right on first paint.
  */
-if (APP.data.source === "api")
   try {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 4000);

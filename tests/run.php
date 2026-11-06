@@ -11,6 +11,7 @@ if (PHP_SAPI !== 'cli') {
 $root = dirname(__DIR__);
 $base = require $root . '/backend/config.php';
 $testDb = rtrim((string) $base['DB_NAME'], '_') . '_test';
+$GLOBALS['testDb'] = $testDb;
 if (!str_ends_with($testDb, '_test')) {
     exit("Refusing to run: the test database name must end in _test.\n");
 }
@@ -41,12 +42,18 @@ $admin->exec("CREATE DATABASE `$testDb` CHARACTER SET utf8mb4");
 $db = new PDO($dsn . ";dbname=$testDb", (string) $base['DB_USER'], (string) ($base['DB_PASS'] ?? ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $migrations = glob($root . '/database/migrations/*.sql');
 sort($migrations);
-foreach ($migrations as $file) {                       // every migration in order, except the old demo-data one
-    if (!str_contains(basename($file), 'demo_data')) {
+foreach ($migrations as $file) {                       // every migration in order, except the seed migration: tests use their own fixture
+    if (!str_contains(basename($file), 'initial_edition')) {
         $db->exec((string) file_get_contents($file));
     }
-}passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/backend/tools/load-demo-data.php") . ' > ' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null'));
-
+}
+// Sample editions, nominees and people for the tests. They live in tests/fixtures and are never loaded on a real site.
+foreach (file($root . '/tests/fixtures/sample-data.sql', FILE_IGNORE_NEW_LINES) as $line) {
+    $line = trim($line);
+    if ($line !== '' && !str_starts_with($line, '--')) {
+        $db->exec($line);                              // one statement per line
+    }
+}
 $pw = 'Test-Pass-12345';
 $hash = password_hash($pw, PASSWORD_BCRYPT, ['cost' => 4]);
 $db->prepare("INSERT INTO people (name,email,password_hash,active,is_super_admin) VALUES ('Test Admin','admin@test.dev',?,1,1)")->execute([$hash]);
@@ -392,6 +399,60 @@ check('key test answers cleanly even when Flutterwave cannot be reached', $c ===
 check('a secret can be removed, then config.php is the fallback', $sa->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['clear' => ['flutterwaveWebhookHash']]])[0] === 200 && $hook('test-hash') === 200 && $hook($hash) === 401);
 check('config.example.php holds no real credentials', !preg_match('/@[a-z0-9.-]+\.[a-z]{2,}|[a-z]{16}/', preg_replace('/\/\/.*$/m', '', (string) file_get_contents($root . '/backend/config.example.php'))));
 
+// ================================================================== F. A REAL SITE STARTS EMPTY (Round 2, phase 3)
+group('F. Production starts empty: one OGA 10.0 edition, no sample data');
+$mk = function (string $suffix, bool $seed, bool $fixture) use ($admin, $dsn, $base, $cfg, $tmp, $migrations, $root) {
+    $name = $GLOBALS['testDb'] . '_' . $suffix;
+    $admin->exec("DROP DATABASE IF EXISTS `$name`");
+    $admin->exec("CREATE DATABASE `$name` CHARACTER SET utf8mb4");
+    $p = new PDO($dsn . ";dbname=$name", (string) $base['DB_USER'], (string) ($base['DB_PASS'] ?? ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    foreach ($migrations as $f) {
+        if ($seed || !str_contains(basename($f), 'initial_edition')) { $p->exec((string) file_get_contents($f)); }
+    }
+    if ($fixture) {
+        foreach (file($root . '/tests/fixtures/sample-data.sql', FILE_IGNORE_NEW_LINES) as $l) { $l = trim($l); if ($l !== '' && !str_starts_with($l, '--')) { $p->exec($l); } }
+    }
+    $file = "$tmp/config-$suffix.php";
+    file_put_contents($file, '<?php return ' . var_export(array_merge($cfg, ['DB_NAME' => $name]), true) . ';');
+    return [$p, $name, $file];
+};
+$tool = function (string $cfgFile, string $script, array $args = []) use ($root) {
+    $proc = proc_open(array_merge([PHP_BINARY, "$root/backend/tools/$script"], $args), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root, array_merge(getenv(), ['OGA_CONFIG' => $cfgFile]));
+    $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    return [proc_close($proc), $out];
+};
+$n = fn (PDO $p, string $sql) => (int) $p->query($sql)->fetchColumn();
+
+[$fresh, $freshName] = $mk('fresh', true, false);
+check('fresh database has exactly one edition: OGA 10.0, active', $n($fresh, 'SELECT COUNT(*) FROM editions') === 1 && $n($fresh, "SELECT COUNT(*) FROM editions WHERE slug='oga-10' AND status='active' AND edition_label='10.0'") === 1);
+check('the edition has its settings row and the committee structure', $n($fresh, 'SELECT COUNT(*) FROM edition_settings') === 1 && $n($fresh, 'SELECT COUNT(*) FROM committee_units') === 4);
+check('fresh database has no categories, nominees, tickets, winners, people or orders',
+    array_sum(array_map(fn ($t) => $n($fresh, "SELECT COUNT(*) FROM $t"), ['categories', 'nominee_entries', 'ticket_types', 'winners', 'people', 'accounts', 'vote_orders', 'ticket_orders', 'occasions', 'contact_messages'])) === 0);
+check('roles and permissions are still seeded', $n($fresh, 'SELECT COUNT(*) FROM permissions') > 30 && $n($fresh, 'SELECT COUNT(*) FROM roles') >= 9);
+$fresh->exec(preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($root . '/database/migrations/009_initial_edition.sql')));
+check('the seed migration is safe to run twice', $n($fresh, 'SELECT COUNT(*) FROM editions') === 1 && $n($fresh, 'SELECT COUNT(*) FROM committee_units') === 4);
+
+[$old, $oldName, $oldCfg] = $mk('old', false, true);
+$old->prepare("INSERT INTO people (name,email,password_hash,active,is_super_admin) VALUES ('Boss','boss@x.test','x',1,1)")->execute();
+check('sample data is in place before the purge', $n($old, 'SELECT COUNT(*) FROM editions') === 2 && $n($old, "SELECT COUNT(*) FROM nominee_entries WHERE name LIKE 'Sample%'") > 0);
+[$code, $out] = $tool($oldCfg, 'purge-demo-data.php');
+check('purge without --yes changes nothing', $code === 0 && str_contains($out, 'Nothing changed') && $n($old, 'SELECT COUNT(*) FROM editions') === 2);
+$old->prepare("INSERT INTO people (name,email,password_hash,active) VALUES ('Real Editor','editor@x.test','x',1)")->execute();
+[$code] = $tool($oldCfg, 'purge-demo-data.php', ['--yes']);
+check('purge refuses when real admin accounts would be affected', $code === 1 && $n($old, 'SELECT COUNT(*) FROM editions') === 2);
+$old->exec("DELETE FROM people WHERE email = 'editor@x.test'");
+[$code, $out] = $tool($oldCfg, 'purge-demo-data.php', ['--yes']);
+check('purge --yes succeeds', $code === 0 && str_contains($out, 'Done'), $out);
+check('after the purge: one empty OGA 10.0, no sample people or nominees, Super admin kept',
+    $n($old, 'SELECT COUNT(*) FROM editions') === 1 && $n($old, "SELECT COUNT(*) FROM editions WHERE slug='oga-10' AND status='active'") === 1
+    && $n($old, 'SELECT COUNT(*) FROM nominee_entries') === 0 && $n($old, 'SELECT COUNT(*) FROM winners') === 0 && $n($old, "SELECT COUNT(*) FROM people WHERE name LIKE 'Sample%'") === 0
+    && $n($old, "SELECT COUNT(*) FROM people WHERE email = 'boss@x.test'") === 1 && $n($old, 'SELECT COUNT(*) FROM committee_units') === 4);
+check('purge keeps permissions and roles', $n($old, 'SELECT COUNT(*) FROM permissions') > 30);
+$admin->exec("DROP DATABASE IF EXISTS `$freshName`");
+$admin->exec("DROP DATABASE IF EXISTS `$oldName`");
+check('shipped site files contain no sample data', !is_file($root . '/data/nominees.json') && !is_file($root . '/data/editions.json') && !is_file($root . '/data/winners.json') && !is_file($root . '/backend/tools/load-demo-data.php')
+    && !array_key_exists('members', json_decode((string) file_get_contents($root . '/data/committee.json'), true)) && json_decode((string) file_get_contents($root . '/data/gallery.json'), true) === []);
+    
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

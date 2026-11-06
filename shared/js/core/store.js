@@ -1,4 +1,4 @@
-/** Safe localStorage wrapper + tiny helpers. Used by the demo (mock) services until the backend exists. */
+/** Safe localStorage wrapper + tiny helpers. Used for small browser-side caches. The server is the source of truth. */
 const PREFIX = "oga:";
 
 export const store = {

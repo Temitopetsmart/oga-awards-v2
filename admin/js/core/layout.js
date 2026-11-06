@@ -135,11 +135,7 @@ export function renderShell(root, access, editions, current, { canPreview }) {
           </ul>
           <ul class="navbar-nav ms-auto align-items-center">
             <li class="nav-item d-none d-md-block">
-              <a
-                class="nav-link"
-                href="${ROOT}"
-                target="_blank"
-                rel="noopener"
+              <a class="nav-link" href="${ROOT}" target="_blank" rel="noopener"
                 ><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>View
                 site</a
               >
@@ -238,9 +234,6 @@ export function renderShell(root, access, editions, current, { canPreview }) {
         </div>
       </main>
       <footer class="app-footer">
-        <div class="float-end d-none d-sm-inline">
-          Demo data — stored in this browser
-        </div>
         <strong>${APP.brand.name}</strong> admin
       </footer>
     </div>`,

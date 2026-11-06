@@ -1,14 +1,7 @@
 import { store } from "../../../shared/js/core/store.js";
-import { getSeed } from "../../../shared/js/core/http.js";
 
 const KEY = "admin:editions";
 const VIEW = "admin:viewing";
-
-export async function ensureEditions() {
-  if (store.get(KEY) === null) {
-    store.set(KEY, structuredClone(await getSeed("editions")));
-  }
-}
 
 export const readEditions = () =>
   store.get(KEY) ?? { active: null, editions: [] };

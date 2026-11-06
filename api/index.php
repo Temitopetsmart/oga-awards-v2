@@ -26,8 +26,7 @@ if ($method === 'GET' && $path === '/health') {
         'time'     => date('c'),
     ];
     if ($body['editions'] === 0) {
-        $body['hint'] = 'Connected, but the database has no data yet. Run: C:/xampp/php/php.exe backend/tools/load-demo-data.php';
-    }
+        $body['hint'] = 'Connected, but there is no edition yet. Run: C:/xampp/php/php.exe backend/tools/migrate.php';    }
     Response::json($body);
 }
 
