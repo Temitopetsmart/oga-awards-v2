@@ -36,6 +36,11 @@ export const APP = {
 
   contact: { email: "info@example.com", phone: "" }, // TODO: real contact details
 
+  /** Filled from Admin → Settings when the page loads (see the fetch at the bottom of this file). */
+  levels: [],
+  departments: [],
+  matric: null, // { maxLength, formats: [{ label, pattern, example }] }
+
   /** Leave href empty to hide an icon. */
   social: [
     { label: "Instagram", icon: "fa-brands fa-instagram", href: "" },
@@ -128,6 +133,12 @@ if (APP.data.source === "api")
     if (site?.contact) Object.assign(APP.contact, site.contact);
     if (Array.isArray(site?.social) && site.social.length)
       APP.social = site.social;
+    if (site?.brand?.name) APP.brand.name = site.brand.name;
+    if (site?.brand?.org) APP.brand.org = site.brand.org;
+    if (site?.brand?.tagline) APP.brand.tagline = site.brand.tagline;
+    if (Array.isArray(site?.levels)) APP.levels = site.levels;
+    if (Array.isArray(site?.departments)) APP.departments = site.departments;
+    if (site?.matric?.formats?.length) APP.matric = site.matric;
   } catch {
     /* keep the defaults if the server can't be reached */
   }

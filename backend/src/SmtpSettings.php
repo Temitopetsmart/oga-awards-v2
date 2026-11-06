@@ -122,7 +122,7 @@ final class SmtpSettings
 
     private static function key(): string
     {
-        $configured = trim((string) Env::get('SMTP_ENCRYPTION_KEY', ''));
+        $configured = trim((string) (Env::get('SMTP_ENCRYPTION_KEY') ?: Env::get('APP_ENCRYPTION_KEY', '')));
 
         if (!preg_match('/^[a-f0-9]{64}$/i', $configured)) {
             throw new \RuntimeException(

@@ -1,4 +1,5 @@
 import { html } from "../../../shared/js/core/dom.js";
+import { APP } from "../../../shared/js/config/app.config.js";
 import { go } from "../../../shared/js/core/nav.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import {
@@ -16,7 +17,7 @@ import {
 import { pageHero, pageBody, stateGate } from "../sections/page-sections.js";
 
 export const title = "Register as Nominee";
-const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((l) => ({
+const LEVELS = APP.levels.map((l) => ({
   value: l,
   label: l,
 }));

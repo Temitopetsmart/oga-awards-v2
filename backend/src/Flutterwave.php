@@ -11,14 +11,29 @@ final class Flutterwave
         return rtrim(Env::get('FLW_BASE_URL', 'https://api.flutterwave.com/v3'), '/');
     }
 
+    /** Secret key saved in the admin (encrypted) wins; config.php is the fallback. */
+    public static function secretKey(): string
+    {
+        return (string) (Secrets::get('flutterwave.secret_key') ?? Env::get('FLW_SECRET_KEY', ''));
+    }
+
+    public static function webhookHash(): string
+    {
+        return (string) (Secrets::get('flutterwave.webhook_hash') ?? Env::get('FLW_WEBHOOK_HASH', ''));
+    }
+
     /** @return array{0:int,1:array} HTTP status and decoded JSON */
     private static function request(string $method, string $path, ?array $body = null): array
     {
-        $key = (string) Env::get('FLW_SECRET_KEY', '');
-        if ($key === '') {
-            throw new GatewayException('FLW_SECRET_KEY is not set in config.php');
+        try {
+            $key = self::secretKey();
+        } catch (\RuntimeException $e) {
+            error_log($e->getMessage());
+            throw new GatewayException('The saved Flutterwave key could not be read. Check the encryption key in backend/config.php.');
         }
-        $ch = curl_init(self::base() . $path);
+        if ($key === '') {
+            throw new GatewayException('The Flutterwave secret key is not set. Add it in Admin → Settings → Payment secrets.');
+        }        $ch = curl_init(self::base() . $path);
         $opts = [
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_RETURNTRANSFER => true,

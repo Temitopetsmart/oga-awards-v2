@@ -1,4 +1,4 @@
-import { ROOT } from "../../../shared/js/config/app.config.js";
+import { ROOT, APP } from "../../../shared/js/config/app.config.js";
 import { html } from "../../../shared/js/core/dom.js";
 import { go } from "../../../shared/js/core/nav.js";
 import { store } from "../../../shared/js/core/store.js";
@@ -41,10 +41,12 @@ const STATUS = {
   },
 };
 
-const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((level) => ({
-  value: level,
-  label: level,
-}));
+/** The admin-managed levels; a level the admin has since switched off stays selectable for the person who already has it. */
+const levelOptions = (current = "") =>
+  [
+    ...APP.levels,
+    ...(current && !APP.levels.includes(current) ? [current] : []),
+  ].map((level) => ({ value: level, label: level }));
 
 export default async function dashboard(ctx, { params }) {
   const viewAsId = params.get("viewAs");
@@ -469,7 +471,7 @@ export default async function dashboard(ctx, { params }) {
                               ${field({
                                 label: "Level",
                                 name: "level",
-                                options: LEVELS,
+                                options: levelOptions(me.level),
                                 required: true,
                                 value: me.level ?? "",
                               })}

@@ -341,6 +341,57 @@ foreach (['nominee_verify_email' => ['token' => 'abc'], 'nominee_password_reset'
 $m = App\MailTemplates::render('committee_approved', 'a@b.co', ['applicantName' => '<script>alert(1)</script>', 'message' => '<b>x</b>']);
 check('email templates escape HTML in names and messages', !str_contains($m['html'], '<script>') && !str_contains($m['html'], '<b>x</b>'));
 
+// ================================================================== E. SETTINGS HUB (Round 2, phase 2)
+group('E. Settings hub: levels, matric format, branding, encrypted secrets');
+$pub = fn () => (new Client())->get('/settings')[1] ?? [];
+check('public settings list the six default levels', ($pub()['levels'] ?? []) === ['ND I', 'ND II', 'HND I', 'HND II', 'Staff', 'Alumni']);
+
+[$c, $r] = $sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => [
+    ['name' => 'ND I', 'active' => true], ['name' => 'ND II', 'active' => true], ['name' => 'HND I', 'active' => true], ['name' => 'HND II', 'active' => true],
+    ['name' => 'Staff', 'active' => true], ['name' => 'Alumni', 'active' => false], ['name' => 'Postgraduate', 'active' => true]]]);
+check('admin can edit the levels list', $c === 200 && count($r['items'] ?? []) === 7, (string) $c);
+$lv = $pub()['levels'] ?? [];
+check('new level is public, switched-off level is hidden, order kept', in_array('Postgraduate', $lv, true) && !in_array('Alumni', $lv, true) && $lv[0] === 'ND I');
+check('registration rules use the live list', App\Options::isActive('level', 'Postgraduate') && !App\Options::isActive('level', 'Alumni') && !App\Options::isActive('level', 'ND III'));
+check('duplicate level names are refused', $sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => [['name' => 'ND I', 'active' => true], ['name' => 'nd i', 'active' => true]]])[0] === 422);
+check('at least one level must stay active', $sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => [['name' => 'ND I', 'active' => false]]])[0] === 422);
+check('hostile level names are refused', $sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => [['name' => '<script>x</script>', 'active' => true]]])[0] === 422);
+check('levels cannot be changed by gate staff', $gate->put('/admin/settings/levels', ['edition' => $ed, 'value' => [['name' => 'X', 'active' => true]]])[0] === 403);
+$sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => [['name' => 'ND I', 'active' => true], ['name' => 'ND II', 'active' => true], ['name' => 'HND I', 'active' => true], ['name' => 'HND II', 'active' => true]]]);
+check('a level left out of the list is switched off, not deleted', (int) $q("SELECT COUNT(*) FROM lookup_options WHERE kind='level'")->fetchColumn() === 7);
+
+check('matric defaults accept full-time and part-time', App\Matric::normalize('hswf/24/0010') === 'HSWF/24/0010' && App\Matric::normalize('HSWF/24E/0010') === 'HSWF/24E/0010');
+check('matric rejects wrong shapes and over-length', App\Matric::normalize('HSWF/24/001') === null && App\Matric::normalize('HSWF/24E/00100') === null && App\Matric::normalize('24/HSWF/0010') === null && App\Matric::normalize('') === null);
+$cfg = ['maxLength' => 13, 'formats' => [['label' => 'Full-time', 'pattern' => '@{3,5}/#{2}/#{4}', 'example' => 'HSWF/24/0010'], ['label' => 'Evening', 'pattern' => '@{3,5}/#{2}X/#{4}', 'example' => '']]];
+check('admin can save a matric format', $sa->put('/admin/settings/matric', ['edition' => $ed, 'value' => $cfg])[0] === 200);
+check('saved matric format is applied', App\Matric::normalize('HSWF/24X/0010') === 'HSWF/24X/0010' && App\Matric::normalize('HSWF/24E/0010') === null);
+check('matric format is public for the forms', (($pub()['matric']['formats'][1]['label'] ?? '') === 'Evening') && ($pub()['matric']['maxLength'] ?? 0) === 13);
+check('matric pattern that can never fit the maximum is refused', $sa->put('/admin/settings/matric', ['edition' => $ed, 'value' => ['maxLength' => 8] + $cfg])[0] === 422);
+check('broken matric pattern is refused', $sa->put('/admin/settings/matric', ['edition' => $ed, 'value' => ['maxLength' => 13, 'formats' => [['label' => 'x', 'pattern' => '@{3', 'example' => '']]]])[0] === 422);
+check('matric example must match its pattern', $sa->put('/admin/settings/matric', ['edition' => $ed, 'value' => ['maxLength' => 13, 'formats' => [['label' => 'x', 'pattern' => '@{3}/#{4}', 'example' => 'ABCD/12']]]])[0] === 422);
+
+check('admin can save the site branding', $sa->put('/admin/settings/brand', ['edition' => $ed, 'value' => ['name' => 'OGA Awards Test', 'org' => 'OGITECH', 'tagline' => 'x']])[0] === 200 && ($pub()['brand']['name'] ?? '') === 'OGA Awards Test');
+check('email footer uses the admin-set site name', str_contains(App\MailTemplates::render('committee_application_received', 'a@b.co', ['applicantName' => 'Ada'])['html'], 'OGA Awards Test'));
+check('branding needs a name', $sa->put('/admin/settings/brand', ['edition' => $ed, 'value' => ['name' => '']])[0] === 422);
+
+$hash = 'db-hash-secret-12345';
+[$c, $r, $raw] = $sa->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['flutterwaveWebhookHash' => $hash]]);
+check('super admin can save a payment secret', $c === 200 && !str_contains($raw, $hash), (string) $c);
+[, , $raw] = $sa->get("/admin/settings?edition=$ed");
+check('a saved secret is reported as saved but never sent back', str_contains($raw, '"saved":true') && !str_contains($raw, $hash));
+check('the secret is encrypted in the database', !str_contains((string) $q("SELECT ciphertext FROM app_secrets WHERE secret_key='flutterwave.webhook_hash'")->fetchColumn(), $hash));
+check('the secret is not in the audit log', !str_contains(implode('|', $q('SELECT COALESCE(details, "") FROM audit_log')->fetchAll(PDO::FETCH_COLUMN)), $hash));
+$hook = fn (string $h) => (new Client())->call('POST', '/webhooks/flutterwave', ['event' => 'ping', 'data' => []], ['verif-hash' => $h])[0];
+check('webhook uses the secret saved in the admin', $hook($hash) === 200 && $hook('test-hash') === 401 && $hook('') === 401);
+check('a PUBLIC key is refused as a secret key', $sa->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['flutterwaveSecretKey' => 'FLWPUBK_TEST-abcdef123456-X']])[0] === 422);
+check('a secret with spaces is refused', $sa->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['flutterwaveSecretKey' => 'has space in it 123']])[0] === 422);
+check('secrets cannot be changed by gate staff', $gate->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['flutterwaveWebhookHash' => 'abcdefgh123']])[0] === 403);
+check('secrets are never in public settings', !str_contains((new Client())->get('/settings')[2], $hash));
+[$c, $r] = $sa->post('/admin/settings/secrets/test', ['edition' => $ed]);
+check('key test answers cleanly even when Flutterwave cannot be reached', $c === 200 && array_key_exists('ok', $r ?? []) && !str_contains(json_encode($r), $hash));
+check('a secret can be removed, then config.php is the fallback', $sa->put('/admin/settings/secrets', ['edition' => $ed, 'value' => ['clear' => ['flutterwaveWebhookHash']]])[0] === 200 && $hook('test-hash') === 200 && $hook($hash) === 401);
+check('config.example.php holds no real credentials', !preg_match('/@[a-z0-9.-]+\.[a-z]{2,}|[a-z]{16}/', preg_replace('/\/\/.*$/m', '', (string) file_get_contents($root . '/backend/config.example.php'))));
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

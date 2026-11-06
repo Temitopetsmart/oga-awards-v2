@@ -10,7 +10,6 @@ namespace App;
  */
 final class CommitteeApi
 {
-    private const LEVELS = ['ND I', 'ND II', 'HND I', 'HND II'];
     private const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
     /** action => [allowed current stages, new stage] */
@@ -254,7 +253,7 @@ final class CommitteeApi
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { self::fail('Enter a valid email address.'); }
         if (!preg_match('/^[0-9+()\s-]{7,30}$/', $phone)) { self::fail('Enter a valid phone number.'); }
         if ($dept === '') { self::fail('Enter your department.'); }
-        if (!in_array($level, self::LEVELS, true)) { self::fail('Choose your level.'); }
+        if (!Options::isActive('level', $level)) { self::fail('Choose your level.'); }
         if (mb_strlen($why) < 30) { self::fail('Your motivation statement must contain at least 30 characters.'); }
         $q = self::pdo()->prepare('SELECT COUNT(*) FROM committee_units WHERE id = ?');
         $q->execute([$unit]);

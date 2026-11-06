@@ -21,7 +21,7 @@ final class MailTemplates
 
     private static function layout(string $title, string $bodyHtml): string
     {
-        $name = self::e((string) Env::get('MAIL_FROM_NAME', 'OGA Awards'));
+        $name = self::e(SettingsApi::brandName());
         return '<div style="background:#f4f4f6;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">'
             . '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:28px;color:#222;line-height:1.55">'
             . '<h2 style="margin:0 0 16px;font-size:20px;color:#111">' . self::e($title) . '</h2>' . $bodyHtml

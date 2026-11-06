@@ -144,10 +144,10 @@ final class AdminApi
         if ($method === 'GET' && $path === '/admin/settings') {
             SettingsApi::read();
         }
-        if ($method === 'PUT' && preg_match('#^/admin/settings/([a-z]+)$#', $path, $m)) {
-            SettingsApi::save($m[1]);
+        if ($method === 'POST' && $path === '/admin/settings/secrets/test') {
+            SettingsApi::testGateway();
         }
-
+        
         // ---- votes and results ----
         if ($method === 'GET' && $path === '/admin/votes') {
             VoteAdminApi::ledger();

@@ -1,4 +1,5 @@
 import { html, safeClass } from "../../../shared/js/core/dom.js";
+import { APP } from "../../../shared/js/config/app.config.js";
 import { getCommittee } from "../../../shared/js/services/catalog.service.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { field } from "../../../shared/js/components/form-fields.js";
@@ -15,7 +16,7 @@ import { sectionHead } from "../sections/sections.js";
 
 export const title = "Committee";
 
-const LEVELS = ["ND I", "ND II", "HND I", "HND II"].map((level) => ({
+const LEVELS = APP.levels.map((level) => ({
   value: level,
   label: level,
 }));

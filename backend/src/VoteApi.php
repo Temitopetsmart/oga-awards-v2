@@ -162,7 +162,13 @@ final class VoteApi
 
     public static function webhook(): never
     {
-        $secret = (string) Env::get('FLW_WEBHOOK_HASH', '');
+        try {
+            $secret = Flutterwave::webhookHash();
+        } catch (\RuntimeException $e) {
+            error_log($e->getMessage());
+            Response::json(['ok' => false], 500);
+        }
+        
         $sent = (string) ($_SERVER['HTTP_VERIF_HASH'] ?? '');
         if ($secret === '' || !hash_equals($secret, $sent)) {
             Response::json(['ok' => false], 401);

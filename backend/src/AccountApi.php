@@ -6,7 +6,6 @@ namespace App;
 /** Nominee accounts: register, sign in, my entries, profile and photo, passwords, email verification. */
 final class AccountApi
 {
-    private const LEVELS = ['ND I', 'ND II', 'HND I', 'HND II'];
     private const TOKEN_MINUTES = 30;
 
     private static function fail(string $message, int $status = 422, array $extra = []): never
@@ -222,7 +221,7 @@ final class AccountApi
         if (mb_strlen($name) < 2) $f['name'] = 'Enter your full name.';
         if (!preg_match('/^[0-9+()\s-]{7,30}$/', $phone)) $f['phone'] = 'Enter a valid phone number.';
         if ($dept === '') $f['department'] = 'Enter your department.';
-        if (!in_array($level, self::LEVELS, true)) $f['level'] = 'Choose your level.';
+        if (!Options::isActive('level', $level)) $f['level'] = 'Choose your level.';
         if ($f) {
             self::fail(reset($f), 422, ['fields' => $f]);
         }

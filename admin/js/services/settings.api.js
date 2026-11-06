@@ -24,3 +24,10 @@ export const saveSettings = (section, value) =>
     method: "PUT",
     body: { edition: viewing(), value },
   });
+
+/** Asks Flutterwave to accept the saved secret key. Super admin only. Resolves to { ok, message }. */
+export const testGatewayKey = () =>
+  adminApi("/admin/settings/secrets/test", {
+    method: "POST",
+    body: { edition: viewing() },
+  });

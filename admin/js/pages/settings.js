@@ -9,6 +9,7 @@ import { resolveState } from "../../../shared/js/services/event.service.js";
 import { logAudit } from "../services/admin-store.js";
 import { getEdition, editionLabel } from "../services/edition.repo.js";
 import { fetchSettings, saveSettings } from "../services/settings.api.js";
+import { hubCards, initHub } from "./settings-hub.js";
 import {
   updateEditionDetails,
   saveEditionState,
@@ -19,6 +20,7 @@ export const title = "Settings";
 export const perm = "settings.view";
 export const crumbs = ["Administration", "Settings"];
 const SETTINGS = "admin:settings";
+let hubData = {}; // the settings loaded for this visit, shared with the hub cards
 
 const TIMELINE = [
   ["nominationsOpen", "Nominations open"],
@@ -57,6 +59,7 @@ export default async function settings({ edition: ed, can, access }) {
   const o = getEdition(ed.id);
   const editable = can("settings.edit");
   const s = await fetchSettings(ed.id);
+  hubData = s;
   const c = { ...APP.contact, ...s.contact };
   const social = Object.fromEntries(
     (s.social ?? APP.social).map((x) => [x.label, x.href]),
@@ -471,22 +474,24 @@ export default async function settings({ edition: ed, can, access }) {
                 col: "col-12",
               })}
             </div>
-            <div class="alert alert-warning">
-              Secret keys and webhook signing secrets are not saved here. Live
-              payment processing must remain disabled until the backend is
-              configured and the provider's webhook signatures are verified.
+            <div class="alert alert-info">
+              Secret keys and the webhook secret hash are entered in the
+              “Payment secrets” card further down this page. They are encrypted
+              and never shown again.
             </div>
             ${save("Save gateway preferences")}
           </form>
         `,
         "cardGatewaySettings",
       )}
+      ${hubCards(s, { editable, isSuper: Boolean(access?.isSuper) })}
     </div>
   </div>`;
 }
 
-export async function init(root, { admin, edition: ed, can }) {
+export async function init(root, { admin, edition: ed, can, access }) {
   const editable = can("settings.edit");
+  initHub(root, { editable, isSuper: Boolean(access?.isSuper) }, hubData);
   const showState = () => {
     const o = getEdition(ed.id);
     const el = root.querySelector("#liveState");
