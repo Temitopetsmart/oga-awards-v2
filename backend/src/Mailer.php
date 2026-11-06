@@ -65,7 +65,7 @@ final class Mailer
 
             $mail->setFrom(
                 $fromEmail,
-                $fromName ?: 'OGA Awards'
+                $fromName ?: SettingsApi::brandName()
             );
 
             if ($replyTo && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {

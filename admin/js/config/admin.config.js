@@ -93,6 +93,12 @@ export const ADMIN = {
       perm: "team.view",
     },
     {
+      label: "Email",
+      icon: "fa-paper-plane",
+      href: "admin/email",
+      perm: "settings.view",
+    },
+    {
       label: "Settings",
       icon: "fa-sliders",
       href: "admin/settings",

@@ -149,6 +149,31 @@ final class AdminApi
             SettingsApi::save($m[1]);
         }
 
+                if ($method === 'GET' && $path === '/admin/email') {
+            EmailApi::overview();
+        }
+        if ($method === 'GET' && $path === '/admin/email/outbox') {
+            EmailApi::outbox();
+        }
+        if ($method === 'POST' && $path === '/admin/email/test') {
+            EmailApi::sendTest();
+        }
+        if ($method === 'POST' && $path === '/admin/email/outbox/send') {
+            EmailApi::sendQueued();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/email/outbox/(\d+)/retry$#', $path, $m)) {
+            EmailApi::retry((int) $m[1]);
+        }
+        if ($method === 'PUT' && preg_match('#^/admin/email/templates/([a-z_]+)$#', $path, $m)) {
+            EmailApi::saveTemplate($m[1]);
+        }
+        if ($method === 'DELETE' && preg_match('#^/admin/email/templates/([a-z_]+)$#', $path, $m)) {
+            EmailApi::resetTemplate($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/email/templates/([a-z_]+)/preview$#', $path, $m)) {
+            EmailApi::preview($m[1]);
+        }
+
         if ($method === 'POST' && $path === '/admin/settings/secrets/test') {
             SettingsApi::testGateway();
         }

@@ -452,7 +452,125 @@ $admin->exec("DROP DATABASE IF EXISTS `$freshName`");
 $admin->exec("DROP DATABASE IF EXISTS `$oldName`");
 check('shipped site files contain no sample data', !is_file($root . '/data/nominees.json') && !is_file($root . '/data/editions.json') && !is_file($root . '/data/winners.json') && !is_file($root . '/backend/tools/load-demo-data.php')
     && !array_key_exists('members', json_decode((string) file_get_contents($root . '/data/committee.json'), true)) && json_decode((string) file_get_contents($root . '/data/gallery.json'), true) === []);
-    
+
+// ================================================================== G. EMAIL IN ONE PLACE (Round 2, phase 4)
+group('G. Email: editable templates, preview, test send, outbox viewer, retry');
+$mails = sys_get_temp_dir() . '/oga-smtp-' . bin2hex(random_bytes(4)) . '.out';
+$smtpPort = 0;
+$smtpProc = null;
+for ($try = 0; $try < 20 && !$smtpProc; $try++) {
+    $smtpPort = random_int(20000, 40000);
+    $p = proc_open([PHP_BINARY, $root . '/tests/fake-smtp.php', (string) $smtpPort, $mails], [1 => ['file', sys_get_temp_dir() . '/fake-smtp.log', 'a'], 2 => ['file', sys_get_temp_dir() . '/fake-smtp.log', 'a']], $pp);
+    for ($i = 0; $i < 30; $i++) { if (($s = @fsockopen('127.0.0.1', $smtpPort, $e1, $e2, 0.2)) !== false) { fclose($s); $smtpProc = $p; break; } usleep(100000); }
+}
+check('a test mail server is running', $smtpProc !== null);
+$sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
+
+[$c, $r] = $sa->get("/admin/email?edition=$ed");
+$keys = array_column($r['templates'] ?? [], 'key');
+check('admin sees all nine email templates, none customised yet', $c === 200 && count($keys) === 9 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
+check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
+check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);
+
+// wording and the layout rules
+$m = App\MailTemplates::render('committee_shortlisted', 'a@b.co', ['applicantName' => 'Ada', 'venue' => 'Hall A']);
+check('a line with only empty placeholders is dropped, others stay', str_contains($m['text'], 'Venue: Hall A') && !str_contains($m['text'], 'Date:') && !str_contains($m['text'], 'Time:'));
+$m = App\MailTemplates::render('nominee_verify_email', 'a@b.co', ['token' => 'CODE-123', 'expiresMinutes' => 15]);
+check('verification email shows the code in a code block and the expiry', str_contains($m['html'], 'monospace') && str_contains($m['html'], 'CODE-123') && str_contains($m['text'], '15 minutes'));
+check('a message whose one-time code was wiped cannot be built', App\MailTemplates::render('nominee_verify_email', 'a@b.co', []) === null);
+check('the approval button is left out when there is no WhatsApp link', !str_contains(App\MailTemplates::render('committee_approved', 'a@b.co', ['applicantName' => 'Ada'])['html'], 'WhatsApp') && str_contains(App\MailTemplates::render('committee_approved', 'a@b.co', ['applicantName' => 'Ada', 'whatsappGroupUrl' => 'https://chat.whatsapp.com/x'])['html'], 'WhatsApp'));
+
+// editing a template
+$t = "/admin/email/templates/nominee_verify_email";
+$good = ['edition' => $ed, 'subject' => 'Your {{site_name}} code', 'body' => "Hi! Your code is below. It works for {{expires_minutes}} minutes.\n\n{{code}}\n\n<b>Thanks</b>"];
+[$c, $r] = $sa->put($t, $good);
+check('admin can edit a template', $c === 200 && count(array_filter($r['templates'], fn ($x) => $x['custom'])) === 1, (string) $c);
+App\MailTemplates::forget();
+$m = App\MailTemplates::render('nominee_verify_email', 'a@b.co', ['token' => 'CODE-9', 'expiresMinutes' => 20]);
+check('the edited wording is what gets sent', str_contains($m['subject'], 'Your ') && str_contains($m['subject'], ' code') && str_contains($m['text'], 'works for 20 minutes') && str_contains($m['text'], 'CODE-9'));
+check('HTML typed into a template is escaped, not run', str_contains($m['html'], '&lt;b&gt;Thanks&lt;/b&gt;') && !str_contains($m['html'], '<b>Thanks</b>'));
+check('unknown placeholders are refused', $sa->put($t, ['body' => 'Hi {{password}} {{code}}'] + $good)[0] === 422);
+check('a template must keep its essential placeholder', $sa->put($t, ['body' => 'Hello, no code here.'] + $good)[0] === 422);
+check('a subject cannot span lines (no header injection)', $sa->put($t, ['subject' => "Hi\r\nBcc: x@y.z"] + $good)[0] === 422);
+check('an over-long template is refused', $sa->put($t, ['body' => str_repeat('a ', 3000) . '{{code}}'] + $good)[0] === 422);
+check('an unknown template is a 404', $sa->put('/admin/email/templates/nope', $good)[0] === 404);
+check('gate staff cannot edit templates', $gate->put($t, $good)[0] === 403);
+check('template edits are in the audit log', (int) $q("SELECT COUNT(*) FROM audit_log WHERE action = 'Edited email template'")->fetchColumn() >= 1);
+
+// preview (unsaved wording, sample values)
+[$c, $r] = $sa->post("$t/preview", ['edition' => $ed, 'subject' => 'Preview {{site_name}}', 'body' => "Code:\n\n{{code}}\n\n{{expires_minutes}}"]);
+check('preview renders unsaved wording with sample values', $c === 200 && str_contains($r['html'] ?? '', 'K7Q2-M9XD-4TRA') && str_contains($r['subject'] ?? '', 'Preview'));
+App\MailTemplates::forget();
+check('preview refuses bad wording and saves nothing', $sa->post("$t/preview", ['edition' => $ed, 'subject' => 'x', 'body' => '{{nope}}'])[0] === 422 && App\MailTemplates::wording('nominee_verify_email')['subject'] === 'Your {{site_name}} code');
+
+// reset
+[$c, $r] = $sa->call('DELETE', $t, ['edition' => $ed]);
+App\MailTemplates::forget();
+check('reset puts the default wording back', $c === 200 && App\MailTemplates::wording('nominee_verify_email')['custom'] === false && App\MailTemplates::wording('nominee_verify_email')['subject'] === 'Verify your email address');
+
+// delivery settings, one place
+check('only SMTP delivery is accepted', $sa->put('/admin/settings/communications', ['edition' => $ed, 'value' => ['emailMode' => 'api', 'fromEmail' => 'a@b.co', 'smtpHost' => '127.0.0.1', 'smtpPort' => '25', 'smtpEncryption' => 'none']])[0] === 422);
+[$c] = $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test']);
+$before = $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test'])[1];
+check('test email says so plainly when email is not set up', $c === 200 && ($before['ok'] ?? null) === false && str_contains($before['message'] ?? '', 'not set up'));
+[$c] = $sa->put('/admin/settings/communications', ['edition' => $ed, 'value' => ['emailMode' => 'smtp', 'fromName' => 'OGA Test', 'fromEmail' => 'noreply@x.test', 'replyTo' => 'help@x.test', 'footerText' => 'Footer from the admin.', 'smtpHost' => '127.0.0.1', 'smtpPort' => (string) $smtpPort, 'smtpEncryption' => 'none', 'smtpUsername' => '', 'smtpPassword' => '', 'templateReceived' => 'old dead field']]);
+check('admin saves sender and SMTP in one place', $c === 200, (string) $c);
+[, $r, $raw] = $sa->get("/admin/email?edition=$ed");
+check('email now reports as set up; no password in the response', ($r['configured'] ?? null) === true && ($r['delivery']['fromEmail'] ?? '') === 'noreply@x.test' && !str_contains($raw, 'smtpPassword"'));
+check('the old do-nothing template fields are no longer stored', !str_contains(json_encode($sa->get("/admin/settings?edition=$ed")[1]['settings']['communications'] ?? []), 'templateReceived'));
+
+// real sending through the test mail server
+[$c, $r] = $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test']);
+check('plain test email is delivered', $c === 200 && ($r['ok'] ?? false) === true && str_contains($sent(), '[TEST] Email from'), json_encode($r));
+[$c, $r] = $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test', 'template' => 'nominee_password_reset']);
+check('a template test email uses sample values, never real codes', ($r['ok'] ?? false) === true && str_contains($sent(), '[TEST] Reset your password') && str_contains($sent(), 'K7Q2-M9XD-4TRA'));
+check('the sender name, reply-to and footer come from the admin settings', str_contains($sent(), 'OGA Test') && str_contains($sent(), 'help@x.test') && str_contains($sent(), 'Footer from the admin.'));
+check('test email refuses a bad address', $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'not-an-email'])[0] === 422);
+check('gate staff cannot send test email', $gate->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test'])[0] === 403);
+
+$db->exec('DELETE FROM notification_outbox');
+$sa->put("/admin/email/templates/committee_reserve", ['edition' => $ed, 'subject' => 'Reserve news', 'body' => "Dear {{name}},\n\nCUSTOM-RESERVE-TEXT {{message}}"]);
+App\MailTemplates::forget();
+$a = App\Outbox::queue('nominee_verify_email', 'v@x.test', ['token' => 'REAL-SECRET-CODE', 'expiresMinutes' => 30]);
+$b = App\Outbox::queue('committee_reserve', 'r@x.test', ['applicantName' => 'Ada', 'message' => 'wait']);
+$res = App\Outbox::sendPending(10);
+check('queued emails are sent over SMTP', $res['sent'] === 2 && str_contains($sent(), 'REAL-SECRET-CODE') && str_contains($sent(), 'CUSTOM-RESERVE-TEXT'), json_encode($res));
+check('the real code is wiped from the outbox after sending', !str_contains((string) $q('SELECT payload FROM notification_outbox WHERE id = ?', [$a])->fetchColumn(), 'REAL-SECRET-CODE'));
+
+// outbox viewer
+for ($i = 1; $i <= 30; $i++) { App\Outbox::queue('committee_unsuccessful', "bulk$i@x.test", ['applicantName' => "B$i"]); }
+[$c, $r, $raw] = $sa->get("/admin/email/outbox?edition=$ed");
+check('outbox is paged on the server', $c === 200 && count($r['rows']) === 25 && $r['total'] === 32 && $r['pages'] === 2);
+check('page two has the rest', count($sa->get("/admin/email/outbox?edition=$ed&page=2")[1]['rows']) === 7);
+check('outbox filters by status', $sa->get("/admin/email/outbox?edition=$ed&status=sent")[1]['total'] === 2 && $sa->get("/admin/email/outbox?edition=$ed&status=queued")[1]['total'] === 30);
+check('outbox searches by recipient on request', $sa->get("/admin/email/outbox?edition=$ed&q=bulk17")[1]['total'] === 1 && $sa->get("/admin/email/outbox?edition=$ed&q=" . rawurlencode('%'))[1]['total'] === 0);
+check('outbox never shows message contents or codes', !str_contains($raw, 'payload') && !str_contains($raw, 'REAL-SECRET') && !str_contains($raw, '"token"'));
+check('outbox is closed to gate staff', $gate->post('/admin/email/outbox/send', ['edition' => $ed])[0] === 403);
+[$c, $r] = $sa->post('/admin/email/outbox/send', ['edition' => $ed]);
+check('"send now" sends the waiting messages', $c === 200 && ($r['result']['sent'] ?? 0) === 30, json_encode($r));
+
+// failures and retry
+$q("INSERT INTO notification_outbox (type, recipient, payload, status, attempts, last_error) VALUES ('committee_reserve', 'retry@x.test', ?, 'failed', 5, 'Connection refused')", [json_encode(['applicantName' => 'Zed', 'message' => 'm'])]);
+$failOk = (int) $db->lastInsertId();
+$q("INSERT INTO notification_outbox (type, recipient, payload, status, attempts, last_error) VALUES ('nominee_verify_email', 'gone@x.test', '{}', 'failed', 5, 'Mailbox full')");
+$failWiped = (int) $db->lastInsertId();
+$rows = array_column($sa->get("/admin/email/outbox?edition=$ed&status=failed")[1]['rows'], null, 'recipient');
+check('failure reasons are visible and retryability is worked out', ($rows['retry@x.test']['error'] ?? '') === 'Connection refused' && $rows['retry@x.test']['retryable'] === true && $rows['gone@x.test']['retryable'] === false);
+[$c, $r] = $sa->post("/admin/email/outbox/$failOk/retry", ['edition' => $ed]);
+check('a failed email can be retried and is sent', $c === 200 && ($r['ok'] ?? false) === true && $q('SELECT status FROM notification_outbox WHERE id = ?', [$failOk])->fetchColumn() === 'sent');
+[$c, $r] = $sa->post("/admin/email/outbox/$failWiped/retry", ['edition' => $ed]);
+check('an email whose one-time code was deleted is not retried', ($r['ok'] ?? true) === false && str_contains($r['message'] ?? '', 'one-time code'));
+check('a sent email cannot be "retried"', ($sa->post("/admin/email/outbox/$failOk/retry", ['edition' => $ed])[1]['ok'] ?? true) === false);
+check('retry is closed to gate staff', $gate->post("/admin/email/outbox/$failOk/retry", ['edition' => $ed])[0] === 403);
+
+$last = 0;
+for ($i = 0; $i < 12; $i++) { $last = $sa->post('/admin/email/test', ['edition' => $ed, 'to' => 'me@x.test'])[0]; }
+check('test emails are rate limited', $last === 429);
+
+if ($smtpProc) { proc_terminate($smtpProc); proc_close($smtpProc); }
+@unlink($mails);
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

@@ -50,6 +50,7 @@ const pages = [
   ['team', 'team', 'Team & access', true],
   ['roles', 'roles', 'Roles & permissions', true],
   ['settings', 'settings', 'Settings', true],
+  ['email', 'email', 'Email', true],
   ['audit', 'audit', 'Audit log', true],
 ];
 

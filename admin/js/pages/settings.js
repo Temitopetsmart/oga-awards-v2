@@ -1,5 +1,5 @@
 import { html, esc } from "../../../shared/js/core/dom.js";
-import { APP, STATES } from "../../../shared/js/config/app.config.js";
+import { APP, STATES, ROOT } from "../../../shared/js/config/app.config.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { store } from "../../../shared/js/core/store.js";
 import { field } from "../../../shared/js/components/form-fields.js";
@@ -84,43 +84,15 @@ export default async function settings({ edition: ed, can, access }) {
             >
           </div>`}
       ${card(
-        `${editionLabel(o)} — details`,
-        html` <form id="detailsForm" novalidate>
-          <fieldset ${lock}>
-            <div class="row">
-              ${field({
-                label: "Name",
-                name: "name",
-                required: true,
-                value: o.name,
-                col: "col-md-3",
-              })}
-              ${field({
-                label: "Edition number",
-                name: "edition",
-                required: true,
-                value: o.edition,
-                col: "col-md-3",
-              })}
-              ${field({
-                label: "Year",
-                name: "year",
-                type: "number",
-                required: true,
-                value: o.year,
-                col: "col-md-2",
-              })}
-              ${field({
-                label: "Tagline",
-                name: "tagline",
-                value: o.tagline,
-                col: "col-md-4",
-              })}
-            </div>
-            ${save("Save details")}
-          </fieldset>
-        </form>`,
-        "cardDetails",
+        "Email",
+        html`<p class="text-secondary">
+            Sender details, the SMTP connection, the wording of every email,
+            test sends and the outbox now live in one place.
+          </p>
+          <a class="btn btn-gold" href="${ROOT}admin/email"
+            >Open Email settings</a
+          >`,
+        "cardEmailPointer",
       )}
       ${card(
         "Public site state & key dates",
@@ -630,63 +602,6 @@ export async function init(root, { admin, edition: ed, can, access }) {
           })),
         );
         notify.toast("success", "Contact details saved");
-      },
-    });
-
-    bindForm(root.querySelector("#recruitmentCommsForm"), {
-      schema: {
-        emailMode: [
-          rules.custom((v) =>
-            ["smtp", "domain", "api"].includes(v)
-              ? null
-              : "Choose an email delivery method.",
-          ),
-        ],
-        smtpPort: [
-          rules.custom((v, all) =>
-            all.emailMode !== "smtp" ||
-            (Number.isInteger(Number(v)) &&
-              Number(v) >= 1 &&
-              Number(v) <= 65535)
-              ? null
-              : "Enter a valid SMTP port.",
-          ),
-        ],
-        fromEmail: [rules.email()],
-        replyTo: [
-          rules.custom((v) =>
-            !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
-              ? null
-              : "Enter a valid reply-to email.",
-          ),
-        ],
-        whatsappGroupUrl: [
-          rules.custom((v) =>
-            !v || /^https:\/\/\S+$/.test(v)
-              ? null
-              : "Use a complete HTTPS URL.",
-          ),
-        ],
-      },
-      async onSubmit(v) {
-        await saveSettings("communications", {
-          emailMode: v.emailMode,
-          smtpHost: v.smtpHost.trim(),
-          smtpPort: v.smtpPort,
-          smtpUsername: v.smtpUsername.trim(),
-          smtpEncryption: v.smtpEncryption,
-          smtpPassword: v.smtpPassword,
-          fromName: v.fromName.trim(),
-          fromEmail: v.fromEmail.trim(),
-          replyTo: v.replyTo.trim(),
-          whatsappGroupUrl: v.whatsappGroupUrl.trim(),
-          templateReceived: v.templateReceived,
-          templateShortlisted: v.templateShortlisted,
-          templateApproved: v.templateApproved,
-          templateUnsuccessful: v.templateUnsuccessful,
-          templateReconsideration: v.templateReconsideration,
-        });
-        notify.toast("success", "Recruitment communications settings saved.");
       },
     });
 

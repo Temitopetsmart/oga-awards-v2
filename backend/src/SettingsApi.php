@@ -13,8 +13,7 @@ final class SettingsApi
     private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'brand', 'matric'];
     /** Sections with their own storage (not a site_settings row). */
     private const SPECIAL = ['levels', 'departments', 'secrets'];
-    private const TEMPLATES = ['templateReceived', 'templateShortlisted', 'templateApproved', 'templateUnsuccessful', 'templateReconsideration'];
-
+    
     private static function fail(string $message, int $status = 422): never
     {
         Response::error($message, $status);
@@ -133,32 +132,18 @@ final class SettingsApi
                 return $out;
 
             case 'communications':
-                $mode = (string) ($v['emailMode'] ?? '');
-
-                if (!in_array($mode, ['smtp', 'domain', 'api'], true)) {
-                    self::fail('Choose an email delivery method.');
+                // Sender details. The wording of every email is edited in Admin → Email → Templates.
+                if ((string) ($v['emailMode'] ?? 'smtp') !== 'smtp') {
+                    self::fail('Only SMTP delivery is supported.');
                 }
 
-                $out = [
-                    'emailMode'        => $mode,
-                    'fromName'         => Request::str($v, 'fromName', 100),
-                    'fromEmail'        => self::email($v, 'fromEmail'),
-                    'replyTo'          => self::email($v, 'replyTo'),
-                    'whatsappGroupUrl' => self::https($v, 'whatsappGroupUrl'),
+                return [
+                    'emailMode'  => 'smtp',
+                    'fromName'   => Request::str($v, 'fromName', 100),
+                    'fromEmail'  => self::email($v, 'fromEmail'),
+                    'replyTo'    => self::email($v, 'replyTo'),
+                    'footerText' => Request::str($v, 'footerText', 300),
                 ];
-
-                foreach (self::TEMPLATES as $t) {
-                    $text = (string) ($v[$t] ?? '');
-
-                    if (mb_strlen($text) > 4000) {
-                        self::fail('A message template can be at most 4000 characters.');
-                    }
-
-                    $out[$t] = $text;
-                }
-
-                return $out;
-
             case 'brand':
                 $name = Request::str($v, 'name', 60);
                 if ($name === '') {
@@ -276,7 +261,7 @@ final class SettingsApi
              ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)'
         )->execute([$section, json_encode($value, JSON_UNESCAPED_UNICODE), $actor['id']]);
         Cache::flush();
-        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'recruitment communications settings', 'gateway' => 'payment gateway preferences', 'brand' => 'site branding', 'matric' => 'matric number format'];
+        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'email delivery settings', 'gateway' => 'payment gateway preferences', 'brand' => 'site branding', 'matric' => 'matric number format'];
         Audit::log((int) $actor['id'], 'Updated ' . $names[$section], null, $actor['edition_id']);
         Response::json(['ok' => true]);
     }
