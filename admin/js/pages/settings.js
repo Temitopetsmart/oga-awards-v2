@@ -11,7 +11,7 @@ import { getEdition, editionLabel } from "../services/edition.repo.js";
 import { fetchSettings, saveSettings } from "../services/settings.api.js";
 import { hubCards, initHub } from "./settings-hub.js";
 import {
-  updateEditionDetails,
+  // updateEditionDetails,
   saveEditionState,
   saveVotingRules,
 } from "../services/edition.api.js";
@@ -477,32 +477,32 @@ export async function init(root, { admin, edition: ed, can, access }) {
   showState();
   if (editable) {
     const eventForm = root.querySelector("#eventForm");
-    bindForm(root.querySelector("#detailsForm"), {
-      schema: {
-        name: [rules.required(), rules.max(30)],
-        edition: [rules.required(), rules.max(10)],
-        year: [
-          rules.required(),
-          rules.custom((v) =>
-            Number.isInteger(Number(v)) &&
-            Number(v) >= 2000 &&
-            Number(v) <= 2100
-              ? null
-              : "Enter a year like 2027.",
-          ),
-        ],
-        tagline: [rules.max(120)],
-      },
-      async onSubmit(v) {
-        await updateEditionDetails(ed.id, {
-          name: v.name.trim(),
-          edition: v.edition.trim(),
-          year: Number(v.year),
-          tagline: v.tagline.trim(),
-        });
-        notify.toast("success", "Details saved");
-      },
-    });
+    // bindForm(root.querySelector("#detailsForm"), {
+    //   schema: {
+    //     name: [rules.required(), rules.max(30)],
+    //     edition: [rules.required(), rules.max(10)],
+    //     year: [
+    //       rules.required(),
+    //       rules.custom((v) =>
+    //         Number.isInteger(Number(v)) &&
+    //         Number(v) >= 2000 &&
+    //         Number(v) <= 2100
+    //           ? null
+    //           : "Enter a year like 2027.",
+    //       ),
+    //     ],
+    //     tagline: [rules.max(120)],
+    //   },
+    //   async onSubmit(v) {
+    //     await updateEditionDetails(ed.id, {
+    //       name: v.name.trim(),
+    //       edition: v.edition.trim(),
+    //       year: Number(v.year),
+    //       tagline: v.tagline.trim(),
+    //     });
+    //     notify.toast("success", "Details saved");
+    //   },
+    // });
     bindForm(eventForm, {
       schema: {
         forceState: [
