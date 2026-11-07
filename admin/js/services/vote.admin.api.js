@@ -1,4 +1,5 @@
 import { store } from "../../../shared/js/core/store.js";
+import { pageQuery } from "./paging.js";
 import { adminApi } from "./admin-api.js";
 
 /** Votes, payments and results on the server. */
@@ -13,6 +14,27 @@ export async function fetchVotes(editionId = viewing()) {
   } catch {
     return [];
   }
+}
+
+/**
+ * One page of the ledger, filtered and sorted by the server: { rows, total, page, pages, stats? }.
+ * Pass stats: true to also get the totals (paid, manual, money, pending, void).
+ */
+export async function fetchVotesPage(
+  params,
+  { stats = false } = {},
+  editionId = viewing(),
+) {
+  const r = await adminApi(
+    `/admin/votes?edition=${encodeURIComponent(editionId)}&${pageQuery(params, stats ? { stats: 1 } : {})}`,
+  );
+  return {
+    rows: r.orders,
+    total: r.total,
+    page: r.page,
+    pages: r.pages,
+    stats: r.stats,
+  };
 }
 
 export const addManualVotes = ({ nomineeId, votes, reason }) =>

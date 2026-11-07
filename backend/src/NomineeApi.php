@@ -55,20 +55,50 @@ final class NomineeApi
         ];
     }
 
+    /**
+     * Nominees of an edition. With ?page= they are paged on the server (filters: status, categoryId; search: q;
+     * sort: name, categoryName, department, status, createdAt). Without it every nominee is returned, which the
+     * results and votes pages use as a lookup list.
+     */
     public static function list(): never
     {
         $slug = (string) ($_GET['edition'] ?? '');
         Access::require('nominees.view', $slug);
         $ed = self::edition($slug);
-        $st = self::pdo()->prepare(
-            'SELECT n.*, a.email AS account_email, a.email_verified_at
-               FROM nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id
-              WHERE n.edition_id = ? ORDER BY n.id DESC'
-        );
-        $st->execute([$ed['id']]);
-        Response::json(['ok' => true, 'nominees' => array_map(fn ($n) => self::shape($n, $slug), $st->fetchAll())]);
-    }
 
+        if (!Paging::wanted()) {
+            $st = self::pdo()->prepare(
+                'SELECT n.*, a.email AS account_email, a.email_verified_at
+                   FROM nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id
+                  WHERE n.edition_id = ? ORDER BY n.id DESC'
+            );
+            $st->execute([$ed['id']]);
+            Response::json(['ok' => true, 'nominees' => array_map(fn ($n) => self::shape($n, $slug), $st->fetchAll())]);
+        }
+
+        $where = ['n.edition_id = ?'];
+        $args = [$ed['id']];
+        if (in_array($v = Paging::filter('status'), ['pending', 'approved', 'rejected'], true)) {
+            $where[] = 'n.status = ?';
+            $args[] = $v;
+        }
+        if (ctype_digit($c = Paging::filter('categoryId')) && $c !== '') {
+            $where[] = 'n.category_id = ?';
+            $args[] = (int) $c;
+        }
+        if (($q = Paging::q()) !== '') {
+            $where[] = Paging::search(['n.name', 'a.email', 'n.department', 'c.name'], $q, $args);
+        }
+        $order = Paging::order(['name' => 'n.name', 'categoryName' => 'c.name', 'department' => 'n.department', 'status' => 'n.status', 'createdAt' => 'n.id'], 'n.id DESC', 'n.id DESC');
+        $r = Paging::run(
+            self::pdo(),
+            'n.*, a.email AS account_email, a.email_verified_at',
+            'nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id LEFT JOIN categories c ON c.id = n.category_id',
+            $where, $args, $order
+        );
+        Response::json(['ok' => true, 'nominees' => array_map(fn ($n) => self::shape($n, $slug), $r['rows'])] + Paging::meta($r));
+    }
+    
     /** One nominee in the shape the nominee dashboard uses — for the admin's "View as nominee" preview (read only). */
     public static function preview(int $id): never
     {

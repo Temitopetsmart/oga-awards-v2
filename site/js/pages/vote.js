@@ -1,3 +1,4 @@
+import { bindSearch } from "../../../shared/js/ui/search.js";
 import { APP, ROOT } from "../../../shared/js/config/app.config.js";
 import { html, mount, safeClass } from "../../../shared/js/core/dom.js";
 import { money } from "../../../shared/js/core/format.js";
@@ -172,13 +173,23 @@ function stepNominee() {
       </div>
       <div class="col-md-7">
         <label class="form-label" for="voteSearch">Search nominees</label>
-        <input
-          id="voteSearch"
-          type="search"
-          class="form-control"
-          placeholder="Type a name"
-          ${S.categoryId ? "" : "disabled"}
-        />
+        <div class="input-group">
+          <input
+            id="voteSearch"
+            type="search"
+            class="form-control"
+            placeholder="Type a name"
+            ${S.categoryId ? "" : "disabled"}
+          />
+          <button
+            type="button"
+            class="btn btn-gold"
+            id="voteSearchBtn"
+            ${S.categoryId ? "" : "disabled"}
+          >
+            Search
+          </button>
+        </div>
       </div>
     </div>
     ${S.categoryId
@@ -231,12 +242,16 @@ function bindNominee(el) {
     S.nomineeId = "";
     render(el);
   });
-  el.querySelector("#voteSearch")?.addEventListener("input", (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    el.querySelectorAll("[data-pick-wrap]").forEach((w) =>
-      w.classList.toggle("d-none", Boolean(q) && !w.dataset.name.includes(q)),
-    );
-  });
+  bindSearch(
+    el.querySelector("#voteSearch"),
+    el.querySelector("#voteSearchBtn"),
+    (text) => {
+      const q = text.toLowerCase();
+      el.querySelectorAll("[data-pick-wrap]").forEach((w) =>
+        w.classList.toggle("d-none", Boolean(q) && !w.dataset.name.includes(q)),
+      );
+    },
+  );
   el.querySelector("#voteList")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-pick]");
     if (!btn) return;

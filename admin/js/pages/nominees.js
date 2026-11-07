@@ -6,10 +6,11 @@ import { ROOT } from "../../../shared/js/config/app.config.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
+import { fetchAllPages } from "../services/paging.js";
 import { statusBadge } from "../components/badges.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
 import {
-  listNominees,
+  fetchNomineesPage,
   setNomineeStatus,
   saveNominee,
   removeNominee,
@@ -55,16 +56,14 @@ export default async function nominees({ can }) {
 export async function init(root, { admin, can }) {
   const cats = await listCategories();
   const catName = (id) => cats.find((c) => c.id === id)?.name ?? "—";
-  const load = async () =>
-    (await listNominees()).map((n) => ({
-      ...n,
-      categoryName: catName(n.categoryId),
-    }));
+  const shape = (n) => ({ ...n, categoryName: catName(n.categoryId) });
 
   const table = new DataTable(root.querySelector("#nomTable"), {
     can,
-    rows: await load(),
-    searchKeys: ["name", "email", "department", "categoryName"],
+    server: async (p) => {
+      const r = await fetchNomineesPage(p);
+      return { rows: r.rows.map(shape), total: r.total, page: r.page };
+    },
     filters: [
       { key: "status", label: "Status", options: STATUSES },
       {
@@ -172,7 +171,7 @@ export async function init(root, { admin, can }) {
     onAction: (key, n) => handlers[key](n),
     onBulk: (key, list) => bulk(key, list),
   });
-  const refresh = async () => table.setRows(await load());
+  const refresh = async () => table.reload();
 
   const fields = () => [
     { name: "name", label: "Full name", required: true },
@@ -395,7 +394,21 @@ export async function init(root, { admin, can }) {
   );
 
   root.querySelector("#exportBtn")?.addEventListener("click", async () => {
-    downloadCsv("oga-nominees.csv", await load(), [
+    // Everything that matches the current search and filters, not just this page.
+    const { q, sort, filters } = table.state;
+    const rows = (
+      await fetchAllPages(({ page, perPage }) =>
+        fetchNomineesPage({
+          q,
+          sort: sort?.key,
+          dir: sort?.dir,
+          filters,
+          page,
+          perPage,
+        }),
+      )
+    ).map(shape);
+    downloadCsv("oga-nominees.csv", rows, [
       { label: "Name", key: "name" },
       { label: "Category", key: "categoryName" },
       { label: "Department", key: "department" },

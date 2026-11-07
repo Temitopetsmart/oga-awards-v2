@@ -102,6 +102,7 @@ final class PaymentService
         switch ($p['purpose']) {
             case 'vote':
                 $db->prepare("UPDATE vote_orders SET status = 'paid', paid_at = NOW() WHERE payment_id = ? AND status = 'pending'")->execute([$p['id']]);
+                VoteTotals::creditPayment($db, (int) $p['id']);
                 break;
             case 'nominee_fee':
                 Registrations::complete($db, $p);

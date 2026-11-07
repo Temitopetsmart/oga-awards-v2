@@ -9,6 +9,11 @@ use App\Database;
 use App\Response;
 use App\SettingsApi;
 
+// Compress the answer when the browser accepts it. (If Apache compresses too, it sees ours and leaves it alone.)
+if (extension_loaded('zlib') && !ini_get('zlib.output_compression') && str_contains((string) ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? ''), 'gzip')) {
+    ini_set('zlib.output_compression', '1');
+}
+
 $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');                       // e.g. /oga-awards-v2/api
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 $path = substr($path, strlen($base));

@@ -4,11 +4,12 @@ import { rules } from "../../../shared/js/core/validate.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
+import { fetchAllPages } from "../services/paging.js";
 import { statusBadge } from "../components/badges.js";
 import { statCard } from "../components/stat-card.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
 import {
-  fetchTickets,
+  fetchTicketsPage,
   fetchTicketTypes,
   createTicketType,
   updateTicketType,
@@ -88,48 +89,42 @@ export default async function tickets({ can }) {
 
 export async function init(root, { admin, edition, can }) {
   const money$ = can("finance.view");
-  let data = await fetchTickets();
   let typeList = await fetchTicketTypes();
-  const orders = () =>
-    data.orders
-      .map((o) => ({
-        ...o,
-        id: o.reference,
-        buyer: o.name ?? "—",
-        at: o.createdAt ?? "",
-      }))
-      .sort((a, b) => b.at.localeCompare(a.at));
-  const issued = () =>
-    data.tickets.map((t) => ({
-      ...t,
-      id: t.code,
-      state: t.used ? "used" : "unused",
-    }));
+  const shapeOrder = (o) => ({
+    ...o,
+    id: o.reference,
+    buyer: o.name ?? "—",
+    at: o.createdAt ?? "",
+  });
+  const shapeTicket = (t) => ({
+    ...t,
+    id: t.code,
+    state: t.used ? "used" : "unused",
+  });
+  let wantStats = true; // totals come with the orders page; fetched again only after a change
 
-  const stats = () => {
-    const paid = orders().filter((o) => o.status === "paid");
-    const all = issued();
+  const stats = (s) => {
     const host = root.querySelector("#tkStats");
     host.innerHTML = "";
     [
       statCard({
         icon: "fa-ticket",
         label: "Tickets issued",
-        value: number(all.length),
-        sub: `${number(paid.reduce((s, o) => s + o.qty, 0))} paid`,
+        value: number(s.issued),
+        sub: `${number(s.paidQty)} paid`,
       }),
       statCard({
         icon: "fa-qrcode",
         label: "Checked in",
-        value: number(all.filter((t) => t.used).length),
-        sub: `of ${number(all.length)}`,
+        value: number(s.used),
+        sub: `of ${number(s.issued)}`,
       }),
       ...(money$
         ? [
             statCard({
               icon: "fa-naira-sign",
               label: "Revenue",
-              value: money(paid.reduce((s, o) => s + o.amount, 0)),
+              value: money(s.revenue),
             }),
           ]
         : []),
@@ -152,7 +147,7 @@ export async function init(root, { admin, edition, can }) {
             >${o.email ?? ""}</small
           >`,
     },
-    { key: "typeName", label: "Type", sort: true },
+    { key: "typeName", label: "Type" },
     { key: "qty", label: "Qty", sort: true },
     ...(money$
       ? [
@@ -182,9 +177,16 @@ export async function init(root, { admin, edition, can }) {
   ];
   const ordersTable = new DataTable(root.querySelector("#ordersTable"), {
     can,
-    rows: orders(),
+    server: async (p) => {
+      const r = await fetchTicketsPage("orders", p, { stats: wantStats });
+      if (r.stats) {
+        wantStats = false;
+        stats(r.stats);
+      }
+      return { rows: r.rows.map(shapeOrder), total: r.total, page: r.page };
+    },
     columns: orderCols,
-    searchKeys: ["reference", "buyer", "email", "typeName"],
+
     filters: [
       {
         key: "status",
@@ -244,8 +246,10 @@ export async function init(root, { admin, edition, can }) {
 
   const issuedTable = new DataTable(root.querySelector("#issuedTable"), {
     can,
-    rows: issued(),
-    searchKeys: ["code", "holder", "email", "typeName", "orderReference"],
+    server: async (p) => {
+      const r = await fetchTicketsPage("issued", p);
+      return { rows: r.rows.map(shapeTicket), total: r.total, page: r.page };
+    },
     filters: [
       {
         key: "state",
@@ -499,13 +503,25 @@ export async function init(root, { admin, edition, can }) {
   );
 
   const refresh = async () => {
-    data = await fetchTickets();
-    ordersTable.setRows(orders());
-    issuedTable.setRows(issued());
-    stats();
+    wantStats = true;
+    await Promise.all([ordersTable.reload(), issuedTable.reload()]);
   };
-  root.querySelector("#exportBtn")?.addEventListener("click", () => {
-    downloadCsv("oga-ticket-orders.csv", orders(), [
+  root.querySelector("#exportBtn")?.addEventListener("click", async () => {
+    // Every order that matches the current search and filters, not just this page.
+    const { q, sort, filters } = ordersTable.state;
+    const all = (
+      await fetchAllPages(({ page, perPage }) =>
+        fetchTicketsPage("orders", {
+          q,
+          sort: sort?.key,
+          dir: sort?.dir,
+          filters,
+          page,
+          perPage,
+        }),
+      )
+    ).map(shapeOrder);
+    downloadCsv("oga-ticket-orders.csv", all, [
       { label: "Reference", key: "reference" },
       { label: "Buyer", key: "buyer" },
       { label: "Email", key: "email" },
@@ -519,5 +535,4 @@ export async function init(root, { admin, edition, can }) {
       { label: "Date", key: "at" },
     ]);
   });
-  stats();
 }

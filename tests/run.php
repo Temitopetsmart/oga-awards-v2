@@ -571,6 +571,176 @@ check('test emails are rate limited', $last === 429);
 if ($smtpProc) { proc_terminate($smtpProc); proc_close($smtpProc); }
 @unlink($mails);
 
+// ================================================================== H. SPEED (Round 2, phases 5 and 6)
+group('H. Speed: paged lists, indexes, precomputed vote totals, caching, search button');
+$idx = fn (string $table, string $name) => (int) $q("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?", [$table, $name])->fetchColumn() > 0;
+check('migration 011 created the list indexes', $idx('vote_orders', 'ix_vo_ed_id') && $idx('vote_orders', 'ix_vo_ed_status_id') && $idx('vote_orders', 'ix_vo_ed_cat_status_id') && $idx('ticket_orders', 'ix_to_ed_status_id')
+    && $idx('tickets', 'ix_ticket_ed_id') && $idx('audit_log', 'ix_audit_ed_id') && $idx('contact_messages', 'ix_cm_ed_read_id') && $idx('notification_outbox', 'ix_no_status_id'));
+
+// ---- data: 60 vote orders in three states, two nominees, one category
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id IN ({$entry['na']}, {$entry['nb']})");
+$stmt = $db->prepare("INSERT INTO vote_orders (edition_id,reference,nominee_entry_id,category_id,votes,amount,voter_name,voter_email,status,source,reason) VALUES (2,?,?,2,?,?,?,?,?,?,?)");
+for ($i = 1; $i <= 60; $i++) {
+    $manual = $i % 10 === 0;
+    $stmt->execute(["VOT-P$i", $i % 2 ? $entry['na'] : $entry['nb'], $i, $i * 50, "Voter $i", "v$i@x.test", ['paid', 'paid', 'paid', 'pending', 'void'][$i % 5], $manual ? 'manual' : 'payment', $manual ? 'cash votes at booth' : null]);
+}
+App\VoteTotals::rebuild($db);
+$sql = fn (string $s, array $a = []) => $q($s, $a)->fetchColumn();
+$allOrders = (int) $sql('SELECT COUNT(*) FROM vote_orders WHERE edition_id = 2');
+
+// ---- the vote ledger, paged on the server
+[$c, $r] = $sa->get("/admin/votes?edition=$ed&page=1&perPage=25");
+check('ledger is paged on the server', $c === 200 && count($r['orders']) === 25 && $r['total'] === $allOrders && $r['pages'] === (int) ceil($allOrders / 25) && $r['page'] === 1, json_encode(array_diff_key($r, ['orders' => 1])));
+check('newest order first, with nominee and category names joined in', $r['orders'][0]['reference'] === 'VOT-P60' && !empty($r['orders'][0]['nomineeName']) && $r['orders'][0]['categoryName'] === 'Academic Excellence');
+check('page size is limited to 5-500', $sa->get("/admin/votes?edition=$ed&page=1&perPage=1")[1]['perPage'] === 5 && $sa->get("/admin/votes?edition=$ed&page=1&perPage=99999")[1]['perPage'] === 500);
+check('a page past the end shows the last page', $sa->get("/admin/votes?edition=$ed&page=999&perPage=25")[1]['page'] === (int) ceil($allOrders / 25));
+$r = $sa->get("/admin/votes?edition=$ed&page=1&perPage=100&status=pending")[1];
+check('ledger filters by status', $r['total'] === (int) $sql("SELECT COUNT(*) FROM vote_orders WHERE edition_id = 2 AND status = 'pending'") && !array_filter($r['orders'], fn ($o) => $o['status'] !== 'pending'));
+$r = $sa->get("/admin/votes?edition=$ed&page=1&perPage=100&source=manual")[1];
+check('ledger filters by source', $r['total'] === 6 && !array_filter($r['orders'], fn ($o) => $o['source'] !== 'manual'));
+check('ledger filters by category', $sa->get("/admin/votes?edition=$ed&page=1&categoryId=2")[1]['total'] === $allOrders && $sa->get("/admin/votes?edition=$ed&page=1&categoryId=3")[1]['total'] === 0);
+check('ledger searches by voter name', ($sa->get("/admin/votes?edition=$ed&page=1&q=" . rawurlencode('Voter 17'))[1]['orders'][0]['reference'] ?? '') === 'VOT-P17');
+check('ledger searches by reference and email', $sa->get("/admin/votes?edition=$ed&page=1&q=VOT-P5")[1]['total'] === 11 && $sa->get("/admin/votes?edition=$ed&page=1&q=v42@x.test")[1]['total'] === 1);
+$naName = (string) $sql('SELECT name FROM nominee_entries WHERE id = ?', [$entry['na']]);   // earlier tests renamed it
+check('ledger searches by nominee and category name', $sa->get("/admin/votes?edition=$ed&page=1&q=" . rawurlencode($naName))[1]['total'] >= (int) $sql("SELECT COUNT(*) FROM vote_orders WHERE nominee_entry_id = ?", [$entry['na']]) && $sa->get("/admin/votes?edition=$ed&page=1&q=Academic")[1]['total'] === $allOrders);
+check('a search for % finds nothing (wildcards are plain characters)', $sa->get("/admin/votes?edition=$ed&page=1&q=" . rawurlencode('%'))[1]['total'] === 0);
+check('ledger sorts on the server', $sa->get("/admin/votes?edition=$ed&page=1&sort=votes&dir=asc")[1]['orders'][0]['votes'] === 1 && $sa->get("/admin/votes?edition=$ed&page=1&sort=votes&dir=desc")[1]['orders'][0]['votes'] === 99);
+check('sort names outside the whitelist are ignored (no SQL injection)', ($sa->get("/admin/votes?edition=$ed&page=1&sort=" . rawurlencode('id; DROP TABLE vote_orders'))[1]['orders'][0]['reference'] ?? '') === 'VOT-P60' && ($sa->get("/admin/votes?edition=$ed&page=1&sort=nomineeName")[1]['orders'][0]['reference'] ?? '') === 'VOT-P60' && (int) $sql('SELECT COUNT(*) FROM vote_orders') > 0);
+$st = $sa->get("/admin/votes?edition=$ed&page=1&stats=1")[1]['stats'] ?? [];
+check('ledger totals match the orders', ($st['paidVotes'] ?? -1) === (int) $sql("SELECT SUM(votes) FROM vote_orders WHERE edition_id = 2 AND status = 'paid' AND source <> 'manual'") && ($st['manualVotes'] ?? -1) === (int) $sql("SELECT SUM(votes) FROM vote_orders WHERE edition_id = 2 AND status = 'paid' AND source = 'manual'")
+    && ($st['pending'] ?? -1) === (int) $sql("SELECT COUNT(*) FROM vote_orders WHERE edition_id = 2 AND status = 'pending'") && ($st['void'] ?? -1) === (int) $sql("SELECT COUNT(*) FROM vote_orders WHERE edition_id = 2 AND status = 'void'")
+    && abs(($st['amount'] ?? -1) - (float) $sql("SELECT SUM(amount) FROM vote_orders WHERE edition_id = 2 AND status = 'paid'")) < 0.01, json_encode($st));
+$r = $sa->get("/admin/votes?edition=$ed")[1];
+check('without ?page= the ledger answers as before', isset($r['orders']) && !isset($r['total']));
+check('the ledger is closed to gate staff', $gate->get("/admin/votes?edition=$ed&page=1")[0] === 403);
+
+// ---- precomputed vote totals
+check('vote totals match the orders after the data load', App\VoteTotals::drift() === []);
+$tally = fn (int $n) => (int) ($sa->get("/admin/results?edition=$ed")[1]['tally'][(string) $n] ?? 0);
+$t0 = $tally($entry['na']);
+[$c, $r] = $sa->post('/admin/votes/manual', ['edition' => $ed, 'nomineeId' => $entry['na'], 'votes' => 7, 'reason' => 'cash votes at the booth']);
+$manualRef = $r['reference'] ?? '';
+check('manual votes raise the total at once', $c === 200 && $tally($entry['na']) === $t0 + 7 && App\VoteTotals::drift() === []);
+check('results read the precomputed totals', $tally($entry['na']) === (int) $sql("SELECT SUM(votes) FROM vote_totals WHERE nominee_entry_id = ?", [$entry['na']]));
+check('voiding a paid manual order lowers the totals', $sa->post("/admin/votes/$manualRef/void", ['edition' => $ed, 'reason' => 'entered twice'])[0] === 200 && $tally($entry['na']) === $t0 && App\VoteTotals::drift() === []);
+check('voiding the same order twice is refused', $sa->post("/admin/votes/$manualRef/void", ['edition' => $ed])[0] === 422 && $tally($entry['na']) === $t0);
+$t1 = $tally($entry['na']);
+check('voiding a paid online order lowers the totals', $sa->post('/admin/votes/VOT-P1/void', ['edition' => $ed])[0] === 200 && $tally($entry['na']) === $t1 - 1 && App\VoteTotals::drift() === []);
+check('voiding a pending order does not change the totals', $sa->post('/admin/votes/VOT-P3/void', ['edition' => $ed])[0] === 200 && App\VoteTotals::drift() === []);
+$d = $sa->get("/admin/dashboard?edition=$ed")[1];
+check('the dashboard reads the precomputed totals', ($d['votes'] ?? -1) === (int) $sql("SELECT SUM(votes) FROM vote_orders WHERE edition_id = 2 AND status = 'paid'"), json_encode($d['votes'] ?? null));
+// a payment being confirmed (the code path Flutterwave's confirmation runs)
+$db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'vote', 'PAY-H1', 200, 'NGN', 'p@x.test', 'pending')")->execute();
+$payId = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO vote_orders (edition_id,reference,nominee_entry_id,category_id,votes,amount,voter_name,voter_email,status,source,payment_id) VALUES (2,'VOT-H1',?,2,4,200,'P','p@x.test','pending','payment',?)")->execute([$entry['nb'], $payId]);
+$tb = $tally($entry['nb']);
+$db->prepare("UPDATE vote_orders SET status = 'paid' WHERE payment_id = ?")->execute([$payId]);
+App\VoteTotals::creditPayment($db, $payId);
+check('crediting a payment adds its votes to the totals', $tally($entry['nb']) === $tb + 4 && App\VoteTotals::drift() === []);
+$db->exec('UPDATE vote_totals SET votes = votes + 5 LIMIT 1');
+[$code, $out] = $tool($cfgFile, 'rebuild-vote-totals.php');
+check('the check tool notices totals that drifted', $code === 1 && str_contains($out, 'differ') && App\VoteTotals::drift() !== []);
+[$code, $out] = $tool($cfgFile, 'rebuild-vote-totals.php', ['--fix']);
+check('the tool rebuilds them from the orders', $code === 0 && App\VoteTotals::drift() === [] && str_contains($out, 'Rebuilt'), $out);
+
+// ---- tickets, paged
+$types = (int) $sql('SELECT id FROM ticket_types WHERE edition_id = 2 LIMIT 1');
+$ins = $db->prepare("INSERT INTO ticket_orders (edition_id,reference,ticket_type_id,qty,amount,buyer_name,buyer_email,buyer_phone,status) VALUES (2,?,?,?,?,?,?,'0800',?)");
+for ($i = 1; $i <= 30; $i++) {
+    $ins->execute(["TK-P$i", $types, 1 + $i % 2, 1000 * $i, "Buyer $i", "b$i@x.test", ['paid', 'paid', 'pending'][$i % 3]]);
+    $oid = (int) $db->lastInsertId();
+    if ($i % 3 !== 2) {
+        $db->prepare("INSERT INTO ticket_groups (edition_id,order_id,group_code,seats) VALUES (2,?,?,1)")->execute([$oid, "GRP-P$i"]);
+        $db->prepare("INSERT INTO tickets (edition_id,order_id,group_id,ticket_code,seat_no,holder_name,status,checked_in_at) VALUES (2,?,?,?,1,?,'issued',?)")->execute([$oid, $db->lastInsertId(), "TKT-P$i", "Holder $i", $i % 4 === 0 ? date('Y-m-d H:i:s') : null]);
+    }
+}
+$allTk = (int) $sql('SELECT COUNT(*) FROM ticket_orders WHERE edition_id = 2');
+[$c, $r] = $sa->get("/admin/tickets?edition=$ed&view=orders&page=1&perPage=10&stats=1");
+check('ticket orders are paged on the server', $c === 200 && count($r['orders']) === 10 && $r['total'] === $allTk && $r['pages'] === (int) ceil($allTk / 10), json_encode(array_diff_key($r, ['orders' => 1])));
+check('ticket orders filter, search and sort', $sa->get("/admin/tickets?edition=$ed&view=orders&page=1&status=pending")[1]['total'] === (int) $sql("SELECT COUNT(*) FROM ticket_orders WHERE edition_id = 2 AND status = 'pending'")
+    && $sa->get("/admin/tickets?edition=$ed&view=orders&page=1&q=" . rawurlencode('Buyer 7'))[1]['total'] === 1 && $sa->get("/admin/tickets?edition=$ed&view=orders&page=1&sort=amount&dir=desc")[1]['orders'][0]['amount'] == 30000);
+check('ticket totals match the orders and tickets', ($r['stats']['issued'] ?? -1) === (int) $sql('SELECT COUNT(*) FROM tickets WHERE edition_id = 2') && ($r['stats']['used'] ?? -1) === (int) $sql('SELECT COUNT(*) FROM tickets WHERE edition_id = 2 AND checked_in_at IS NOT NULL')
+    && ($r['stats']['paidQty'] ?? -1) === (int) $sql("SELECT SUM(qty) FROM ticket_orders WHERE edition_id = 2 AND status = 'paid'") && abs(($r['stats']['revenue'] ?? -1) - (float) $sql("SELECT SUM(amount) FROM ticket_orders WHERE edition_id = 2 AND status = 'paid'")) < 0.01, json_encode($r['stats'] ?? null));
+[$c, $r] = $sa->get("/admin/tickets?edition=$ed&view=issued&page=1&perPage=10");
+check('issued tickets are paged on the server', $c === 200 && count($r['tickets']) === 10 && $r['total'] === (int) $sql('SELECT COUNT(*) FROM tickets WHERE edition_id = 2'));
+check('issued tickets filter by check-in and search by holder', $sa->get("/admin/tickets?edition=$ed&view=issued&page=1&state=used")[1]['total'] === (int) $sql('SELECT COUNT(*) FROM tickets WHERE edition_id = 2 AND checked_in_at IS NOT NULL') && $sa->get("/admin/tickets?edition=$ed&view=issued&page=1&q=" . rawurlencode('Holder 12'))[1]['total'] === 1);
+$r = $sa->get("/admin/tickets?edition=$ed")[1];
+check('without ?page= tickets answer as before', isset($r['orders'], $r['tickets']) && !isset($r['total']));
+check('tickets are closed to gate staff on the paged list', $gate->get("/admin/tickets?edition=$ed&view=orders&page=1")[0] === 403);
+
+// ---- messages, nominees, audit
+for ($i = 1; $i <= 30; $i++) { $db->prepare("INSERT INTO contact_messages (edition_id,name,email,subject,message,is_read) VALUES (2,?,?,?,?,?)")->execute(["Sender $i", "s$i@x.test", "Subject $i", "Hello number $i", $i % 3 === 0 ? 1 : 0]); }
+$allMsg = (int) $sql('SELECT COUNT(*) FROM contact_messages WHERE edition_id = 2');
+[$c, $r] = $sa->get("/admin/messages?edition=$ed&page=1&perPage=10");
+check('messages are paged on the server', $c === 200 && count($r['messages']) === 10 && $r['total'] === $allMsg);
+check('messages filter, search and sort', $sa->get("/admin/messages?edition=$ed&page=1&status=read")[1]['total'] === (int) $sql('SELECT COUNT(*) FROM contact_messages WHERE edition_id = 2 AND is_read = 1')
+    && $sa->get("/admin/messages?edition=$ed&page=1&q=" . rawurlencode('number 22'))[1]['total'] === 1 && ($sa->get("/admin/messages?edition=$ed&page=1&sort=name&dir=asc")[1]['messages'][0]['name'] ?? '') <= 'Sender 2');
+check('without ?page= messages answer as before', isset($sa->get("/admin/messages?edition=$ed")[1]['messages']) && !isset($sa->get("/admin/messages?edition=$ed")[1]['total']));
+$ins = $db->prepare("INSERT INTO nominee_entries (edition_id,category_id,name,department,status) VALUES (2,?,?,?,?)");
+for ($i = 1; $i <= 30; $i++) { $ins->execute([$i % 2 ? 2 : 3, "Paged Person $i", $i % 2 ? 'Law' : 'Art', ['approved', 'pending', 'rejected'][$i % 3]]); }
+$allNom = (int) $sql('SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2');
+[$c, $r] = $sa->get("/admin/nominees?edition=$ed&page=1&perPage=10");
+check('nominees are paged on the server', $c === 200 && count($r['nominees']) === 10 && $r['total'] === $allNom);
+check('nominees filter, search and sort', $sa->get("/admin/nominees?edition=$ed&page=1&status=rejected")[1]['total'] === (int) $sql("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2 AND status = 'rejected'")
+    && $sa->get("/admin/nominees?edition=$ed&page=1&categoryId=3")[1]['total'] === (int) $sql('SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2 AND category_id = 3')
+    && $sa->get("/admin/nominees?edition=$ed&page=1&q=Law")[1]['total'] === (int) $sql("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2 AND department = 'Law'")
+    && ($sa->get("/admin/nominees?edition=$ed&page=1&sort=name&dir=asc&perPage=50")[1]['nominees'][0]['name'] ?? '') === (string) $sql('SELECT MIN(name) FROM nominee_entries WHERE edition_id = 2'));
+$all = $sa->get("/admin/nominees?edition=$ed")[1];
+check('without ?page= the nominee list is complete (the other pages use it as a lookup)', count($all['nominees'] ?? []) === $allNom && !isset($all['total']));
+[$c, $r] = $sa->get('/admin/audit?page=1&perPage=10&meta=1');
+check('the audit log is paged on the server', $c === 200 && count($r['entries']) === 10 && $r['total'] > 10 && !empty($r['admins']));
+check('audit pages do not repeat rows', $sa->get('/admin/audit?page=2&perPage=10')[1]['entries'][0]['id'] !== $r['entries'][0]['id']);
+check('the audit log filters and searches', $sa->get('/admin/audit?page=1&q=' . rawurlencode('manual votes'))[1]['total'] >= 1 && $sa->get('/admin/audit?page=1&editionKey=none')[1]['total'] === (int) $sql('SELECT COUNT(*) FROM audit_log WHERE edition_id IS NULL') && $sa->get('/admin/audit?page=1&admin=' . $r['admins'][0]['id'])[0] === 200);
+check('without ?page= the audit log answers as before', isset($sa->get('/admin/audit')[1]['entries']) && !isset($sa->get('/admin/audit')[1]['total']));
+
+// ---- caching
+check('ETag matching ignores Apache\'s -gzip suffix, weak markers and lists', App\Response::etagMatches('"abc"', '"abc"') && App\Response::etagMatches('"abc"', '"abc-gzip"') && App\Response::etagMatches('"abc"', 'W/"abc"')
+    && App\Response::etagMatches('"abc"', '"zzz", "abc-gzip"') && !App\Response::etagMatches('"abc"', '"abd"') && !App\Response::etagMatches('"abc"', ''));
+$httpGet = function (string $path, array $headers) {
+    $ch = curl_init(API . $path);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_HTTPHEADER => $headers, CURLOPT_TIMEOUT => 20]);
+    $raw = (string) curl_exec($ch);
+    $hs = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    return [$code, strtolower(substr($raw, 0, $hs)), substr($raw, $hs)];
+};
+[$code, $h, $body] = $httpGet('/nominees', ['Accept-Encoding: gzip']);
+check('public data is compressed for browsers that accept it', $code === 200 && str_contains($h, 'content-encoding: gzip') && str_contains($h, 'vary: accept-encoding') && str_starts_with($body, "\x1f\x8b"));
+preg_match('/etag: ("[^"]+")/', $h, $m);
+check('public data is cacheable and carries an ETag', str_contains($h, 'cache-control: public, max-age=30') && !empty($m[1]));
+check('an unchanged page answers 304 (also with Apache\'s -gzip suffix)', $httpGet('/nominees', ['If-None-Match: ' . $m[1]])[0] === 304 && $httpGet('/nominees', ['Accept-Encoding: gzip', 'If-None-Match: ' . substr($m[1], 0, -1) . '-gzip"'])[0] === 304);
+$key = 'h-test-' . bin2hex(random_bytes(3));
+check('a cache entry is built once, then served from the cache', App\Cache::remember($key, 60, fn () => 'one') === 'one' && App\Cache::remember($key, 60, fn () => 'two') === 'one');
+$file = rtrim((string) App\Env::get('CACHE_DIR'), '/\\') . '/' . $key . '.cache';
+touch($file, time() - 120);
+$lock = fopen($file . '.lock', 'c');
+flock($lock, LOCK_EX);
+check('while one request rebuilds, an expired entry is served as it was (no pile-up on the database)', App\Cache::remember($key, 60, fn () => 'two') === 'one');
+flock($lock, LOCK_UN);
+fclose($lock);
+check('once the rebuild lock is free the next request rebuilds', App\Cache::remember($key, 60, fn () => 'two') === 'two');
+
+// ---- search button rule, and what ships
+$files = [];
+foreach (['site', 'shared', 'admin'] as $dir) {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$root/$dir", FilesystemIterator::SKIP_DOTS)) as $f) {
+        if (str_ends_with($f->getFilename(), '.js') && $f->getFilename() !== 'search.js') { $files[] = $f->getPathname(); }
+    }
+}
+$bad = [];
+foreach ($files as $f) {
+    $src = (string) file_get_contents($f);
+    if (str_contains($src, 'type="search"') && !str_contains($src, 'bindSearch(') && !str_contains($src, 'data-dt="searchBtn"')) { $bad[] = basename($f); }
+}
+check('every search box has a Search button (nothing searches on each keystroke)', $bad === [], implode(', ', $bad));
+$dt = (string) file_get_contents($root . '/admin/js/components/data-table.js');
+check('the admin tables search on the button or Enter, never on "input"', str_contains($dt, 'data-dt="searchBtn"') && !preg_match('/data-dt="search"\]\x27\)\.addEventListener\("input"/', $dt) && !str_contains($dt, "addEventListener(\"input\", (e) => {\n      this.state.q"));
+$serverPages = array_filter(['votes', 'nominees', 'tickets', 'messages', 'audit'], fn ($p) => !str_contains((string) file_get_contents("$root/admin/js/pages/$p.js"), 'server: async'));
+check('the lists that can grow are paged on the server', $serverPages === [], implode(', ', $serverPages));
+$ht = (string) file_get_contents($root . '/.htaccess');
+check('.htaccess compresses, revalidates scripts, and no longer carries the development-only cache block', str_contains($ht, 'mod_deflate') && str_contains($ht, 'RequestHeader edit "If-None-Match"') && !str_contains($ht, 'Development only'));
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

@@ -1,7 +1,13 @@
 import { html, mount, esc } from "../../../shared/js/core/dom.js";
 
 /**
- * Reusable client-side data table: search, filters, sorting, pagination, row actions, bulk actions.
+ * Reusable data table: search, filters, sorting, pagination, row actions, bulk actions.
+ * Two modes:
+ *  - client (default): give it `rows`; it searches, filters, sorts and pages them in the browser.
+ *  - server: give it `server: async ({ q, page, perPage, sort, dir, filters }) => ({ rows, total, page })` instead of
+ *    `rows`; it asks the server for one page at a time (use this for any list that can grow). Call table.reload()
+ *    after a change.
+ * Searching never happens while you type: it runs when you press the Search button or Enter.
  *
  * new DataTable(container, {
  *   columns: [{ key, label, sort?: true, value?: row => any, render?: row => html, class? }],
@@ -15,7 +21,7 @@ export class DataTable {
   constructor(root, opts) {
     this.root = root;
     this.o = {
-      pageSize: 10,
+      pageSize: opts.server ? 25 : 10,
       searchKeys: [],
       filters: [],
       actions: [],
@@ -38,15 +44,61 @@ export class DataTable {
       filters: {},
       selected: new Set(),
     };
+    this.server = typeof opts.server === "function" ? opts.server : null;
+    this.total = 0;
+    this.error = null;
+    this.token = 0;
     this.rows = opts.rows ?? [];
     this.#shell();
+    if (this.server) this.reload();
+    else this.update();
+  }
+
+  /** Server mode: fetch the current page again (after a change, or after the page, search, filter or sort changed). */
+  async reload() {
+    if (!this.server) return this.update();
+    const token = ++this.token;
+    const table = this.root.querySelector('[data-dt="table"]');
+    table?.classList.add("opacity-50");
+    const { q, sort, filters, page } = this.state;
+    try {
+      const r = await this.server({
+        q,
+        page,
+        perPage: this.o.pageSize,
+        sort: sort?.key ?? "",
+        dir: sort?.dir ?? "",
+        filters: { ...filters },
+      });
+      if (token !== this.token) return; // a newer request is already on its way
+      this.rows = r.rows;
+      this.total = r.total;
+      this.state.page = r.page ?? page;
+      this.state.selected.clear();
+      this.error = null;
+    } catch (err) {
+      if (token !== this.token) return;
+      this.error = err;
+    }
+    table?.classList.remove("opacity-50");
     this.update();
+  }
+
+  #changed() {
+    if (this.server) this.reload();
+    else this.update();
   }
 
   setRows(rows) {
     this.rows = rows;
     this.state.selected.clear();
     this.update();
+  }
+
+  /** Is a search or a filter active? (decides which "empty" message to show) */
+  #filtered() {
+    const { q, filters } = this.state;
+    return Boolean(q) || Object.values(filters).some(Boolean);
   }
 
   #val(row, col) {
@@ -96,6 +148,9 @@ export class DataTable {
               data-dt="search"
             />
           </div>
+          <button type="button" class="btn btn-gold btn-sm" data-dt="searchBtn">
+            Search
+          </button>
           ${filters.map(
             (f) =>
               html`<select
@@ -132,16 +187,27 @@ export class DataTable {
     );
 
     const $ = (s) => this.root.querySelector(s);
-    $('[data-dt="search"]').addEventListener("input", (e) => {
-      this.state.q = e.target.value.trim();
+    // Search runs once, on the button or Enter: never on every keystroke.
+    const runSearch = () => {
+      this.state.q = $('[data-dt="search"]').value.trim();
       this.state.page = 1;
-      this.update();
+      this.#changed();
+    };
+    $('[data-dt="searchBtn"]').addEventListener("click", runSearch);
+    $('[data-dt="search"]').addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runSearch();
+      }
+    });
+    $('[data-dt="search"]').addEventListener("search", (e) => {
+      if (!e.target.value && this.state.q) runSearch(); // the little × that clears the box
     });
     this.root.querySelectorAll("[data-dt-filter]").forEach((el) =>
       el.addEventListener("change", () => {
         this.state.filters[el.dataset.dtFilter] = el.value;
         this.state.page = 1;
-        this.update();
+        this.#changed();
       }),
     );
     this.root.addEventListener("click", (e) => {
@@ -152,13 +218,18 @@ export class DataTable {
           key: th.dataset.sort,
           dir: s?.key === th.dataset.sort && s.dir === "asc" ? "desc" : "asc",
         };
-        this.update();
+        this.state.page = 1;
+        this.#changed();
         return;
       }
       const page = e.target.closest("[data-dt-page]");
       if (page) {
         this.state.page = Number(page.dataset.dtPage);
-        this.update();
+        this.#changed();
+        return;
+      }
+      if (e.target.closest("[data-dt-retry]")) {
+        this.reload();
         return;
       }
       const act = e.target.closest("[data-action]");
@@ -196,6 +267,7 @@ export class DataTable {
   }
 
   #pageRows() {
+    if (this.server) return this.rows;
     const all = this.#visible();
     const { page } = this.state;
     const n = this.o.pageSize;
@@ -210,10 +282,34 @@ export class DataTable {
     bar.querySelector('[data-dt="bulk-count"]').textContent = `${n} selected`;
   }
 
+  /** 1 … 4 5 [6] 7 8 … 40: never more than about ten buttons, however long the list. */
+  #pageNumbers(pages, current) {
+    const keep = new Set([
+      1,
+      pages,
+      current,
+      current - 1,
+      current + 1,
+      current - 2,
+      current + 2,
+    ]);
+    const out = [];
+    let last = 0;
+    for (const p of [...keep]
+      .filter((x) => x >= 1 && x <= pages)
+      .sort((a, b) => a - b)) {
+      if (p - last > 1) out.push(null);
+      out.push(p);
+      last = p;
+    }
+    return out;
+  }
+
   update() {
-    const all = this.#visible();
+    const all = this.server ? null : this.#visible();
+    const total = this.server ? this.total : all.length;
     const n = this.o.pageSize;
-    const pages = Math.max(1, Math.ceil(all.length / n));
+    const pages = Math.max(1, Math.ceil(total / n));
     this.state.page = Math.min(this.state.page, pages);
     const rows = this.#pageRows();
     const { sort, selected } = this.state;
@@ -309,15 +405,23 @@ export class DataTable {
               )}
             </tbody>
           </table>`
-        : html`<div class="oga-dt__empty">
-            <i class="fa-regular fa-folder-open"></i>${this.rows.length
-              ? "No results match your filters."
-              : this.o.empty}
-          </div>`,
+        : this.error
+          ? html`<div class="oga-dt__empty">
+              <i class="fa-solid fa-triangle-exclamation"></i>We could not load
+              this list.
+              <button class="btn btn-ghost btn-sm ms-2" data-dt-retry>
+                Try again
+              </button>
+            </div>`
+          : html`<div class="oga-dt__empty">
+              <i class="fa-regular fa-folder-open"></i>${this.#filtered()
+                ? "No results match your search or filters."
+                : this.o.empty}
+            </div>`,
     );
 
-    this.root.querySelector('[data-dt="count"]').textContent = all.length
-      ? `Showing ${(this.state.page - 1) * n + 1}–${Math.min(this.state.page * n, all.length)} of ${all.length}`
+    this.root.querySelector('[data-dt="count"]').textContent = total
+      ? `Showing ${(this.state.page - 1) * n + 1}–${Math.min(this.state.page * n, total)} of ${total}`
       : "0 results";
     mount(
       this.root.querySelector('[data-dt="pager"]'),
@@ -330,17 +434,18 @@ export class DataTable {
             >
               ‹
             </button>
-            ${Array.from({ length: pages }, (_, i) => i + 1).map(
-              (p) =>
-                html`<button
-                  class="btn ${p === this.state.page
-                    ? "btn-gold"
-                    : "btn-ghost"}"
-                  data-dt-page="${p}"
-                  ${p === this.state.page ? 'aria-current="page"' : ""}
-                >
-                  ${p}
-                </button>`,
+            ${this.#pageNumbers(pages, this.state.page).map((p) =>
+              p === null
+                ? html`<span class="px-1 text-secondary">…</span>`
+                : html`<button
+                    class="btn ${p === this.state.page
+                      ? "btn-gold"
+                      : "btn-ghost"}"
+                    data-dt-page="${p}"
+                    ${p === this.state.page ? 'aria-current="page"' : ""}
+                  >
+                    ${p}
+                  </button>`,
             )}
             <button
               class="btn btn-ghost"

@@ -1,11 +1,22 @@
 import { store } from "../../../shared/js/core/store.js";
+import { pageQuery } from "./paging.js";
 import { adminApi } from "./admin-api.js";
 
 /** The audit log lives on the server; the browser only reads it and reports the few things it does itself. */
 const viewing = () => store.get("admin:viewing");
 
-export async function fetchAudit() {
-  return (await adminApi("/admin/audit")).entries;
+/** One page of the activity history, filtered and sorted by the server: { rows, total, page, pages }. */
+export async function fetchAuditPage(params, { meta = false } = {}) {
+  const r = await adminApi(
+    `/admin/audit?${pageQuery(params, meta ? { meta: 1 } : {})}`,
+  );
+  return {
+    rows: r.entries,
+    total: r.total,
+    page: r.page,
+    pages: r.pages,
+    admins: r.admins,
+  };
 }
 
 /** Call when someone downloads the audit CSV. */

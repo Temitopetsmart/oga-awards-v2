@@ -25,6 +25,44 @@ final class TicketAdminApi
 
     // -------------------------------------------------------- orders, tickets
 
+    private static function orderShape(array $r, bool $money): array
+    {
+        return [
+            'reference' => $r['reference'], 'name' => $r['buyer_name'], 'email' => $r['buyer_email'], 'phone' => $r['buyer_phone'],
+            'typeName' => $r['type_name'], 'qty' => (int) $r['qty'], 'amount' => $money ? (float) $r['amount'] : 0,
+            'status' => $r['status'], 'createdAt' => (new \DateTimeImmutable($r['created_at']))->format('c'),
+        ];
+    }
+
+    private static function ticketShape(array $r): array
+    {
+        return [
+            'code' => $r['ticket_code'], 'holder' => $r['holder_name'], 'typeName' => $r['type_name'], 'orderReference' => $r['reference'],
+            'used' => $r['checked_in_at'] !== null, 'usedAt' => $r['checked_in_at'] ? (new \DateTimeImmutable($r['checked_in_at']))->format('c') : null,
+            'usedBy' => $r['checked_by'], 'void' => $r['status'] === 'void',
+            'seat' => (int) $r['seat_no'], 'seats' => (int) $r['seats'], 'groupCode' => $r['group_code'], 'tableLabel' => $r['table_label'],
+        ];
+    }
+
+    /** Tickets issued, tickets checked in, tickets paid for and revenue. */
+    private static function stats(int $editionId, bool $money): array
+    {
+        $pdo = self::pdo();
+        $t = $pdo->prepare('SELECT COUNT(*) AS issued, SUM(checked_in_at IS NOT NULL) AS used FROM tickets WHERE edition_id = ?');
+        $t->execute([$editionId]);
+        $t = $t->fetch();
+        $o = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) AS qty, COALESCE(SUM(amount), 0) AS amount FROM ticket_orders WHERE edition_id = ? AND status = 'paid'");
+        $o->execute([$editionId]);
+        $o = $o->fetch();
+        return ['issued' => (int) $t['issued'], 'used' => (int) $t['used'], 'paidQty' => (int) $o['qty'], 'revenue' => $money ? (float) $o['amount'] : 0.0];
+    }
+
+    /**
+     * Orders and issued tickets. With ?page= and ?view=orders|issued it is paged on the server
+     * (orders: status, sort reference/buyer/qty/amount/status/at; issued: state=used|unused,
+     * sort code/holder/typeName/state; both: q) and ?stats=1 adds the totals.
+     * Without ?page= it returns the newest 5000 orders and 20000 tickets, as before.
+     */
     public static function list(): never
     {
         $slug = (string) ($_GET['edition'] ?? '');
@@ -33,31 +71,63 @@ final class TicketAdminApi
         $money = Access::can($actor, 'finance.view', (int) $ed['id']);
         $pdo = self::pdo();
 
-        $o = $pdo->prepare('SELECT o.*, t.name AS type_name FROM ticket_orders o JOIN ticket_types t ON t.id = o.ticket_type_id WHERE o.edition_id = ? ORDER BY o.id DESC LIMIT 5000');
-        $o->execute([$ed['id']]);
-        $t = $pdo->prepare(
-            "SELECT k.ticket_code, k.holder_name, k.seat_no, k.checked_in_at, k.status, o.reference, ty.name AS type_name,
-                    g.group_code, g.seats, g.table_label, p.name AS checked_by
-               FROM tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id
-               JOIN ticket_groups g ON g.id = k.group_id LEFT JOIN people p ON p.id = k.checked_in_by
-              WHERE k.edition_id = ? ORDER BY k.id DESC LIMIT 20000"
-        );
-        $t->execute([$ed['id']]);
-        Response::json(['ok' => true,
-            'orders' => array_map(fn ($r) => [
-                'reference' => $r['reference'], 'name' => $r['buyer_name'], 'email' => $r['buyer_email'], 'phone' => $r['buyer_phone'],
-                'typeName' => $r['type_name'], 'qty' => (int) $r['qty'], 'amount' => $money ? (float) $r['amount'] : 0,
-                'status' => $r['status'], 'createdAt' => (new \DateTimeImmutable($r['created_at']))->format('c'),
-            ], $o->fetchAll()),
-            'tickets' => array_map(fn ($r) => [
-                'code' => $r['ticket_code'], 'holder' => $r['holder_name'], 'typeName' => $r['type_name'], 'orderReference' => $r['reference'],
-                'used' => $r['checked_in_at'] !== null, 'usedAt' => $r['checked_in_at'] ? (new \DateTimeImmutable($r['checked_in_at']))->format('c') : null,
-                'usedBy' => $r['checked_by'], 'void' => $r['status'] === 'void',
-                'seat' => (int) $r['seat_no'], 'seats' => (int) $r['seats'], 'groupCode' => $r['group_code'], 'tableLabel' => $r['table_label'],
-            ], $t->fetchAll()),
-        ]);
-    }
+        $ordersFrom = 'ticket_orders o JOIN ticket_types t ON t.id = o.ticket_type_id';
+        $ticketsFrom = 'tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id
+                        JOIN ticket_groups g ON g.id = k.group_id LEFT JOIN people p ON p.id = k.checked_in_by';
+        $ticketCols = 'k.ticket_code, k.holder_name, k.seat_no, k.checked_in_at, k.status, o.reference, ty.name AS type_name, g.group_code, g.seats, g.table_label, p.name AS checked_by';
 
+        if (!Paging::wanted()) {
+            $o = $pdo->prepare("SELECT o.*, t.name AS type_name FROM $ordersFrom WHERE o.edition_id = ? ORDER BY o.id DESC LIMIT 5000");
+            $o->execute([$ed['id']]);
+            $t = $pdo->prepare("SELECT $ticketCols FROM $ticketsFrom WHERE k.edition_id = ? ORDER BY k.id DESC LIMIT 20000");
+            $t->execute([$ed['id']]);
+            Response::json(['ok' => true,
+                'orders'  => array_map(fn ($r) => self::orderShape($r, $money), $o->fetchAll()),
+                'tickets' => array_map(fn ($r) => self::ticketShape($r), $t->fetchAll()),
+            ]);
+        }
+
+        $q = Paging::q();
+        $out = ['ok' => true];
+        if ((string) ($_GET['view'] ?? 'orders') === 'issued') {
+            $where = ['k.edition_id = ?'];
+            $args = [$ed['id']];
+            $state = Paging::filter('state');
+            if ($state === 'used') {
+                $where[] = 'k.checked_in_at IS NOT NULL';
+            } elseif ($state === 'unused') {
+                $where[] = 'k.checked_in_at IS NULL';
+            }
+            if ($q !== '') {
+                $where[] = Paging::search(['k.ticket_code', 'k.holder_name', 'o.reference', 'ty.name'], $q, $args);
+            }
+            $order = Paging::order(['code' => 'k.ticket_code', 'holder' => 'k.holder_name', 'typeName' => 'ty.name', 'state' => 'k.checked_in_at'], 'k.id DESC', 'k.id DESC');
+            $r = Paging::run($pdo, $ticketCols, $ticketsFrom, $where, $args, $order, $q === '' ? 'tickets k' : null);   // counting needs no joins unless searching
+            $out += ['tickets' => array_map(fn ($x) => self::ticketShape($x), $r['rows'])] + Paging::meta($r);
+        } else {
+            $where = ['o.edition_id = ?'];
+            $args = [$ed['id']];
+            if (in_array($v = Paging::filter('status'), ['paid', 'pending', 'failed', 'void'], true)) {
+                $where[] = 'o.status = ?';
+                $args[] = $v;
+            }
+            if ($q !== '') {
+                $like = Paging::like($q);
+                $where[] = '(o.reference LIKE ? OR o.buyer_name LIKE ? OR o.buyer_email LIKE ?
+                             OR o.ticket_type_id IN (SELECT id FROM ticket_types WHERE edition_id = ? AND name LIKE ?))';
+                array_push($args, $like, $like, $like, $ed['id'], $like);
+            }
+            $order = Paging::order(['reference' => 'o.reference', 'buyer' => 'o.buyer_name', 'qty' => 'o.qty', 'amount' => 'o.amount', 'status' => 'o.status', 'at' => 'o.id'], 'o.id DESC', 'o.id DESC');
+            // The ticket type's name is looked up for the 25 rows shown, so the orders are read straight from their index.
+            $r = Paging::run($pdo, '*, (SELECT name FROM ticket_types WHERE id = o.ticket_type_id) AS type_name', 'ticket_orders o', $where, $args, $order);
+            $out += ['orders' => array_map(fn ($x) => self::orderShape($x, $money), $r['rows'])] + Paging::meta($r);
+        }
+        if (!empty($_GET['stats'])) {
+            $out['stats'] = self::stats((int) $ed['id'], $money);
+        }
+        Response::json($out);
+    }
+    
     /** Manual check-in / undo. Needs tickets.override in the ticket's own edition. */
     public static function override(string $code): never
     {

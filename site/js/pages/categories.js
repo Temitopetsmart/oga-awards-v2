@@ -1,3 +1,4 @@
+import { bindSearch } from "../../../shared/js/ui/search.js";
 import { html } from "../../../shared/js/core/dom.js";
 import { safeClass } from "../../../shared/js/core/dom.js";
 import {
@@ -57,6 +58,9 @@ export default async function categories(ctx) {
             aria-label="Search nominees"
           />
         </div>
+        <button type="button" class="btn btn-gold btn-sm" id="nomineeSearchBtn">
+          Search
+        </button>
       </div>
       ${cats.length
         ? cats.map((c) => {
@@ -107,8 +111,8 @@ export default async function categories(ctx) {
 
 export function init(root) {
   const input = root.querySelector("#nomineeSearch");
-  input?.addEventListener("input", () => {
-    const q = input.value.trim().toLowerCase();
+  bindSearch(input, root.querySelector("#nomineeSearchBtn"), (text) => {
+    const q = text.toLowerCase();
     let shown = 0;
     root.querySelectorAll("[data-nominee]").forEach((el) => {
       const hit =

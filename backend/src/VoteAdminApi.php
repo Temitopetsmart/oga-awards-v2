@@ -32,27 +32,100 @@ final class VoteAdminApi
         return $o + ['actor' => Access::require($perm, $o['edition_slug'])];
     }
 
+    private static function orderShape(array $o, bool $money): array
+    {
+        return [
+            'reference'    => $o['reference'],
+            'nomineeId'    => (string) $o['nominee_entry_id'],
+            'nomineeName'  => $o['nominee_name'] ?? null,
+            'categoryId'   => (string) $o['category_id'],
+            'categoryName' => $o['category_name'] ?? null,
+            'votes'        => (int) $o['votes'],
+            'amount'       => $money ? (float) $o['amount'] : 0,
+            'name'         => $o['voter_name'],
+            'email'        => $o['voter_email'],
+            'status'       => $o['status'],
+            'source'       => $o['source'] === 'manual' ? 'manual' : 'public',
+            'reason'       => $o['reason'] ?? $o['void_reason'],
+            'createdAt'    => (new \DateTimeImmutable($o['created_at']))->format('c'),
+        ];
+    }
+
+    /** Paid public votes, paid manual votes, money collected (from the precomputed totals), pending and void order counts. */
+    private static function ledgerStats(int $editionId, bool $money): array
+    {
+        $paid = VoteTotals::perCategory($editionId);
+        $votes = array_sum(array_column($paid, 'votes'));
+        $manual = array_sum(array_column($paid, 'manual'));
+        $st = self::pdo()->prepare("SELECT status, COUNT(*) FROM vote_orders WHERE edition_id = ? AND status IN ('pending', 'void') GROUP BY status");
+        $st->execute([$editionId]);
+        $n = $st->fetchAll(\PDO::FETCH_KEY_PAIR);
+        return [
+            'paidVotes'   => (int) ($votes - $manual),
+            'manualVotes' => (int) $manual,
+            'amount'      => $money ? (float) array_sum(array_column($paid, 'amount')) : 0.0,
+            'pending'     => (int) ($n['pending'] ?? 0),
+            'void'        => (int) ($n['void'] ?? 0),
+        ];
+    }
+
+    /**
+     * The vote ledger. With ?page= it is paged on the server (filters: status, source, categoryId; search: q;
+     * sort: reference, votes, amount, source, status, at) and ?stats=1 adds the totals.
+     * Without ?page= it returns the newest 5000 orders, as before.
+     */
     public static function ledger(): never
     {
         $slug = (string) ($_GET['edition'] ?? '');
         $actor = Access::require('votes.view', $slug);
         $ed = self::edition($slug);
         $money = Access::can($actor, 'finance.view', (int) $ed['id']);
-        $st = self::pdo()->prepare('SELECT * FROM vote_orders WHERE edition_id = ? ORDER BY id DESC LIMIT 5000');
-        $st->execute([$ed['id']]);
-        Response::json(['ok' => true, 'orders' => array_map(fn ($o) => [
-            'reference'  => $o['reference'],
-            'nomineeId'  => (string) $o['nominee_entry_id'],
-            'categoryId' => (string) $o['category_id'],
-            'votes'      => (int) $o['votes'],
-            'amount'     => $money ? (float) $o['amount'] : 0,
-            'name'       => $o['voter_name'],
-            'email'      => $o['voter_email'],
-            'status'     => $o['status'],
-            'source'     => $o['source'] === 'manual' ? 'manual' : 'public',
-            'reason'     => $o['reason'] ?? $o['void_reason'],
-            'createdAt'  => (new \DateTimeImmutable($o['created_at']))->format('c'),
-        ], $st->fetchAll())]);
+
+        if (!Paging::wanted()) {
+            $st = self::pdo()->prepare('SELECT * FROM vote_orders WHERE edition_id = ? ORDER BY id DESC LIMIT 5000');
+            $st->execute([$ed['id']]);
+            Response::json(['ok' => true, 'orders' => array_map(fn ($o) => self::orderShape($o, $money), $st->fetchAll())]);
+        }
+
+        $where = ['o.edition_id = ?'];
+        $args = [$ed['id']];
+        if (in_array($v = Paging::filter('status'), ['paid', 'pending', 'void'], true)) {
+            $where[] = 'o.status = ?';
+            $args[] = $v;
+        }
+        $source = Paging::filter('source');
+        if ($source === 'manual') {
+            $where[] = "o.source = 'manual'";
+        } elseif ($source === 'public') {
+            $where[] = "o.source <> 'manual'";
+        }
+        if (ctype_digit($c = Paging::filter('categoryId')) && $c !== '') {
+            $where[] = 'o.category_id = ?';
+            $args[] = (int) $c;
+        }
+        if (($q = Paging::q()) !== '') {
+            // Names are matched through short id lists, so a search never has to join every order to its nominee.
+            $like = Paging::like($q);
+            $where[] = '(o.reference LIKE ? OR o.voter_name LIKE ? OR o.voter_email LIKE ?
+                         OR o.nominee_entry_id IN (SELECT id FROM nominee_entries WHERE edition_id = ? AND name LIKE ?)
+                         OR o.category_id IN (SELECT id FROM categories WHERE edition_id = ? AND name LIKE ?))';
+            array_push($args, $like, $like, $like, $ed['id'], $like, $ed['id'], $like);
+        }
+        $order = Paging::order([
+            'reference' => 'o.reference', 'votes' => 'o.votes', 'amount' => 'o.amount', 'source' => 'o.source', 'status' => 'o.status', 'at' => 'o.id',
+        ], 'o.id DESC', 'o.id DESC');
+
+        $r = Paging::run(
+            self::pdo(),
+            'STRAIGHT_JOIN o.*, n.name AS nominee_name, c.name AS category_name',   // read the orders in index order, then look up the two names
+            'vote_orders o JOIN nominee_entries n ON n.id = o.nominee_entry_id JOIN categories c ON c.id = o.category_id',
+            $where, $args, $order, 'vote_orders o'
+        );
+        $out = ['ok' => true, 'orders' => array_map(fn ($o) => self::orderShape($o, $money), $r['rows'])] + Paging::meta($r);
+        if (!empty($_GET['stats'])) {
+            $out['stats'] = self::ledgerStats((int) $ed['id'], $money);
+        }
+        Response::json($out);
     }
 
     public static function addManual(): never
@@ -72,9 +145,12 @@ final class VoteAdminApi
             self::fail('Give a reason (at least 8 characters). It is kept in the audit log.');
         }
         $reference = 'MAN-' . strtoupper(bin2hex(random_bytes(6)));
-        self::pdo()->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, status, source, reason, created_by, paid_at)
-                              VALUES (?, ?, ?, ?, ?, 0, ?, '', 'paid', 'manual', ?, ?, NOW())")
-            ->execute([$n['edition_id'], $reference, $n['id'], $n['category_id'], (int) $votes, $actor['name'], $reason, $actor['id']]);
+        Database::transaction(function (\PDO $db) use ($n, $reference, $votes, $actor, $reason) {
+            $db->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, status, source, reason, created_by, paid_at)
+                          VALUES (?, ?, ?, ?, ?, 0, ?, '', 'paid', 'manual', ?, ?, NOW())")
+                ->execute([$n['edition_id'], $reference, $n['id'], $n['category_id'], (int) $votes, $actor['name'], $reason, $actor['id']]);
+            VoteTotals::addOrder($db, ['nominee_entry_id' => $n['id'], 'category_id' => $n['category_id'], 'edition_id' => $n['edition_id'], 'votes' => (int) $votes, 'amount' => 0, 'source' => 'manual']);
+        });
         Cache::flush();
         Audit::log((int) $actor['id'], "Added $votes manual votes", $n['name'] . ' — ' . $reason, (int) $n['edition_id']);
         Response::json(['ok' => true, 'reference' => $reference]);
@@ -88,8 +164,23 @@ final class VoteAdminApi
             self::fail('That order is already void.');
         }
         $reason = Request::str($in, 'reason', 500) ?: 'Voided by an admin';
-        self::pdo()->prepare("UPDATE vote_orders SET status = 'void', voided_by = ?, voided_at = NOW(), void_reason = ? WHERE id = ?")
-            ->execute([$o['actor']['id'], $reason, $o['id']]);
+        $voided = Database::transaction(function (\PDO $db) use ($o, $reason) {
+            $lock = $db->prepare('SELECT * FROM vote_orders WHERE id = ? FOR UPDATE');   // read the status again under a lock: two admins cannot both void it
+            $lock->execute([$o['id']]);
+            $fresh = $lock->fetch();
+            if (!$fresh || $fresh['status'] === 'void') {
+                return false;
+            }
+            $db->prepare("UPDATE vote_orders SET status = 'void', voided_by = ?, voided_at = NOW(), void_reason = ? WHERE id = ?")
+                ->execute([$o['actor']['id'], $reason, $o['id']]);
+            if ($fresh['status'] === 'paid') {
+                VoteTotals::removeOrder($db, $fresh);
+            }
+            return true;
+        });
+        if (!$voided) {
+            self::fail('That order is already void.');
+        }
         Cache::flush();
         Audit::log((int) $o['actor']['id'], 'Voided vote order', $reference, (int) $o['edition_id'], ['reason' => $reason, 'wasStatus' => $o['status'], 'votes' => (int) $o['votes']]);
         Response::json(['ok' => true]);
@@ -121,12 +212,7 @@ final class VoteAdminApi
         Access::require('results.view', $slug);
         $ed = self::edition($slug);
         $pdo = self::pdo();
-        $tally = [];
-        $st = $pdo->prepare("SELECT nominee_entry_id, SUM(votes) AS total FROM vote_orders WHERE edition_id = ? AND status = 'paid' GROUP BY nominee_entry_id");
-        $st->execute([$ed['id']]);
-        foreach ($st->fetchAll() as $r) {
-            $tally[(string) $r['nominee_entry_id']] = (int) $r['total'];
-        }
+        $tally = VoteTotals::perNominee((int) $ed['id']);
         $w = $pdo->prepare('SELECT category_id, nominee_entry_id FROM winners WHERE edition_id = ?');
         $w->execute([$ed['id']]);
         Response::json(['ok' => true, 'tally' => (object) $tally, 'winners' => array_map(fn ($r) => [

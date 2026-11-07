@@ -3,6 +3,7 @@ import { store } from "../../../shared/js/core/store.js";
 import { adminApi, adminUpload } from "./admin-api.js";
 import { restoreSession } from "./admin-auth.service.js";
 import { viewing } from "./scope.js";
+import { pageQuery } from "./paging.js";
 
 /** All nominees of an edition (every status), with self-registered ones carrying their account email. */
 export async function listNominees(editionId = viewing()) {
@@ -14,6 +15,14 @@ export async function listNominees(editionId = viewing()) {
   } catch {
     return []; // no access to nominees in that edition
   }
+}
+
+/** One page of nominees, filtered and sorted by the server: { rows, total, page, pages }. */
+export async function fetchNomineesPage(params, editionId = viewing()) {
+  const r = await adminApi(
+    `/admin/nominees?edition=${encodeURIComponent(editionId)}&${pageQuery(params)}`,
+  );
+  return { rows: r.nominees, total: r.total, page: r.page, pages: r.pages };
 }
 
 /** Pending count for the sidebar badge. Refreshed with every sign-in check and after every save. */

@@ -56,14 +56,9 @@ final class MessagesApi
 
     // ------------------------------------------------------------------ admin
 
-    public static function list(): never
+    private static function shape(array $m): array
     {
-        $slug  = (string) ($_GET['edition'] ?? '');
-        $actor = Access::require('messages.view', $slug);
-        $st = self::pdo()->prepare('SELECT * FROM contact_messages WHERE edition_id = ? ORDER BY id DESC LIMIT 2000');
-        $st->execute([$actor['edition_id']]);
-        header('Cache-Control: no-store');
-        Response::json(['ok' => true, 'messages' => array_map(fn ($m) => [
+        return [
             'id'        => (string) $m['id'],
             'name'      => $m['name'],
             'email'     => $m['email'],
@@ -71,9 +66,40 @@ final class MessagesApi
             'message'   => $m['message'],
             'read'      => (bool) $m['is_read'],
             'createdAt' => (new \DateTimeImmutable($m['created_at']))->format('c'),
-        ], $st->fetchAll())]);
+        ];
     }
 
+    /**
+     * Messages of the edition. With ?page= they are paged on the server (filter: status=read|unread; search: q;
+     * sort: name, subject, status, createdAt). Without it the newest 2000 are returned, as before.
+     */
+    public static function list(): never
+    {
+        $slug  = (string) ($_GET['edition'] ?? '');
+        $actor = Access::require('messages.view', $slug);
+        header('Cache-Control: no-store');
+
+        if (!Paging::wanted()) {
+            $st = self::pdo()->prepare('SELECT * FROM contact_messages WHERE edition_id = ? ORDER BY id DESC LIMIT 2000');
+            $st->execute([$actor['edition_id']]);
+            Response::json(['ok' => true, 'messages' => array_map(fn ($m) => self::shape($m), $st->fetchAll())]);
+        }
+
+        $where = ['edition_id = ?'];
+        $args = [$actor['edition_id']];
+        $status = Paging::filter('status');
+        if ($status === 'read' || $status === 'unread') {
+            $where[] = 'is_read = ?';
+            $args[] = $status === 'read' ? 1 : 0;
+        }
+        if (($q = Paging::q()) !== '') {
+            $where[] = Paging::search(['name', 'email', 'subject', 'message'], $q, $args);
+        }
+        $order = Paging::order(['name' => 'name', 'subject' => 'subject', 'status' => 'is_read', 'createdAt' => 'id'], 'id DESC', 'id DESC');
+        $r = Paging::run(self::pdo(), '*', 'contact_messages', $where, $args, $order);
+        Response::json(['ok' => true, 'messages' => array_map(fn ($m) => self::shape($m), $r['rows'])] + Paging::meta($r));
+    }
+    
     /** Loads a message and checks the permission in the message's own edition. */
     private static function load(int $id, array $in): array
     {

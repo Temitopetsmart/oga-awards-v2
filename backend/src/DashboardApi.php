@@ -32,13 +32,15 @@ final class DashboardApi
         $out   = ['ok' => true];
 
         if (Access::can($actor, 'votes.view', $ed)) {
-            $st = $pdo->prepare("SELECT category_id, SUM(votes) AS v, SUM(amount) AS a FROM vote_orders WHERE edition_id = ? AND status = 'paid' GROUP BY category_id");
-            $st->execute([$ed]);
-            $rows = $st->fetchAll();
-            $out['votes'] = (int) array_sum(array_column($rows, 'v'));
-            $out['byCategory'] = array_map(fn ($r) => ['categoryId' => (string) $r['category_id'], 'votes' => (int) $r['v']], $rows);
+            $rows = VoteTotals::perCategory($ed);
+            $out['votes'] = (int) array_sum(array_column($rows, 'votes'));
+            $out['byCategory'] = array_map(fn ($r) => [
+                'categoryId' => $r['category_id'],
+                'votes' => $r['votes']
+            ], $rows);
+
             if (Access::can($actor, 'finance.view', $ed)) {
-                $out['voteAmount'] = (float) array_sum(array_column($rows, 'a'));
+                $out['voteAmount'] = (float) array_sum(array_column($rows, 'amount'));
             }
         }
         if (Access::can($actor, 'tickets.view', $ed)) {

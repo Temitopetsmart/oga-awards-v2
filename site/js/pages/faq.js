@@ -1,3 +1,4 @@
+import { bindSearch } from "../../../shared/js/ui/search.js";
 import { html } from "../../../shared/js/core/dom.js";
 import { getResource } from "../../../shared/js/core/http.js";
 import { pageHero, pageBody } from "../sections/page-sections.js";
@@ -36,6 +37,9 @@ export default async function faq() {
             aria-label="Search questions"
           />
         </div>
+        <button type="button" class="btn btn-gold btn-sm" id="faqSearchBtn">
+          Search
+        </button>
       </div>
       <div class="accordion" id="faqList">
         ${faqs.map(
@@ -77,8 +81,8 @@ export default async function faq() {
 export function init(root) {
   let group = "";
   const search = root.querySelector("#faqSearch");
+  let q = "";
   const apply = () => {
-    const q = search.value.trim().toLowerCase();
     let shown = 0;
     root.querySelectorAll(".accordion-item").forEach((el) => {
       const hit =
@@ -89,7 +93,10 @@ export function init(root) {
     });
     root.querySelector("#faqEmpty").classList.toggle("d-none", shown > 0);
   };
-  search.addEventListener("input", apply);
+  bindSearch(search, root.querySelector("#faqSearchBtn"), (text) => {
+    q = text.toLowerCase();
+    apply();
+  });
   root.querySelector("#faqChips").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-group]");
     if (!btn) return;

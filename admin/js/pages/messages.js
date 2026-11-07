@@ -5,8 +5,7 @@ import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openInfoModal } from "../components/modal.js";
 import {
-  loadMessages,
-  listMessages,
+  fetchMessagesPage,
   setMessageRead,
   deleteMessage,
 } from "../services/messages.api.js";
@@ -25,16 +24,16 @@ export default async function messages() {
 }
 
 export async function init(root, { edition, can }) {
-  await loadMessages(edition.id);
-  const rows = () =>
-    listMessages().map((m) => ({ ...m, status: m.read ? "read" : "unread" }));
+  const shape = (m) => ({ ...m, status: m.read ? "read" : "unread" });
   const manage = can("messages.manage");
   const fail = (e) => notify.failure(e);
 
   const table = new DataTable(root.querySelector("#msgTable"), {
     can,
-    rows: rows(),
-    searchKeys: ["name", "email", "subject", "message"],
+    server: async (p) => {
+      const r = await fetchMessagesPage(edition.id, p);
+      return { rows: r.rows.map(shape), total: r.total, page: r.page };
+    },
     filters: [
       {
         key: "status",
@@ -109,7 +108,7 @@ export async function init(root, { edition, can }) {
     empty: "No messages yet in this edition.",
     onAction: (key, m) => handlers[key](m),
   });
-  const refresh = () => table.setRows(rows());
+  const refresh = () => table.reload();
 
   const mark = async (m, read) => {
     try {

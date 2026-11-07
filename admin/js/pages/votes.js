@@ -9,8 +9,9 @@ import { statCard } from "../components/stat-card.js";
 import { openFormModal, openInfoModal } from "../components/modal.js";
 import { listNominees } from "../services/nominee.repo.js";
 import { listCategories } from "../services/category.repo.js";
+import { fetchAllPages } from "../services/paging.js";
 import {
-  fetchVotes,
+  fetchVotesPage,
   addManualVotes,
   voidOrder,
   recheckOrder,
@@ -46,57 +47,44 @@ export default async function votes({ can }) {
 
 export async function init(root, { admin, edition, can }) {
   const money$ = can("finance.view");
-  const [nominees, cats] = await Promise.all([
-    listNominees(),
-    listCategories(),
-  ]);
-  const nameOf = (id) => nominees.find((n) => n.id === id)?.name ?? "(removed)";
+  const cats = await listCategories();
   const catOf = (id) => cats.find((c) => c.id === id)?.name ?? "—";
-  let orders = await fetchVotes();
-  const mine = () => orders;
-  const load = () =>
-    mine()
-      .map((o) => ({
-        ...o,
-        id: o.reference,
-        nomineeName: nameOf(o.nomineeId),
-        categoryName: catOf(o.categoryId),
-        source: o.source ?? "public",
-        voter: o.name || "—",
-        at: o.createdAt ?? "",
-      }))
-      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  let nominees = null; // only needed for the "Add manual votes" form, so loaded when it opens
+  const shape = (o) => ({
+    ...o,
+    id: o.reference,
+    nomineeName: o.nomineeName ?? "(removed)",
+    categoryName: o.categoryName ?? "—",
+    source: o.source ?? "public",
+    voter: o.name || "—",
+    at: o.createdAt ?? "",
+  });
 
-  const stats = () => {
-    const rows = mine();
-    const paid = rows.filter((o) => o.status === "paid");
-    const sum = (list) => list.reduce((s, o) => s + o.votes, 0);
+  const stats = (s) => {
     const host = root.querySelector("#voteStats");
     host.innerHTML = "";
     [
       statCard({
         icon: "fa-check-to-slot",
         label: "Paid votes",
-        value: number(sum(paid.filter((o) => o.source !== "manual"))),
-        sub: money$
-          ? `${money(paid.reduce((s, o) => s + o.amount, 0))} collected`
-          : "",
+        value: number(s.paidVotes),
+        sub: money$ ? `${money(s.amount)} collected` : "",
       }),
       statCard({
         icon: "fa-hand",
         label: "Manual votes",
-        value: number(sum(paid.filter((o) => o.source === "manual"))),
+        value: number(s.manualVotes),
         sub: "Added by admins",
       }),
       statCard({
         icon: "fa-hourglass-half",
         label: "Pending payments",
-        value: number(rows.filter((o) => o.status === "pending").length),
+        value: number(s.pending),
       }),
       statCard({
         icon: "fa-ban",
         label: "Void orders",
-        value: number(rows.filter((o) => o.status === "void").length),
+        value: number(s.void),
       }),
     ].forEach((c) => {
       const col = document.createElement("div");
@@ -108,8 +96,8 @@ export async function init(root, { admin, edition, can }) {
 
   const columns = [
     { key: "reference", label: "Reference", sort: true, class: "text-nowrap" },
-    { key: "nomineeName", label: "Nominee", sort: true },
-    { key: "categoryName", label: "Category", sort: true },
+    { key: "nomineeName", label: "Nominee" },
+    { key: "categoryName", label: "Category" },
     { key: "votes", label: "Votes", sort: true },
     ...(money$
       ? [
@@ -156,10 +144,17 @@ export async function init(root, { admin, edition, can }) {
     },
   ];
 
+  let wantStats = true; // the totals are fetched with the first page and again after a change, not on every page turn
   const table = new DataTable(root.querySelector("#voteTable"), {
     can,
-    rows: load(),
-    searchKeys: ["reference", "nomineeName", "voter", "email", "categoryName"],
+    server: async (p) => {
+      const r = await fetchVotesPage(p, { stats: wantStats });
+      if (r.stats) {
+        wantStats = false;
+        stats(r.stats);
+      }
+      return { rows: r.rows.map(shape), total: r.total, page: r.page };
+    },
     filters: [
       {
         key: "status",
@@ -212,9 +207,8 @@ export async function init(root, { admin, edition, can }) {
     onAction: (key, o) => handlers[key](o),
   });
   const refresh = async () => {
-    orders = await fetchVotes();
-    table.setRows(load());
-    stats();
+    wantStats = true;
+    await table.reload();
   };
 
   const handlers = {
@@ -299,8 +293,22 @@ export async function init(root, { admin, edition, can }) {
     },
   };
 
-  root.querySelector("#exportBtn")?.addEventListener("click", () => {
-    downloadCsv("oga-votes.csv", load(), [
+  root.querySelector("#exportBtn")?.addEventListener("click", async () => {
+    // Everything that matches the current search and filters, not just this page.
+    const { q, sort, filters } = table.state;
+    const rows = (
+      await fetchAllPages(({ page, perPage }) =>
+        fetchVotesPage({
+          q,
+          sort: sort?.key,
+          dir: sort?.dir,
+          filters,
+          page,
+          perPage,
+        }),
+      )
+    ).map(shape);
+    downloadCsv("oga-votes.csv", rows, [
       { label: "Reference", key: "reference" },
       { label: "Nominee", key: "nomineeName" },
       { label: "Category", key: "categoryName" },
@@ -315,7 +323,8 @@ export async function init(root, { admin, edition, can }) {
     ]);
   });
 
-  root.querySelector("#manualBtn")?.addEventListener("click", () =>
+  root.querySelector("#manualBtn")?.addEventListener("click", async () => {
+    nominees ??= await listNominees();
     openFormModal({
       title: "Add manual votes",
       submitLabel: "Add votes",
@@ -368,7 +377,6 @@ export async function init(root, { admin, edition, can }) {
         notify.toast("success", "Manual votes added");
         await refresh();
       },
-    }),
-  );
-  stats();
+    });
+  });
 }

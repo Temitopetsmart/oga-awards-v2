@@ -1,4 +1,5 @@
 import { store } from "../../../shared/js/core/store.js";
+import { pageQuery } from "./paging.js";
 import { adminApi } from "./admin-api.js";
 
 /** Tickets, ticket types and the gate scanner on the server. */
@@ -8,16 +9,41 @@ const body = (extra = {}) => ({ edition: viewing(), ...extra });
 /** { orders, tickets } of the edition. Money is 0 unless you may see finances. */
 export async function fetchTickets(editionId = viewing()) {
   try {
-    const r = await adminApi(`/admin/tickets?edition=${encodeURIComponent(editionId)}`);
+    const r = await adminApi(
+      `/admin/tickets?edition=${encodeURIComponent(editionId)}`,
+    );
     return { orders: r.orders, tickets: r.tickets };
   } catch {
     return { orders: [], tickets: [] };
   }
 }
 
+/** One page of ticket orders or of issued tickets (view = "orders" | "issued"): { rows, total, page, pages, stats? }. */
+export async function fetchTicketsPage(
+  view,
+  params,
+  { stats = false } = {},
+  editionId = viewing(),
+) {
+  const r = await adminApi(
+    `/admin/tickets?edition=${encodeURIComponent(editionId)}&view=${view}&${pageQuery(params, stats ? { stats: 1 } : {})}`,
+  );
+  return {
+    rows: view === "issued" ? r.tickets : r.orders,
+    total: r.total,
+    page: r.page,
+    pages: r.pages,
+    stats: r.stats,
+  };
+}
+
 export async function fetchTicketTypes(editionId = viewing()) {
   try {
-    return (await adminApi(`/admin/ticket-types?edition=${encodeURIComponent(editionId)}`)).types;
+    return (
+      await adminApi(
+        `/admin/ticket-types?edition=${encodeURIComponent(editionId)}`,
+      )
+    ).types;
   } catch {
     return [];
   }
