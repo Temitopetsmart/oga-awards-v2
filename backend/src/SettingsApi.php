@@ -10,7 +10,7 @@ namespace App;
  */
 final class SettingsApi
 {
-    private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'brand', 'matric'];
+private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'brand', 'matric', 'progression'];
     /** Sections with their own storage (not a site_settings row). */
     private const SPECIAL = ['levels', 'departments', 'secrets'];
     
@@ -39,6 +39,7 @@ final class SettingsApi
             'social'      => $s['social'] ?? [],
             'brand'       => $s['brand'] ?? new \stdClass(),
             'levels'      => Options::names('level'),
+            'levelRules'  => array_values(array_map(fn ($l) => ['name' => $l['name'], 'requiresMatric' => $l['requiresMatric']], array_filter(Options::all('level'), fn ($l) => $l['active']))),
             'departments' => Options::names('department'),
             'matric'      => ['maxLength' => $matric['maxLength'], 'formats' => $matric['formats']],
         ];
@@ -80,6 +81,7 @@ final class SettingsApi
         $settings['brand'] = $s['brand'] ?? null;
         $settings['matric'] = Matric::config();
         $settings['levels'] = Options::all('level');
+        $settings['progression'] = ['map' => (object) LevelApi::mapping(), 'last' => LevelApi::last()];
         $settings['departments'] = Options::all('department');
         $settings['secrets'] = array_values(array_map(
             fn ($k, $v) => ['key' => $k] + $v,
@@ -154,6 +156,13 @@ final class SettingsApi
             case 'matric':
                 try {
                     return Matric::clean($v);
+                } catch (\InvalidArgumentException $e) {
+                    self::fail($e->getMessage());
+                }
+
+            case 'progression':
+                try {
+                    return ['map' => LevelApi::cleanMap($v['map'] ?? [])];
                 } catch (\InvalidArgumentException $e) {
                     self::fail($e->getMessage());
                 }
@@ -261,7 +270,7 @@ final class SettingsApi
              ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)'
         )->execute([$section, json_encode($value, JSON_UNESCAPED_UNICODE), $actor['id']]);
         Cache::flush();
-        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'email delivery settings', 'gateway' => 'payment gateway preferences', 'brand' => 'site branding', 'matric' => 'matric number format'];
+        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'email delivery settings', 'gateway' => 'payment gateway preferences', 'brand' => 'site branding', 'matric' => 'matric number format', 'progression' => 'level progression'];
         Audit::log((int) $actor['id'], 'Updated ' . $names[$section], null, $actor['edition_id']);
         Response::json(['ok' => true]);
     }

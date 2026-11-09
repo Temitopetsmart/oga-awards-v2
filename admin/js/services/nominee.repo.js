@@ -36,6 +36,7 @@ const FIELDS = [
   "status",
   "bio",
   "level",
+  "matricNo",
   "phone",
 ];
 

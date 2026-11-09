@@ -15,6 +15,12 @@ import {
   currentNominee,
 } from "../../../shared/js/services/auth.service.js";
 import { pageHero, pageBody, stateGate } from "../sections/page-sections.js";
+import {
+  matricField,
+  matricRule,
+  bindMatricVisibility,
+  categoryLabel,
+} from "../../../shared/js/components/matric-field.js";
 
 export const title = "Register as Nominee";
 const LEVELS = APP.levels.map((l) => ({
@@ -103,10 +109,11 @@ export default async function register(ctx) {
           required: true,
           col: "col-md-6",
         })}
+        ${matricField()}
         ${field({
           label: "Category",
           name: "categoryId",
-          options: cats.map((c) => ({ value: c.id, label: c.name })),
+          options: cats.map((c) => ({ value: c.id, label: categoryLabel(c) })),
           required: true,
           col: "col-md-6",
         })}
@@ -182,6 +189,8 @@ export function init(root, ctx) {
   if (ret) return finishRegistration(ret);
   const form = root.querySelector("#registerForm");
   if (!form) return;
+  bindMatricVisibility(form);
+
   bindForm(form, {
     schema: {
       name: [rules.required(), rules.min(2)],
@@ -189,6 +198,7 @@ export function init(root, ctx) {
       phone: [rules.required(), rules.phone()],
       department: [rules.required()],
       level: [rules.required("Choose your level.")],
+      matricNo: [matricRule],
       categoryId: [rules.required("Choose a category.")],
       password: [rules.required(), rules.min(8)],
       confirm: [

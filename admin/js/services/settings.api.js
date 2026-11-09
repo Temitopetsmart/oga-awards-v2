@@ -31,3 +31,17 @@ export const testGatewayKey = () =>
     method: "POST",
     body: { edition: viewing() },
   });
+
+/** Shows how many students each level would move (nothing changes). Super admin only. */
+export const previewPromotion = () =>
+  adminApi("/admin/levels/promote", {
+    method: "POST",
+    body: { edition: viewing(), mode: "preview" },
+  });
+
+/** Moves every student up by the saved progression. Super admin only. */
+export const applyPromotion = ({ again = false } = {}) =>
+  adminApi("/admin/levels/promote", {
+    method: "POST",
+    body: { edition: viewing(), mode: "apply", confirm: true, again },
+  });

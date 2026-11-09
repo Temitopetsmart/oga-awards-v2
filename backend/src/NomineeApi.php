@@ -43,6 +43,7 @@ final class NomineeApi
             'name'          => $n['name'],
             'department'    => $n['department'],
             'level'         => $n['level'],
+            'matricNo'      => $n['account_matric'] ?? null,
             'phone'         => $n['phone'],
             'email'         => $n['account_email'] ?? '',
             'emailVerified' => !empty($n['email_verified_at']),
@@ -68,7 +69,7 @@ final class NomineeApi
 
         if (!Paging::wanted()) {
             $st = self::pdo()->prepare(
-                'SELECT n.*, a.email AS account_email, a.email_verified_at
+                'SELECT n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric
                    FROM nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id
                   WHERE n.edition_id = ? ORDER BY n.id DESC'
             );
@@ -87,7 +88,7 @@ final class NomineeApi
             $args[] = (int) $c;
         }
         if (($q = Paging::q()) !== '') {
-            $where[] = Paging::search(['n.name', 'a.email', 'n.department', 'c.name'], $q, $args);
+            $where[] = Paging::search(['n.name', 'a.email', 'a.matric_no', 'n.department', 'c.name'], $q, $args);
         }
         $order = Paging::order(['name' => 'n.name', 'categoryName' => 'c.name', 'department' => 'n.department', 'status' => 'n.status', 'createdAt' => 'n.id'], 'n.id DESC', 'n.id DESC');
         $r = Paging::run(
@@ -178,8 +179,35 @@ final class NomineeApi
         if ($status !== $n['status'] && !Access::can($n['actor'], 'nominees.approve', (int) $n['edition_id'])) {
             self::fail('Changing a nominee’s status needs the approval permission.', 403);
         }
-        self::pdo()->prepare('UPDATE nominee_entries SET name = ?, department = ?, level = ?, phone = ?, bio = ?, category_id = ?, status = ? WHERE id = ?')
-            ->execute([$name, $dept, $level, $phone, $bio, $cat, $status, $id]);
+        $newMatric = null;
+        if ($n['account_id'] !== null && trim((string) ($in['matricNo'] ?? '')) !== '') {   // an admin can correct a matric number
+            $newMatric = Matric::normalize((string) $in['matricNo']) ?? self::fail('That is not a valid matric number. Check the format in Settings → Matric number.');
+        }
+        try {
+            Database::transaction(function (\PDO $db) use ($n, $id, $name, $dept, $level, $phone, $bio, $cat, $status, $newMatric) {
+                $db->prepare('UPDATE nominee_entries SET name = ?, department = ?, level = ?, phone = ?, bio = ?, category_id = ?, status = ? WHERE id = ?')
+                    ->execute([$name, $dept, $level, $phone, $bio, $cat, $status, $id]);
+                if ($n['account_id'] !== null) {
+                    if ($level !== null) {
+                        $db->prepare('UPDATE accounts SET level = ? WHERE id = ?')->execute([$level, $n['account_id']]);   // the level the admin keeps for this student
+                    }
+                    if ($newMatric !== null) {
+                        $acc = $db->prepare('SELECT email, matric_no FROM accounts WHERE id = ?');
+                        $acc->execute([$n['account_id']]);
+                        $a = $acc->fetch();
+                        if ($a && $a['matric_no'] !== $newMatric) {
+                            if (($why = Matric::reassign($db, $newMatric, $a['email'])) !== null) {
+                                throw new \DomainException($why);
+                            }
+                            $db->prepare('UPDATE accounts SET matric_no = ? WHERE id = ?')->execute([$newMatric, $n['account_id']]);
+                            Audit::log((int) $n['actor']['id'], 'Corrected a matric number', $a['email'], (int) $n['edition_id']);
+                        }
+                    }
+                }
+            });
+        } catch (\DomainException $e) {
+            self::fail($e->getMessage());
+        }
         Cache::flush();
         Audit::log((int) $n['actor']['id'], 'Edited nominee', $name, (int) $n['edition_id']);
         Response::json(['ok' => true]);

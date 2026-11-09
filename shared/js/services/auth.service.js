@@ -91,6 +91,9 @@ function build(entry) {
     accountId: cache.account.id,
     email: cache.account.email,
     emailVerified: Boolean(cache.account.emailVerified),
+    matricNo: cache.account.matricNo ?? null,
+    needsMatric: Boolean(cache.account.needsMatric),
+    accountLevel: cache.account.level ?? null,
     entries: cache.entries.map((e) => ({ ...e })),
   };
 }
@@ -117,6 +120,16 @@ export async function registerNominee(data) {
   if (r.paymentRequired) return paymentStep(r);
   hydrate(r);
   store.set(SELECTED, r.entries.at(-1).id);
+  return currentNominee();
+}
+
+/** Saves the matric number of an account that has none yet (it can be set once; the organisers correct it after that). */
+export async function saveMatric(matricNo) {
+  const r = await call("/nominee/matric", {
+    method: "POST",
+    body: { matricNo },
+  });
+  hydrate(r);
   return currentNominee();
 }
 

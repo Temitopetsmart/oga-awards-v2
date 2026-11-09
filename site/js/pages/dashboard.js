@@ -8,6 +8,8 @@ import { field } from "../../../shared/js/components/form-fields.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { bindForm } from "../../../shared/js/ui/form.js";
 import { notify } from "../../../shared/js/ui/notify.js";
+import { categoryLabel } from "../../../shared/js/components/matric-field.js";
+import { normalizeMatric } from "../../../shared/js/core/matric.js";
 import { getCategories } from "../../../shared/js/services/catalog.service.js";
 import {
   currentNominee,
@@ -15,6 +17,7 @@ import {
   uploadNomineePhoto,
   logoutNominee,
   findNomineeById,
+  saveMatric,
   listMyEntries,
   switchNomineeEntry,
   createNomineeEntry,
@@ -40,13 +43,6 @@ const STATUS = {
     text: "Your entry wasn’t approved. Contact the organisers for details.",
   },
 };
-
-/** The admin-managed levels; a level the admin has since switched off stays selectable for the person who already has it. */
-const levelOptions = (current = "") =>
-  [
-    ...APP.levels,
-    ...(current && !APP.levels.includes(current) ? [current] : []),
-  ].map((level) => ({ value: level, label: level }));
 
 export default async function dashboard(ctx, { params }) {
   const viewAsId = params.get("viewAs");
@@ -231,7 +227,7 @@ export default async function dashboard(ctx, { params }) {
                   name: "categoryId",
                   options: categories.map((item) => ({
                     value: item.id,
-                    label: item.name,
+                    label: categoryLabel(item),
                   })),
                   required: true,
                 })}
@@ -364,6 +360,12 @@ export default async function dashboard(ctx, { params }) {
                 <small class="text-secondary d-block">Level</small>
                 <strong>${me.level || "Not provided"}</strong>
               </div>
+              ${me.matricNo
+                ? html`<div class="col-sm-6">
+                    <small class="text-secondary d-block">Matric number</small>
+                    <strong>${me.matricNo}</strong>
+                  </div>`
+                : ""}
             </div>
           </div>
 
@@ -471,9 +473,9 @@ export default async function dashboard(ctx, { params }) {
                               ${field({
                                 label: "Level",
                                 name: "level",
-                                options: levelOptions(me.level),
-                                required: true,
                                 value: me.level ?? "",
+                                help: "Your level is kept by the organisers. If it is wrong, contact them.",
+                                attrs: "readonly",
                               })}
                             </div>
 
@@ -516,8 +518,30 @@ export default async function dashboard(ctx, { params }) {
   `;
 }
 
+/** An account made before matric numbers existed has to give one the next time it is opened. */
+async function askForMatric() {
+  const example = APP.matric?.formats?.find((f) => f.example)?.example ?? "";
+  await notify.prompt({
+    title: "Add your matric number",
+    text: "Every student has one matric number on this platform. You only do this once.",
+    placeholder: example,
+    confirmText: "Save",
+    dismissible: false,
+    save: async (value) => {
+      if (!normalizeMatric(value, APP.matric)) {
+        throw new Error(
+          `That is not a valid matric number${example ? ` (for example ${example})` : ""}.`,
+        );
+      }
+      await saveMatric(value);
+    },
+  });
+  location.reload();
+}
+
 export function init(root, ctx, { params }) {
   if (params.get("viewAs")) return;
+  if (currentNominee()?.needsMatric) askForMatric();
 
   root.querySelector("#logoutBtn")?.addEventListener("click", async () => {
     if (

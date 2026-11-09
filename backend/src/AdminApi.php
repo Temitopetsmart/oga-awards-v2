@@ -174,6 +174,10 @@ final class AdminApi
             EmailApi::preview($m[1]);
         }
 
+        if ($method === 'POST' && $path === '/admin/levels/promote') {
+            LevelApi::promote();
+        }
+
         if ($method === 'POST' && $path === '/admin/settings/secrets/test') {
             SettingsApi::testGateway();
         }

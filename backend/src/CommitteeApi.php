@@ -254,7 +254,16 @@ final class CommitteeApi
         if (!preg_match('/^[0-9+()\s-]{7,30}$/', $phone)) { self::fail('Enter a valid phone number.'); }
         if ($dept === '') { self::fail('Enter your department.'); }
         if (!Options::isActive('level', $level)) { self::fail('Choose your level.'); }
-        if (mb_strlen($why) < 30) { self::fail('Your motivation statement must contain at least 30 characters.'); }
+        $matric = null;
+        $rawMatric = trim((string) ($in['matricNo'] ?? ''));
+        if ($rawMatric !== '' || Options::requiresMatric($level)) {
+            $matric = Matric::normalize($rawMatric);
+            if ($matric === null) {
+                $examples = implode(' or ', array_filter(array_column(Matric::config()['formats'], 'example')));
+                self::fail($rawMatric === '' ? 'Enter your matric number.' : 'That is not a valid matric number' . ($examples ? " (for example $examples)" : '') . '.');
+            }
+            if (($matricProblem = Matric::problem(self::pdo(), $matric, $email)) !== null) { self::fail($matricProblem); }
+        }        if (mb_strlen($why) < 30) { self::fail('Your motivation statement must contain at least 30 characters.'); }
         $q = self::pdo()->prepare('SELECT COUNT(*) FROM committee_units WHERE id = ?');
         $q->execute([$unit]);
         if ($unit < 1 || (int) $q->fetchColumn() === 0) { self::fail('Choose your preferred committee unit.'); }
@@ -283,14 +292,20 @@ final class CommitteeApi
             $photo = Photos::save($file, 'committee-applicants');
         }
         try {
-            $id = Database::transaction(function (\PDO $db) use ($edId, $name, $email, $phone, $dept, $level, $unit, $why, $photo) {
-                $db->prepare('INSERT INTO committee_applications (edition_id, name, email, phone, department, level, unit_id, motivation, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                    ->execute([$edId, $name, $email, $phone, $dept, $level, $unit, $why, $photo]);
+            $id = Database::transaction(function (\PDO $db) use ($edId, $name, $email, $matric, $phone, $dept, $level, $unit, $why, $photo) {
+                if ($matric !== null && ($problem = Matric::claim($db, $matric, $email, 'committee')) !== null) {
+                    throw new \DomainException($problem);               // someone claimed it a moment ago
+                }
+                $db->prepare('INSERT INTO committee_applications (edition_id, name, email, matric_no, phone, department, level, unit_id, motivation, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                    ->execute([$edId, $name, $email, $matric, $phone, $dept, $level, $unit, $why, $photo]);
                 $id = (int) $db->lastInsertId();
                 $db->prepare("INSERT INTO committee_application_history (application_id, stage, note) VALUES (?, 'submitted', 'Application submitted.')")->execute([$id]);
                 Outbox::queueAndSend('committee_application_received', $email, ['applicationId' => (string) $id, 'applicantName' => $name], $edId);
                 return $id;
             });
+        } catch (\DomainException $e) {
+            Photos::delete($photo);
+            self::fail($e->getMessage());
         } catch (\PDOException $e) {
             Photos::delete($photo);
             if ($e->getCode() === '23000') {                                  // two submissions at the same moment
@@ -315,6 +330,7 @@ final class CommitteeApi
             'phone'             => $a['phone'],
             'department'        => $a['department'],
             'level'             => $a['level'],
+            'matricNo'          => $a['matric_no'] ?? null,
             'unitId'            => (string) $a['unit_id'],
             'motivation'        => $a['motivation'],
             'photo'             => $a['photo_path'],

@@ -34,6 +34,7 @@ final class AccountApi
         if ($method === 'POST' && $path === '/nominee/login')    self::login();
         if ($method === 'POST' && $path === '/nominee/logout')   self::logout();
         if ($method === 'POST' && $path === '/nominee/entries')  self::apply();
+        if ($method === 'POST' && $path === '/nominee/matric')   self::setMatric();
         if ($method === 'POST' && $path === '/nominee/register/confirm') self::confirmRegistration();
         if ($method === 'PATCH' && preg_match('#^/nominee/entries/(\d+)$#', $path, $m)) self::updateEntry((int) $m[1]);
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
@@ -55,7 +56,7 @@ final class AccountApi
         if ($id === null) {
             return null;
         }
-        $st = self::pdo()->prepare('SELECT id, email, email_verified_at FROM accounts WHERE id = ?');
+        $st = self::pdo()->prepare('SELECT id, email, email_verified_at, matric_no, level FROM accounts WHERE id = ?');
         $st->execute([$id]);
         $a = $st->fetch();
         if (!$a) {
@@ -70,6 +71,64 @@ final class AccountApi
     }
 
     /** More than $max rows for this kind of attempt within the window -> stop with 429. */
+    /** The level on the newest entry (for accounts made before levels were kept on the account). */
+    private static function latestLevel(int $accountId): ?string
+    {
+        $st = self::pdo()->prepare('SELECT level FROM nominee_entries WHERE account_id = ? AND level IS NOT NULL ORDER BY id DESC LIMIT 1');
+        $st->execute([$accountId]);
+        $l = $st->fetchColumn();
+        return $l === false ? null : (string) $l;
+    }
+
+    private static function accountLevel(array $a): ?string
+    {
+        return ($a['level'] ?? null) !== null && $a['level'] !== '' ? (string) $a['level'] : self::latestLevel((int) $a['id']);
+    }
+
+    /** True when this nominee still has to give a matric number (their level asks for one and none is saved). */
+    private static function needsMatric(array $a): bool
+    {
+        if (($a['matric_no'] ?? null) !== null) {
+            return false;
+        }
+        $level = self::accountLevel($a);
+        return $level === null || Options::requiresMatric($level);
+    }
+
+    private static function requireMatric(array $a): void
+    {
+        if (self::needsMatric($a)) {
+            self::fail('Please add your matric number first. Your dashboard will ask for it.', 403, ['code' => 'matric_required']);
+        }
+    }
+
+    /** Validates a matric number against the admin's formats; returns it cleaned, or fails with a field error. */
+    private static function matricField(mixed $raw, bool $required): ?string
+    {
+        $raw = is_string($raw) ? trim($raw) : '';
+        if ($raw === '') {
+            if ($required) {
+                self::fail('Enter your matric number.', 422, ['fields' => ['matricNo' => 'Enter your matric number.']]);
+            }
+            return null;
+        }
+        $clean = Matric::normalize($raw);
+        if ($clean === null) {
+            $cfg = Matric::config();
+            $examples = implode(' or ', array_filter(array_column($cfg['formats'], 'example')));
+            $msg = 'That is not a valid matric number' . ($examples ? " (for example $examples)" : '') . '.';
+            self::fail($msg, 422, ['fields' => ['matricNo' => $msg]]);
+        }
+        return $clean;
+    }
+
+    private static function assertEligible(int $categoryId, string $level): void
+    {
+        if (!Eligibility::allows($categoryId, $level)) {
+            $msg = Eligibility::message($categoryId);
+            self::fail($msg, 422, ['fields' => ['categoryId' => $msg]]);
+        }
+    }
     private static function throttle(string $kind, string $who, int $max, int $minutes, bool $failuresOnly = true): void
     {
         $st = self::pdo()->prepare('SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL ' . $minutes . ' MINUTE)'
@@ -128,7 +187,10 @@ final class AccountApi
         return [
             'authenticated' => true,
             'csrf'          => Session::csrf(),
-            'account'       => ['id' => (string) $account['id'], 'email' => $account['email'], 'emailVerified' => $account['email_verified_at'] !== null],
+            'account'       => [
+                'id' => (string) $account['id'], 'email' => $account['email'], 'emailVerified' => $account['email_verified_at'] !== null,
+                'matricNo' => $account['matric_no'] ?? null, 'level' => self::accountLevel($account), 'needsMatric' => self::needsMatric($account),
+            ],
             'entries'       => self::entries((int) $account['id']),
         ];
     }
@@ -211,8 +273,12 @@ final class AccountApi
         return $ed;
     }
 
-    private static function profile(array $in): array
+    private static function profile(array $in, ?string $keepLevel = null): array
     {
+        if ($keepLevel !== null) {
+            $in['level'] = $keepLevel; // a nominee cannot change their own level: the admin moves students up
+        }
+
         $name  = Request::str($in, 'name', 150);
         $phone = Request::str($in, 'phone', 30);
         $dept  = Request::str($in, 'department', 150);
@@ -221,7 +287,9 @@ final class AccountApi
         if (mb_strlen($name) < 2) $f['name'] = 'Enter your full name.';
         if (!preg_match('/^[0-9+()\s-]{7,30}$/', $phone)) $f['phone'] = 'Enter a valid phone number.';
         if ($dept === '') $f['department'] = 'Enter your department.';
-        if (!Options::isActive('level', $level)) $f['level'] = 'Choose your level.';
+        if ($keepLevel === null && !Options::isActive('level', $level)) {
+            $f['level'] = 'Choose your level.';
+        }
         if ($f) {
             self::fail(reset($f), 422, ['fields' => $f]);
         }
@@ -231,7 +299,7 @@ final class AccountApi
     private static function register(): never
     {
         $in = Request::json();
-        self::throttle('nominee-register', Request::ip(), 60, 60, false);     // 60 sign-up attempts per hour per address (campus WiFi shares one)
+        self::throttle('nominee-register', Request::ip(), 60, 60, false);
         self::record('nominee-register', Request::ip(), true);
 
         $email = mb_strtolower(Request::str($in, 'email', 190));
@@ -240,7 +308,18 @@ final class AccountApi
         }
         $ed = self::openEdition($in);
         [$name, $phone, $dept, $level] = self::profile($in);
+
+        $matric = self::matricField(
+            $in['matricNo'] ?? '',
+            Options::requiresMatric($level)
+        );
+
+        self::assertEligible((int) $in['categoryId'], $level);
+
         $hash = self::password((string) ($in['password'] ?? ''));
+        if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
+            self::fail($why, 422, ['fields' => ['matricNo' => $why]]);
+        }
 
         $st = self::pdo()->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
         $st->execute([$email]);

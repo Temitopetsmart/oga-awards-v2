@@ -40,16 +40,19 @@ final class ContentApi
                FROM categories c WHERE c.edition_id = ? ORDER BY c.sort_order, c.id'
         );
         $st->execute([$ed['id']]);
+        $rows = $st->fetchAll();
+        $levels = Eligibility::forCategories(array_map(fn ($c) => (int) $c['id'], $rows));
         Response::json(['ok' => true, 'categories' => array_map(fn ($c) => [
-            'id'          => (string) $c['id'],
-            'occasionId'  => $slug,
-            'name'        => $c['name'],
-            'description' => $c['description'],
-            'icon'        => $c['icon'],
-            'order'       => (int) $c['sort_order'],
-            'active'      => (bool) $c['active'],
-            'nominees'    => (int) $c['nominee_count'],
-        ], $st->fetchAll())]);
+            'id'             => (string) $c['id'],
+            'occasionId'     => $slug,
+            'name'           => $c['name'],
+            'description'    => $c['description'],
+            'icon'           => $c['icon'],
+            'order'          => (int) $c['sort_order'],
+            'active'         => (bool) $c['active'],
+            'nominees'       => (int) $c['nominee_count'],
+            'eligibleLevels' => $levels[(int) $c['id']] ?? [],
+        ], $rows)]);
     }
 
     /** Validates and cleans the fields of a category form. */
@@ -71,8 +74,12 @@ final class ContentApi
         if (!is_numeric($order) || (int) $order != $order || (int) $order < 0) {
             self::fail('Display order must be a whole number, 0 or more.');
         }
-        return [$name, $desc, $icon, (int) $order, !empty($in['active']) ? 1 : 0];
-    }
+        try {
+            $levels = Eligibility::clean($in['eligibleLevels'] ?? []);
+        } catch (\InvalidArgumentException $e) {
+            self::fail($e->getMessage());
+        }
+        return [$name, $desc, $icon, (int) $order, !empty($in['active']) ? 1 : 0, $levels];    }
 
     public static function createCategory(): never
     {
@@ -80,17 +87,14 @@ final class ContentApi
         $slug = Request::str($in, 'edition', 60);
         $actor = Access::require('categories.manage', $slug);
         $ed = self::editionBySlug($slug);
-        [$name, $desc, $icon, $order, $active] = self::categoryFields($in);
-        try {
-            self::pdo()->prepare('INSERT INTO categories (edition_id, name, description, icon, sort_order, active) VALUES (?, ?, ?, ?, ?, ?)')
-                ->execute([$ed['id'], $name, $desc, $icon, $order, $active]);
-        } catch (\PDOException $e) {
-            if ($e->getCode() === '23000') {
-                self::fail('A category with that name already exists in this edition.');
-            }
-            throw $e;
-        }
-        $id = (string) self::pdo()->lastInsertId();      // read it BEFORE the audit insert changes it
+        [$name, $desc, $icon, $order, $active, $levels] = self::categoryFields($in);
+                    $id = (string) Database::transaction(function (\PDO $db) use ($ed, $name, $desc, $icon, $order, $active, $levels) {
+                $db->prepare('INSERT INTO categories (edition_id, name, description, icon, sort_order, active) VALUES (?, ?, ?, ?, ?, ?)')
+                    ->execute([$ed['id'], $name, $desc, $icon, $order, $active]);
+                $newId = (int) $db->lastInsertId();
+                Eligibility::save($db, $newId, $levels);
+                return $newId;
+            });
         Cache::flush();
         Audit::log((int) $actor['id'], 'Added category', $name, (int) $ed['id']);
         Response::json(['ok' => true, 'categoryId' => $id]);
@@ -110,10 +114,14 @@ final class ContentApi
     {
         $in = Request::json();
         $c = self::ownCategory($id, 'categories.manage');
-        [$name, $desc, $icon, $order, $active] = self::categoryFields($in);
+        [$name, $desc, $icon, $order, $active, $levels] = self::categoryFields($in);
         try {
-            self::pdo()->prepare('UPDATE categories SET name = ?, description = ?, icon = ?, sort_order = ?, active = ? WHERE id = ?')
-                ->execute([$name, $desc, $icon, $order, $active, $id]);
+            Database::transaction(function (\PDO $db) use ($name, $desc, $icon, $order, $active, $id, $levels) {
+                $db->prepare('UPDATE categories SET name = ?, description = ?, icon = ?, sort_order = ?, active = ? WHERE id = ?')
+                    ->execute([$name, $desc, $icon, $order, $active, $id]);
+
+                Eligibility::save($db, $id, $levels);
+            });
         } catch (\PDOException $e) {
             if ($e->getCode() === '23000') {
                 self::fail('A category with that name already exists in this edition.');
@@ -140,7 +148,10 @@ final class ContentApi
         if ($count('SELECT COUNT(*) FROM vote_orders WHERE category_id = ?') + $count('SELECT COUNT(*) FROM winners WHERE category_id = ?') > 0) {
             self::fail('This category has vote or result records. Hide it instead so history is kept.');
         }
-        self::pdo()->prepare('DELETE FROM categories WHERE id = ?')->execute([$id]);
+        Database::transaction(function (\PDO $db) use ($id) {
+            $db->prepare('DELETE FROM category_levels WHERE category_id = ?')->execute([$id]);
+            $db->prepare('DELETE FROM categories WHERE id = ?')->execute([$id]);
+        });
         Cache::flush();
         Audit::log((int) $c['actor']['id'], 'Deleted category', $c['name'], (int) $c['edition_id']);
         Response::json(['ok' => true]);

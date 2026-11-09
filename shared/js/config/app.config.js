@@ -36,6 +36,7 @@ export const APP = {
 
   /** Filled from Admin → Settings when the page loads (see the fetch at the bottom of this file). */
   levels: [],
+  levelRules: [], // [{ name, requiresMatric }] for the active levels
   departments: [],
   matric: null, // { maxLength, formats: [{ label, pattern, example }] }
 
@@ -101,23 +102,24 @@ export const STATES = {
  * With the PHP backend, contact details and social links come from the server (set in Admin → Settings).
  * Top-level await: the page waits for this one small, cached request, so the footer is right on first paint.
  */
-  try {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 4000);
-    const res = await fetch(`${APP.data.apiBase}/settings`, {
-      signal: ctl.signal,
-    });
-    clearTimeout(timer);
-    const site = res.ok ? await res.json() : null;
-    if (site?.contact) Object.assign(APP.contact, site.contact);
-    if (Array.isArray(site?.social) && site.social.length)
-      APP.social = site.social;
-    if (site?.brand?.name) APP.brand.name = site.brand.name;
-    if (site?.brand?.org) APP.brand.org = site.brand.org;
-    if (site?.brand?.tagline) APP.brand.tagline = site.brand.tagline;
-    if (Array.isArray(site?.levels)) APP.levels = site.levels;
-    if (Array.isArray(site?.departments)) APP.departments = site.departments;
-    if (site?.matric?.formats?.length) APP.matric = site.matric;
-  } catch {
-    /* keep the defaults if the server can't be reached */
-  }
+try {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 4000);
+  const res = await fetch(`${APP.data.apiBase}/settings`, {
+    signal: ctl.signal,
+  });
+  clearTimeout(timer);
+  const site = res.ok ? await res.json() : null;
+  if (site?.contact) Object.assign(APP.contact, site.contact);
+  if (Array.isArray(site?.social) && site.social.length)
+    APP.social = site.social;
+  if (site?.brand?.name) APP.brand.name = site.brand.name;
+  if (site?.brand?.org) APP.brand.org = site.brand.org;
+  if (site?.brand?.tagline) APP.brand.tagline = site.brand.tagline;
+  if (Array.isArray(site?.levels)) APP.levels = site.levels;
+  if (Array.isArray(site?.levelRules)) APP.levelRules = site.levelRules;
+  if (Array.isArray(site?.departments)) APP.departments = site.departments;
+  if (site?.matric?.formats?.length) APP.matric = site.matric;
+} catch {
+  /* keep the defaults if the server can't be reached */
+}

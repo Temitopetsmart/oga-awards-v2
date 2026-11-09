@@ -2,7 +2,7 @@ import { html } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { downloadCsv } from "../../../shared/js/core/csv.js";
-import { ROOT } from "../../../shared/js/config/app.config.js";
+import { ROOT, APP } from "../../../shared/js/config/app.config.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { DataTable } from "../components/data-table.js";
@@ -173,7 +173,7 @@ export async function init(root, { admin, can }) {
   });
   const refresh = async () => table.reload();
 
-  const fields = () => [
+  const fields = (n = {}) => [
     { name: "name", label: "Full name", required: true },
     { name: "department", label: "Department", required: true },
     {
@@ -183,6 +183,24 @@ export async function init(root, { admin, can }) {
       options: cats.map((c) => ({ value: c.id, label: c.name })),
     },
     { name: "status", label: "Status", required: true, options: STATUSES },
+    {
+      name: "level",
+      label: "Level",
+      options: [
+        ...APP.levels,
+        ...(n.level && !APP.levels.includes(n.level) ? [n.level] : []),
+      ].map((l) => ({ value: l, label: l })),
+      help: "Nominees cannot change their own level. This decides which categories they may enter.",
+    },
+    ...(n.source === "registration"
+      ? [
+          {
+            name: "matricNo",
+            label: "Matric number",
+            help: "Checked against the format in Settings and kept unique across the platform.",
+          },
+        ]
+      : []),
     {
       name: "bio",
       label: "Bio",
@@ -287,7 +305,7 @@ export async function init(root, { admin, can }) {
     edit: (n) =>
       openFormModal({
         title: `Edit ${n.name}`,
-        fields: fields(),
+        fields: fields(n),
         values: n,
         schema,
         async onSubmit(v) {

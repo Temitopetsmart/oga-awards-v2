@@ -115,4 +115,51 @@ final class Matric
         }
         return null;
     }
+
+    /**
+     * Is this (already validated) matric number free for this email? Returns an error message, or null if it is
+     * free or already belongs to this same email. Does not reserve anything.
+     */
+    public static function problem(\PDO $db, string $matric, string $email): ?string
+    {
+        $st = $db->prepare('SELECT email FROM matric_registry WHERE matric_no = ?');
+        $st->execute([$matric]);
+        $owner = $st->fetchColumn();
+        if ($owner !== false && mb_strtolower((string) $owner) !== mb_strtolower($email)) {
+            return 'That matric number is already registered with a different email address. Use the email you registered with, or contact the organisers.';
+        }
+        $st = $db->prepare('SELECT matric_no FROM matric_registry WHERE email = ?');
+        $st->execute([mb_strtolower($email)]);
+        $has = $st->fetchColumn();
+        if ($has !== false && $has !== $matric) {
+            return 'This email address is already linked to a different matric number. Check the number, or contact the organisers.';
+        }
+        return null;
+    }
+
+    /** Reserve the number for this email (no-op if it already belongs to it). Call inside the transaction that stores it. */
+    public static function claim(\PDO $db, string $matric, string $email, string $source): ?string
+    {
+        $email = mb_strtolower($email);
+        if (($error = self::problem($db, $matric, $email)) !== null) {
+            return $error;
+        }
+        $db->prepare('INSERT IGNORE INTO matric_registry (matric_no, email, source) VALUES (?, ?, ?)')->execute([$matric, $email, $source]);
+        return null;
+    }
+
+    /** Admin correction: move an email to a different matric number (or set one). Returns an error message or null. */
+    public static function reassign(\PDO $db, string $newMatric, string $email): ?string
+    {
+        $email = mb_strtolower($email);
+        $st = $db->prepare('SELECT email FROM matric_registry WHERE matric_no = ?');
+        $st->execute([$newMatric]);
+        $owner = $st->fetchColumn();
+        if ($owner !== false && mb_strtolower((string) $owner) !== $email) {
+            return 'That matric number already belongs to someone else.';
+        }
+        $db->prepare('DELETE FROM matric_registry WHERE email = ?')->execute([$email]);
+        $db->prepare("INSERT INTO matric_registry (matric_no, email, source) VALUES (?, ?, 'admin')")->execute([$newMatric, $email]);
+        return null;
+    }
 }

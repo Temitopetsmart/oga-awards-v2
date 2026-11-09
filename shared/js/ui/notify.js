@@ -63,6 +63,45 @@ export const notify = {
     return result.isConfirmed;
   },
 
+  /**
+   * Asks for one line of text. save(value) runs when they press the button; if it throws, its message is shown
+   * in the box so they can fix the text and try again. Resolves true once saved, false if they cancelled.
+   */
+  async prompt({
+    title,
+    text = "",
+    placeholder = "",
+    confirmText = "Save",
+    dismissible = true,
+    save,
+  } = {}) {
+    const r = await swal().fire({
+      ...base,
+      title,
+      text,
+      input: "text",
+      inputPlaceholder: placeholder,
+      inputAttributes: { autocapitalize: "characters", autocomplete: "off" },
+      confirmButtonText: confirmText,
+      showCancelButton: dismissible,
+      allowOutsideClick: dismissible,
+      allowEscapeKey: dismissible,
+      showLoaderOnConfirm: true,
+      preConfirm: async (value) => {
+        try {
+          await save(String(value ?? "").trim());
+          return true;
+        } catch (err) {
+          swal().showValidationMessage(
+            err?.userMessage ?? err?.message ?? "Please try again.",
+          );
+          return false;
+        }
+      },
+    });
+    return r.isConfirmed;
+  },
+
   loading: (title = "Please wait…") =>
     swal().fire({
       ...base,

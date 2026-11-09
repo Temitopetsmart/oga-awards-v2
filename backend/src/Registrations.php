@@ -35,9 +35,18 @@ final class Registrations
         }
 
         if ($newAccount) {
-            $db->prepare('INSERT INTO accounts (email, password_hash) VALUES (?, ?)')->execute([$r['email'], $r['password_hash']]);
+            $matric = ($p['matricNo'] ?? null) ?: null;
+            if ($matric !== null && ($why = Matric::problem($db, $matric, $r['email'])) !== null) {
+                self::conflict($db, $r, $why);                      // paid, but the number was taken meanwhile: flagged for an admin
+                return;
+            }
+            $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')->execute([$r['email'], $r['password_hash'], $matric, $p['level'] ?? null]);
             $accountId = (int) $db->lastInsertId();
+            if ($matric !== null) {
+                Matric::claim($db, $matric, $r['email'], 'nominee');
+            }
         }
+        
         $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status, registration_payment_id)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
             ->execute([$r['edition_id'], $accountId, (int) $p['categoryId'], $p['name'], $p['phone'] ?? null, $p['department'] ?? null, $p['level'] ?? null, $p['bio'] ?? null, $payment['id']]);

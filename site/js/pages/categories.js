@@ -77,6 +77,12 @@ export default async function categories(ctx) {
                 <div>
                   <h2 id="h-${c.id}">${c.name}</h2>
                   <p>${c.description}</p>
+                  ${c.eligibleLevels?.length
+                    ? html`<p class="small text-secondary mb-0">
+                        <i class="fa-solid fa-user-graduate me-1"></i>Open to
+                        ${c.eligibleLevels.join(", ")}
+                      </p>`
+                    : ""}
                 </div>
                 <span class="oga-badge oga-badge--muted"
                   >${list.length} nominee${list.length === 1 ? "" : "s"}</span

@@ -109,14 +109,16 @@ final class Catalog
               WHERE c.active = 1 AND e.status <> \'draft\'
               ORDER BY e.year DESC, c.sort_order, c.id'
         )->fetchAll();
+                $levels = Eligibility::forCategories(array_map(fn ($c) => (int) $c['id'], $rows));
         return array_map(fn ($c) => [
-            'id'          => (string) $c['id'],
-            'occasionId'  => $c['edition_slug'],
-            'name'        => $c['name'],
-            'description' => $c['description'],
-            'icon'        => $c['icon'],
-            'order'       => (int) $c['sort_order'],
-            'active'      => true,
+            'id'             => (string) $c['id'],
+            'occasionId'     => $c['edition_slug'],
+            'name'           => $c['name'],
+            'description'    => $c['description'],
+            'icon'           => $c['icon'],
+            'order'          => (int) $c['sort_order'],
+            'active'         => true,
+            'eligibleLevels' => $levels[(int) $c['id']] ?? [],
         ], $rows);
     }
 

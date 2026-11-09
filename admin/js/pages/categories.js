@@ -1,3 +1,4 @@
+import { APP } from "../../../shared/js/config/app.config.js";
 import { html, safeClass } from "../../../shared/js/core/dom.js";
 import { rules } from "../../../shared/js/core/validate.js";
 import { notify } from "../../../shared/js/ui/notify.js";
@@ -71,6 +72,32 @@ export async function init(root, { admin, can }) {
     },
     { type: "switch", name: "active", label: "Visible on the public site" },
   ];
+
+  /** One switch per level, plus any level this category already lists that has since been switched off. */
+  const levelNames = (c = {}) => [
+    ...APP.levels,
+    ...(c.eligibleLevels ?? []).filter((l) => !APP.levels.includes(l)),
+  ];
+
+  const levelFields = (c = {}) => [
+    {
+      type: "note",
+      text: "Who may be nominated here? Switch on the levels that may enter. Leave all off to open the category to every level.",
+    },
+    ...levelNames(c).map((n, i) => ({
+      type: "switch",
+      name: `lvl_${i}`,
+      label: n,
+    })),
+  ];
+
+  const levelValues = (c = {}) =>
+    Object.fromEntries(
+      levelNames(c).map((n, i) => [
+        `lvl_${i}`,
+        (c.eligibleLevels ?? []).includes(n),
+      ]),
+    );
   const schema = {
     name: [rules.required(), rules.min(2), rules.max(60)],
     description: [rules.required(), rules.max(160)],
@@ -90,12 +117,13 @@ export async function init(root, { admin, can }) {
       ),
     ],
   };
-  const clean = (v) => ({
+  const clean = (v, c = {}) => ({
     name: v.name.trim(),
     description: v.description.trim(),
     icon: v.icon.trim() || "fa-award",
     order: Number(v.order),
     active: v.active,
+    eligibleLevels: levelNames(c).filter((_, i) => v[`lvl_${i}`]),
   });
 
   const table = new DataTable(root.querySelector("#catTable"), {
@@ -125,7 +153,14 @@ export async function init(root, { admin, can }) {
               style="width:2.4rem;height:2.4rem;font-size:1rem"
               ><i class="fa-solid ${safeClass(c.icon || "fa-award")}"></i
             ></span>
-            <div><strong>${c.name}</strong><small>${c.description}</small></div>
+            <div>
+              <strong>${c.name}</strong>
+              <small
+                >${c.description}${c.eligibleLevels?.length
+                  ? html` · Open to ${c.eligibleLevels.join(", ")}`
+                  : ""}</small
+              >
+            </div>
           </div>`,
       },
       { key: "nominees", label: "Nominees", sort: true },
@@ -158,11 +193,11 @@ export async function init(root, { admin, can }) {
     edit: (c) =>
       openFormModal({
         title: `Edit ${c.name}`,
-        fields,
+        fields: [...fields, ...levelFields(c)],
         schema,
-        values: { ...c, active: c.active !== false },
+        values: { ...c, active: c.active !== false, ...levelValues(c) },
         async onSubmit(v) {
-          await updateCategory(c.id, clean(v));
+          await updateCategory(c.id, clean(v, c));
           logAudit(admin, "Edited category", v.name);
           notify.toast("success", "Category updated");
           await refresh();
@@ -198,7 +233,7 @@ export async function init(root, { admin, can }) {
       1;
     openFormModal({
       title: "Add category",
-      fields,
+      fields: [...fields, ...levelFields()],
       schema,
       submitLabel: "Add category",
       values: { order: next, active: true },

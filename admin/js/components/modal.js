@@ -67,21 +67,23 @@ export function openFormModal({
     html`<form novalidate>
       <div class="modal-body">
         ${fields.map((f) =>
-          f.type === "switch"
-            ? html`<div class="form-check form-switch mb-3">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  id="f-${f.name}"
-                  name="${f.name}"
-                  ${values[f.name] ? "checked" : ""}
-                />
-                <label class="form-check-label" for="f-${f.name}"
-                  >${f.label}</label
-                >
-              </div>`
-            : field({ ...f, value: values[f.name] ?? "" }),
+          f.type === "note"
+            ? html`<p class="small text-secondary mb-2">${f.text}</p>`
+            : f.type === "switch"
+              ? html`<div class="form-check form-switch mb-3">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    role="switch"
+                    id="f-${f.name}"
+                    name="${f.name}"
+                    ${values[f.name] ? "checked" : ""}
+                  />
+                  <label class="form-check-label" for="f-${f.name}"
+                    >${f.label}</label
+                  >
+                </div>`
+              : field({ ...f, value: values[f.name] ?? "" }),
         )}
       </div>
       <div class="modal-footer">

@@ -1,3 +1,8 @@
+import {
+  matricField,
+  matricRule,
+  bindMatricVisibility,
+} from "../../../shared/js/components/matric-field.js";
 import { html, safeClass } from "../../../shared/js/core/dom.js";
 import { APP } from "../../../shared/js/config/app.config.js";
 import { getCommittee } from "../../../shared/js/services/catalog.service.js";
@@ -141,6 +146,7 @@ export default async function committee(ctx) {
                     required: true,
                     col: "col-md-6",
                   })}
+                  ${matricField()}
                   ${field({
                     label: "Preferred unit",
                     name: "unitId",
@@ -248,6 +254,7 @@ export function init(root, ctx) {
     preview.classList.remove("d-none");
   });
 
+  bindMatricVisibility(form);
   bindForm(form, {
     schema: {
       name: [rules.required(), rules.min(2), rules.max(100)],
@@ -255,6 +262,7 @@ export function init(root, ctx) {
       phone: [rules.required(), rules.phone()],
       department: [rules.required(), rules.max(100)],
       level: [rules.required("Choose your level.")],
+      matricNo: [matricRule],
       unitId: [rules.required("Choose a unit.")],
       motivation: [rules.required(), rules.min(30), rules.max(3000)],
     },

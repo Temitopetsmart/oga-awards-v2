@@ -62,9 +62,11 @@ $gateId = (int) $db->lastInsertId();
 $db->prepare('INSERT INTO edition_assignments (person_id,edition_id) VALUES (?,2)')->execute([$gateId]);
 $db->prepare('INSERT INTO assignment_roles (assignment_id, role_id) SELECT ?, id FROM roles WHERE slug = ?')->execute([(int) $db->lastInsertId(), 'gate']);
 $entry = [];
-foreach (['na', 'nb'] as $n) {
-    $db->prepare('INSERT INTO accounts (email,password_hash,email_verified_at) VALUES (?,?,NOW())')->execute(["$n@test.dev", $hash]);
-    $db->prepare("INSERT INTO nominee_entries (edition_id,account_id,category_id,name,status) VALUES (2,?,2,?, 'pending')")->execute([$db->lastInsertId(), "Nominee $n"]);
+foreach (['na' => 'HSWF/24/0001', 'nb' => 'HSWF/24/0002'] as $n => $matricNo) {
+    $db->prepare('INSERT INTO accounts (email,password_hash,email_verified_at,matric_no,level) VALUES (?,?,NOW(),?,?)')->execute(["$n@test.dev", $hash, $matricNo, 'ND I']);
+    $accId = $db->lastInsertId();
+    $db->prepare("INSERT INTO matric_registry (matric_no,email,source) VALUES (?,?,'nominee')")->execute([$matricNo, "$n@test.dev"]);
+    $db->prepare("INSERT INTO nominee_entries (edition_id,account_id,category_id,name,status) VALUES (2,?,2,?, 'pending')")->execute([$accId, "Nominee $n"]);
     $entry[$n] = (int) $db->lastInsertId();
 }
 $db->exec("INSERT INTO vote_orders (edition_id,reference,nominee_entry_id,category_id,votes,amount,voter_name,voter_email,status,source) VALUES
@@ -241,7 +243,12 @@ $png = tempnam(sys_get_temp_dir(), 'png'); file_put_contents($png, png(300));
 $tiny = tempnam(sys_get_temp_dir(), 'png'); file_put_contents($tiny, png(50));
 $txt = tempnam(sys_get_temp_dir(), 'txt'); file_put_contents($txt, 'hello');
 $form = ['editionId' => $ed, 'name' => 'Ada Test', 'email' => 'ADA@test.dev', 'phone' => '08011112222', 'department' => 'SWD', 'level' => 'HND II', 'unitId' => '2', 'motivation' => 'I want to help the committee deliver a great awards night.'];
-$apply = fn (array $over = [], ?string $file = null, string $mime = 'image/png') => (new Client())->call('POST', '/committee/applications', array_merge($over, $form, $over) + ($file ? ['photo' => new CURLFile($file, $mime, 'p')] : []), [], true);
+$matricOf = [];
+$apply = function (array $over = [], ?string $file = null, string $mime = 'image/png') use ($form, &$matricOf) {
+    $email = strtolower((string) ($over['email'] ?? $form['email']));
+    $matricOf[$email] ??= 'HSWF/24/' . str_pad((string) (100 + count($matricOf)), 4, '0', STR_PAD_LEFT);   // one matric number per applicant email
+    return (new Client())->call('POST', '/committee/applications', array_merge($over, $form, ['matricNo' => $matricOf[$email]], $over) + ($file ? ['photo' => new CURLFile($file, $mime, 'p')] : []), [], true);
+};
 check('short motivation refused', $apply(['motivation' => 'short'])[0] === 422);
 check('bad level refused', $apply(['level' => 'PhD'])[0] === 422);
 check('unknown unit refused', $apply(['unitId' => '999'])[0] === 422);
@@ -740,6 +747,144 @@ $serverPages = array_filter(['votes', 'nominees', 'tickets', 'messages', 'audit'
 check('the lists that can grow are paged on the server', $serverPages === [], implode(', ', $serverPages));
 $ht = (string) file_get_contents($root . '/.htaccess');
 check('.htaccess compresses, revalidates scripts, and no longer carries the development-only cache block', str_contains($ht, 'mod_deflate') && str_contains($ht, 'RequestHeader edit "If-None-Match"') && !str_contains($ht, 'Development only'));
+
+
+// ================================================================== I. MATRIC NUMBERS AND LEVELS (Round 2, phase 7)
+group('I. Matric numbers, level eligibility, level progression');
+$sqlv = fn (string $s, array $a = []) => $q($s, $a)->fetchColumn();
+$pwHash = password_hash('Test-Pass-12345', PASSWORD_BCRYPT, ['cost' => 4]);   // ($hash above was reused for the webhook secret)
+check('migration 012 added the matric and level columns and tables', $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND ((table_name = 'accounts' AND column_name IN ('matric_no','level')) OR (table_name = 'committee_applications' AND column_name = 'matric_no') OR (table_name = 'lookup_options' AND column_name = 'requires_matric'))") == 4
+    && $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('matric_registry','category_levels','level_promotions')") == 3);
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'nominations' WHERE id = 2");
+$six = [['name' => 'ND I', 'active' => true, 'requiresMatric' => true], ['name' => 'ND II', 'active' => true, 'requiresMatric' => true], ['name' => 'HND I', 'active' => true, 'requiresMatric' => true],
+        ['name' => 'HND II', 'active' => true, 'requiresMatric' => true], ['name' => 'Staff', 'active' => true, 'requiresMatric' => false], ['name' => 'Alumni', 'active' => true, 'requiresMatric' => true]];
+check('admin sets which levels need a matric number (staff do not)', $sa->put('/admin/settings/levels', ['edition' => $ed, 'value' => $six])[0] === 200);
+$rules = array_column((new Client())->get('/settings')[1]['levelRules'] ?? [], 'requiresMatric', 'name');
+check('the public site is told which levels need one', ($rules['HND II'] ?? null) === true && ($rules['Staff'] ?? null) === false);
+check('the level editor remembers the setting', array_column(array_filter($sa->get("/admin/settings?edition=$ed")[1]['settings']['levels'], fn ($l) => $l['name'] === 'Staff'), 'requiresMatric') === [false]);
+
+// ---- registering
+$reg = fn (array $over = []) => (new Client('nominee'))->post('/nominee/register', array_merge(['occasionId' => $ed, 'name' => 'New Student', 'email' => 'new1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II',
+    'matricNo' => 'hswf/24/0500', 'categoryId' => '2', 'password' => 'Test-Pass-12345', 'terms' => 'on'], $over));
+[$c, $r] = $reg(['matricNo' => '']);
+check('a student must give a matric number', $c === 422 && isset($r['fields']['matricNo']), json_encode($r));
+check('a badly shaped matric number is refused', $reg(['matricNo' => 'HSWF-24-0500'])[0] === 422 && $reg(['matricNo' => 'HSWF/24/05'])[0] === 422 && $reg(['matricNo' => 'HSWF/24E/00500'])[0] === 422);
+[$c, $r] = $reg();
+check('a valid matric number registers, and is stored in capitals', $c === 200 && (string) $sqlv('SELECT matric_no FROM accounts WHERE email = ?', ['new1@test.dev']) === 'HSWF/24/0500' && ($r['account']['matricNo'] ?? '') === 'HSWF/24/0500' && ($r['account']['needsMatric'] ?? true) === false, (string) $c);
+check('the number is reserved for that email', (string) $sqlv('SELECT email FROM matric_registry WHERE matric_no = ?', ['HSWF/24/0500']) === 'new1@test.dev');
+[$c, $r] = $reg(['email' => 'new2@test.dev']);
+check('the same matric number cannot be used with a different email', $c === 422 && isset($r['fields']['matricNo']) && str_contains($r['error'] ?? '', 'already registered'), json_encode($r));
+check('the account was not created by the refused attempt', (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'new2@test.dev'") === 0);
+check('every format the admin set up works (here the evening format)', $reg(['email' => 'new3@test.dev', 'matricNo' => 'HSWF/24X/0501'])[0] === 200);
+[$c, $r] = $reg(['email' => 'staff1@test.dev', 'level' => 'Staff', 'matricNo' => '']);
+check('staff register without a matric number', $c === 200 && ($r['account']['needsMatric'] ?? true) === false && $sqlv("SELECT matric_no FROM accounts WHERE email = 'staff1@test.dev'") === null, json_encode($r));
+check('a number is not required to be valid if the level has none and it is empty, but must be valid when given', $reg(['email' => 'staff2@test.dev', 'level' => 'Staff', 'matricNo' => 'bad'])[0] === 422);
+
+// ---- category eligibility
+[$c, $r] = $sa->post('/admin/categories', ['edition' => $ed, 'name' => 'HND Only Award', 'description' => 'For final years', 'icon' => 'fa-award', 'order' => 9, 'active' => true, 'eligibleLevels' => ['HND I', 'HND II']]);
+$hndCat = (int) ($r['categoryId'] ?? 0);
+check('admin can limit a category to some levels', $c === 200 && $hndCat > 0 && $sqlv('SELECT COUNT(*) FROM category_levels WHERE category_id = ?', [$hndCat]) == 2, json_encode($r));
+check('an unknown level is refused', $sa->post('/admin/categories', ['edition' => $ed, 'name' => 'Bad Levels', 'description' => 'x', 'order' => 10, 'active' => true, 'eligibleLevels' => ['Year 9']])[0] === 422);
+$pubCat = fn () => array_column((new Client())->get("/categories?edition=$ed")[1]['categories'] ?? (new Client())->get("/categories")[1], null, 'id');
+$pc = $pubCat();
+check('the public category list shows who may enter', ($pc[(string) $hndCat]['eligibleLevels'] ?? null) === ['HND I', 'HND II'] && ($pc['2']['eligibleLevels'] ?? null) === []);
+$adminCats = array_column($sa->get("/admin/categories?edition=$ed")[1]['categories'], null, 'id');
+check('the admin list shows it too', ($adminCats[(string) $hndCat]['eligibleLevels'] ?? null) === ['HND I', 'HND II']);
+[$c, $r] = $reg(['email' => 'nd1@test.dev', 'matricNo' => 'HSWF/24/0502', 'level' => 'ND I', 'categoryId' => (string) $hndCat]);
+check('a student whose level is not eligible cannot enter that category', $c === 422 && isset($r['fields']['categoryId']) && str_contains($r['fields']['categoryId'], 'HND I, HND II'), json_encode($r));
+check('an eligible student can', $reg(['email' => 'hnd1@test.dev', 'matricNo' => 'HSWF/24/0503', 'level' => 'HND I', 'categoryId' => (string) $hndCat])[0] === 200);
+check('a category with no levels is open to everyone', $reg(['email' => 'nd2@test.dev', 'matricNo' => 'HSWF/24/0504', 'level' => 'ND I', 'categoryId' => '2'])[0] === 200);
+check('admin can open the category to everyone again', $sa->patch("/admin/categories/$hndCat", ['edition' => $ed, 'name' => 'HND Only Award', 'description' => 'For final years', 'icon' => 'fa-award', 'order' => 9, 'active' => true, 'eligibleLevels' => []])[0] === 200 && $sqlv('SELECT COUNT(*) FROM category_levels WHERE category_id = ?', [$hndCat]) == 0);
+$tmpCat = (int) ($sa->post('/admin/categories', ['edition' => $ed, 'name' => 'Temp Category', 'description' => 'x', 'order' => 11, 'active' => true, 'eligibleLevels' => ['Staff', 'Alumni']])[1]['categoryId'] ?? 0);
+check('deleting a category removes its level list', $sqlv('SELECT COUNT(*) FROM category_levels WHERE category_id = ?', [$tmpCat]) == 2 && $sa->delete("/admin/categories/$tmpCat", ['edition' => $ed])[0] === 200 && $sqlv('SELECT COUNT(*) FROM category_levels WHERE category_id = ?', [$tmpCat]) == 0);
+
+// ---- accounts that existed before matric numbers
+$db->prepare("INSERT INTO accounts (email,password_hash,email_verified_at,level) VALUES ('legacy@test.dev',?,NOW(),'HND I')")->execute([$pwHash]);
+$legacyId = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO nominee_entries (edition_id,account_id,category_id,name,department,level,status) VALUES (2,?,2,'Legacy One','Law','HND I','approved')")->execute([$legacyId]);
+$legacyEntry = (int) $db->lastInsertId();
+$lg = new Client('nominee');
+[$c, $r] = $lg->login('legacy@test.dev', 'Test-Pass-12345');
+check('an account without a matric number is told to add one', $c === 200 && ($r['account']['needsMatric'] ?? false) === true && array_key_exists('matricNo', $r['account'] ?? []) && $r['account']['matricNo'] === null, json_encode($r['account'] ?? null));
+[$c, $r] = $lg->patch("/nominee/entries/$legacyEntry", ['name' => 'Legacy One', 'phone' => '08031234567', 'department' => 'Law', 'bio' => 'b']);
+check('until then it cannot change its profile', $c === 403 && ($r['code'] ?? '') === 'matric_required', json_encode($r));
+check('or add entries or photos', $lg->post('/nominee/entries', ['occasionId' => $ed, 'categoryId' => '3'])[0] === 403);
+check('a bad number is refused', $lg->post('/nominee/matric', ['matricNo' => 'nope'])[0] === 422 && $lg->post('/nominee/matric', ['matricNo' => ''])[0] === 422);
+check('a number that belongs to someone else is refused', $lg->post('/nominee/matric', ['matricNo' => 'HSWF/24/0001'])[0] === 422);
+[$c, $r] = $lg->post('/nominee/matric', ['matricNo' => 'hswf/24/0600']);
+check('the nominee can add their number once', $c === 200 && ($r['account']['matricNo'] ?? '') === 'HSWF/24/0600' && ($r['account']['needsMatric'] ?? true) === false, json_encode($r['account'] ?? null));
+check('after that they can work normally again', $lg->patch("/nominee/entries/$legacyEntry", ['name' => 'Legacy One', 'phone' => '08031234567', 'department' => 'Law', 'bio' => 'b'])[0] === 200);
+check('the number cannot be changed by the nominee', $lg->post('/nominee/matric', ['matricNo' => 'HSWF/24/0601'])[0] === 409);
+$db->prepare("INSERT INTO accounts (email,password_hash,email_verified_at,level) VALUES ('oldstaff@test.dev',?,NOW(),'Staff')")->execute([$pwHash]);
+$db->prepare("INSERT INTO nominee_entries (edition_id,account_id,category_id,name,department,level,status) VALUES (2,?,2,'Old Staff','Library','Staff','approved')")->execute([$db->query("SELECT id FROM accounts WHERE email = 'oldstaff@test.dev'")->fetchColumn()]);
+$st1 = new Client('nominee');
+check('a staff account without a number is not asked for one', ($st1->login('oldstaff@test.dev', 'Test-Pass-12345')[1]['account']['needsMatric'] ?? true) === false);
+
+// ---- level is kept by the admin
+$db->prepare("UPDATE nominee_entries SET level = 'ND I' WHERE id = ?")->execute([$mine]);
+$na->patch("/nominee/entries/$mine", ['name' => 'Mine', 'phone' => '08031234567', 'department' => 'd', 'level' => 'HND II', 'bio' => 'b']);
+check('a nominee cannot change their own level', $sqlv('SELECT level FROM nominee_entries WHERE id = ?', [$mine]) === 'ND I');
+
+// ---- committee applications
+$comm = fn (array $over = []) => (new Client())->call('POST', '/committee/applications', array_merge(['editionId' => $ed, 'name' => 'Comm Student', 'email' => 'comm1@test.dev', 'phone' => '08031234567', 'department' => 'SWD', 'level' => 'HND II',
+    'matricNo' => 'HSWF/24/0700', 'unitId' => (string) $sqlv('SELECT id FROM committee_units LIMIT 1'), 'motivation' => 'I want to help the committee deliver a great awards night for everyone.'], $over), [], true);
+$db->exec("UPDATE committee_config SET enabled = 1, opens_at = NOW() - INTERVAL 1 DAY, closes_at = NOW() + INTERVAL 30 DAY WHERE edition_id = 2");
+check('a committee applicant must give a matric number', $comm(['matricNo' => ''])[0] === 422 && $comm(['matricNo' => 'nope'])[0] === 422);
+[$c, $r] = $comm();
+check('a valid application stores the number', $c === 200 && $sqlv("SELECT matric_no FROM committee_applications WHERE email = 'comm1@test.dev'") === 'HSWF/24/0700', json_encode($r));
+check('a number used by another email is refused', $comm(['email' => 'comm2@test.dev'])[0] === 422);
+check('a number that belongs to a nominee account is refused for another email', $comm(['email' => 'comm3@test.dev', 'matricNo' => 'HSWF/24/0001'])[0] === 422);
+check('the same student (same email) can use their number in both places', $comm(['email' => 'na@test.dev', 'matricNo' => 'HSWF/24/0001', 'name' => 'Nominee A'])[0] === 200);
+check('staff can apply without a number', $comm(['email' => 'comm4@test.dev', 'level' => 'Staff', 'matricNo' => ''])[0] === 200);
+
+// ---- admin: see and correct a matric number
+$r = $sa->get("/admin/nominees?edition=$ed&page=1&q=" . rawurlencode('HSWF/24/0500'))[1];
+check('admin can find a nominee by matric number', ($r['total'] ?? 0) === 1 && ($r['nominees'][0]['matricNo'] ?? '') === 'HSWF/24/0500', json_encode($r['total'] ?? null));
+$nid = (int) ($r['nominees'][0]['id'] ?? 0);
+$editN = fn (array $over) => $sa->patch("/admin/nominees/$nid", array_merge(['edition' => $ed, 'name' => 'New Student', 'department' => 'Software', 'categoryId' => '2', 'status' => 'approved', 'bio' => ''], $over));
+check('admin corrections must be valid and unique', $editN(['matricNo' => 'nope'])[0] === 422 && $editN(['matricNo' => 'HSWF/24/0001'])[0] === 422);
+check('admin can correct a number', $editN(['matricNo' => 'HSWF/24/0999'])[0] === 200 && $sqlv("SELECT matric_no FROM accounts WHERE email = 'new1@test.dev'") === 'HSWF/24/0999'
+    && $sqlv("SELECT COUNT(*) FROM matric_registry WHERE matric_no = 'HSWF/24/0500'") == 0 && $sqlv("SELECT email FROM matric_registry WHERE matric_no = 'HSWF/24/0999'") === 'new1@test.dev');
+check('the old number is free again', $reg(['email' => 'new9@test.dev', 'matricNo' => 'HSWF/24/0500'])[0] === 200);
+$editN(['level' => 'ND II']);
+check('an admin level change is kept on the account too', $sqlv("SELECT level FROM accounts WHERE email = 'new1@test.dev'") === 'ND II');
+check('admin edits without a level keep the level', $editN(['bio' => 'hello'])[0] === 200 && $sqlv("SELECT level FROM accounts WHERE email = 'new1@test.dev'") === 'ND II');
+
+// ---- paid registration: the account is made when the payment is confirmed
+$paidReg = function (string $ref, string $email, string $matricNo) use ($db, $pwHash) {
+    $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'nominee_fee', ?, 500, 'NGN', ?, 'successful')")->execute([$ref, $email]);
+    $pid = (int) $db->lastInsertId();
+    $db->prepare("INSERT INTO pending_registrations (reference, edition_id, account_id, email, password_hash, profile, payment_id, status) VALUES (?, 2, NULL, ?, ?, ?, ?, 'pending')")
+        ->execute([$ref, $email, $pwHash, json_encode(['name' => 'Paid Student', 'phone' => '0803', 'department' => 'Law', 'level' => 'ND II', 'matricNo' => $matricNo, 'categoryId' => 2]), $pid]);
+    App\Registrations::complete($db, ['id' => $pid]);
+    return $pid;
+};
+$db->exec('DELETE FROM smtp_settings');          // the fake mail server of group G is gone: do not try to send from the shutdown handler
+$paidReg('REG-H7A', 'paid1@test.dev', 'HSWF/24/0800');
+check('a paid registration creates the account with its matric number and level', $sqlv("SELECT matric_no FROM accounts WHERE email = 'paid1@test.dev'") === 'HSWF/24/0800' && $sqlv("SELECT level FROM accounts WHERE email = 'paid1@test.dev'") === 'ND II' && $sqlv("SELECT email FROM matric_registry WHERE matric_no = 'HSWF/24/0800'") === 'paid1@test.dev');
+$paidReg('REG-H7B', 'paid2@test.dev', 'HSWF/24/0800');
+check('if the number was taken meanwhile the registration is flagged, not half-made', (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'paid2@test.dev'") === 0 && $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-H7B'") === 'failed' && (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Paid registration needs attention'") >= 1);
+
+// ---- level progression
+$prog = fn (array $b) => $sa->post('/admin/levels/promote', ['edition' => $ed] + $b);
+check('nothing moves until a progression is saved', $prog(['mode' => 'preview'])[0] === 422);
+check('a level cannot move to itself or to a level that does not exist', $sa->put('/admin/settings/progression', ['edition' => $ed, 'value' => ['map' => ['ND I' => 'ND I']]])[0] === 422 && $sa->put('/admin/settings/progression', ['edition' => $ed, 'value' => ['map' => ['ND I' => 'Year 9']]])[0] === 422);
+check('admin saves the progression', $sa->put('/admin/settings/progression', ['edition' => $ed, 'value' => ['map' => ['ND I' => 'ND II', 'ND II' => 'HND I', 'HND II' => 'Alumni', 'Staff' => '']]])[0] === 200
+    && ($sa->get("/admin/settings?edition=$ed")[1]['settings']['progression']['map'] ?? null) == ['ND I' => 'ND II', 'ND II' => 'HND I', 'HND II' => 'Alumni']);
+$cnt = fn (string $l) => (int) $sqlv('SELECT COUNT(*) FROM accounts WHERE level = ?', [$l]);
+[$ndI, $ndII, $hndI, $hndII, $staff, $alumni] = [$cnt('ND I'), $cnt('ND II'), $cnt('HND I'), $cnt('HND II'), $cnt('Staff'), $cnt('Alumni')];
+[$c, $r] = $prog(['mode' => 'preview']);
+check('preview counts the students that would move, and changes nothing', $c === 200 && ($r['counts']['ND I'] ?? 0) === $ndI && ($r['counts']['ND II'] ?? 0) === $ndII && ($r['total'] ?? 0) === $ndI + $ndII + $hndII && $cnt('ND I') === $ndI, json_encode($r));
+check('applying needs a confirmation', $prog(['mode' => 'apply'])[0] === 422 && $cnt('ND I') === $ndI);
+check('only a Super admin can move students', $gate->post('/admin/levels/promote', ['edition' => $ed, 'mode' => 'apply', 'confirm' => true])[0] === 403);
+[$c, $r] = $prog(['mode' => 'apply', 'confirm' => true]);
+check('students move exactly one level', $c === 200 && ($r['moved'] ?? 0) === $ndI + $ndII + $hndII && $cnt('ND I') === 0 && $cnt('ND II') === $ndI && $cnt('HND I') === $hndI + $ndII && $cnt('HND II') === 0 && $cnt('Alumni') === $alumni + $hndII && $cnt('Staff') === $staff, json_encode([$r, $ndI, $ndII, $hndI, $hndII]));
+check('the move is logged and audited', (int) $sqlv('SELECT COUNT(*) FROM level_promotions') === 1 && (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Moved students up a level'") === 1);
+[$c, $r] = $prog(['mode' => 'apply', 'confirm' => true]);
+check('doing it twice by accident is refused', $c === 409 && $cnt('ND I') === 0 && $cnt('ND II') === $ndI);
+check('unless the admin says it is meant', $prog(['mode' => 'apply', 'confirm' => true, 'again' => true])[0] === 200 && $cnt('ND II') === 0);
+check('past entries keep the level they were made with', (string) $sqlv('SELECT level FROM nominee_entries WHERE id = ?', [$mine]) === 'ND I');
+$db->exec('DELETE FROM level_promotions');
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

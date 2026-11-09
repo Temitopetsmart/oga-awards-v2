@@ -26,12 +26,27 @@ final class Options
         return in_array($name, self::names($kind), true);
     }
 
+    /** Must a student at this level give a matric number? (Staff do not.) Unknown levels: yes. */
+    public static function requiresMatric(string $level): bool
+    {
+        $st = Database::pdo()->prepare("SELECT requires_matric FROM lookup_options WHERE kind = 'level' AND name = ?");
+        $st->execute([$level]);
+        $v = $st->fetchColumn();
+        return $v === false ? true : (int) $v === 1;
+    }
+
+    /** Every level (active or not) by name, for validating a list of levels. */
+    public static function knownLevels(): array
+    {
+        return array_map('strval', Database::pdo()->query("SELECT name FROM lookup_options WHERE kind = 'level' ORDER BY sort_order, id")->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
     /** Everything, for the admin editor. */
     public static function all(string $kind): array
     {
-        $st = Database::pdo()->prepare('SELECT name, active FROM lookup_options WHERE kind = ? ORDER BY sort_order, id');
+        $st = Database::pdo()->prepare('SELECT name, active, requires_matric FROM lookup_options WHERE kind = ? ORDER BY sort_order, id');
         $st->execute([$kind]);
-        return array_map(fn ($r) => ['name' => $r['name'], 'active' => (int) $r['active'] === 1], $st->fetchAll());
+        return array_map(fn ($r) => ['name' => $r['name'], 'active' => (int) $r['active'] === 1, 'requiresMatric' => (int) $r['requires_matric'] === 1], $st->fetchAll());
     }
 
     /**
@@ -55,7 +70,7 @@ final class Options
                 throw new \InvalidArgumentException("“$name” is listed twice.");
             }
             $seen[$key] = true;
-            $clean[] = ['name' => $name, 'active' => !empty($x['active'])];
+            $clean[] = ['name' => $name, 'active' => !empty($x['active']), 'requiresMatric' => !array_key_exists('requiresMatric', $x) || !empty($x['requiresMatric'])];
         }
         if ($kind === 'level' && !array_filter($clean, fn ($c) => $c['active'])) {
             throw new \InvalidArgumentException('Keep at least one level active.');
@@ -66,11 +81,11 @@ final class Options
         try {
             $pdo->prepare('UPDATE lookup_options SET active = 0 WHERE kind = ?')->execute([$kind]);
             $up = $pdo->prepare(
-                'INSERT INTO lookup_options (kind, name, sort_order, active) VALUES (?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order), active = VALUES(active)'
+                'INSERT INTO lookup_options (kind, name, sort_order, active, requires_matric) VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order), active = VALUES(active), requires_matric = VALUES(requires_matric)'
             );
             foreach ($clean as $i => $c) {
-                $up->execute([$kind, $c['name'], $i + 1, $c['active'] ? 1 : 0]);
+                $up->execute([$kind, $c['name'], $i + 1, $c['active'] ? 1 : 0, $c['requiresMatric'] ? 1 : 0]);
             }
             $pdo->commit();
         } catch (\Throwable $e) {
