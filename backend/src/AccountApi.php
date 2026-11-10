@@ -237,7 +237,8 @@ final class AccountApi
         self::throttle('nominee-login', $email, 5, 15);
         self::throttle('nominee-login-ip', Request::ip(), 200, 15);   // per address: generous, a whole campus can share one
 
-        $st = self::pdo()->prepare('SELECT id, email, email_verified_at, password_hash FROM accounts WHERE email = ?');
+        $st = self::pdo()->prepare('SELECT id, email, email_verified_at, password_hash, matric_no, level
+        FROM accounts WHERE email = ?');
         $st->execute([$email]);
         $a = $st->fetch();
         $ok = password_verify((string) ($in['password'] ?? ''), $a['password_hash'] ?? '$2y$12$4W4MtJ6F8ftxs8HaPgNGjOceZORSvdLwtGOzgUsvvq5xM1M750pkS') && $a !== false;
@@ -296,62 +297,178 @@ final class AccountApi
         return [$name, $phone, $dept, $level];
     }
 
-    private static function register(): never
-    {
-        $in = Request::json();
-        self::throttle('nominee-register', Request::ip(), 60, 60, false);
-        self::record('nominee-register', Request::ip(), true);
+private static function register(): never
+{
+    $in = Request::json();
+    self::throttle('nominee-register', Request::ip(), 60, 60, false);
+    self::record('nominee-register', Request::ip(), true);
 
-        $email = mb_strtolower(Request::str($in, 'email', 190));
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            self::fail('Enter a valid email address.', 422, ['fields' => ['email' => 'Enter a valid email address.']]);
-        }
-        $ed = self::openEdition($in);
-        [$name, $phone, $dept, $level] = self::profile($in);
-
-        $matric = self::matricField(
-            $in['matricNo'] ?? '',
-            Options::requiresMatric($level)
-        );
-
-        self::assertEligible((int) $in['categoryId'], $level);
-
-        $hash = self::password((string) ($in['password'] ?? ''));
-        if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
-            self::fail($why, 422, ['fields' => ['matricNo' => $why]]);
-        }
-
-        $st = self::pdo()->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
-        $st->execute([$email]);
-        if ((int) $st->fetchColumn() > 0) {
-            self::fail('An account with this email already exists. Log in to continue.', 422, ['fields' => ['email' => 'Already registered — try logging in.']]);
-        }
-
-        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, null, $email, $hash, ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'categoryId' => (int) $in['categoryId']], 'register');
-        }
-        $accountId = Database::transaction(function (\PDO $db) use ($email, $hash, $ed, $in, $name, $phone, $dept, $level) {
-            $db->prepare('INSERT INTO accounts (email, password_hash) VALUES (?, ?)')->execute([$email, $hash]);
-            $aid = (int) $db->lastInsertId();
-            $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')")
-                ->execute([$ed['id'], $aid, (int) $in['categoryId'], $name, $phone, $dept, $level]);
-            return $aid;
-        });
-
-        $token = self::newToken($accountId, 'email_verify');
-        self::queue('nominee_verify_email', $email, ['token' => $token, 'expiresMinutes' => self::TOKEN_MINUTES]);
-        Cache::flush();
-        Audit::log(null, 'Nominee registered', $email, (int) $ed['id']);
-        Session::signIn($accountId);
-        $a = ['id' => $accountId, 'email' => $email, 'email_verified_at' => null];
-        Response::json(['ok' => true] + self::sessionPayload($a) + self::devToken($token));
+    $email = mb_strtolower(Request::str($in, 'email', 190));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        self::fail('Enter a valid email address.', 422, [
+            'fields' => ['email' => 'Enter a valid email address.']
+        ]);
     }
 
+    $ed = self::openEdition($in);
+    [$name, $phone, $dept, $level] = self::profile($in);
+
+    $matric = self::matricField(
+        $in['matricNo'] ?? '',
+        Options::requiresMatric($level)
+    );
+
+    self::assertEligible((int) $in['categoryId'], $level);
+
+    $hash = self::password((string) ($in['password'] ?? ''));
+
+    if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
+        self::fail($why, 422, ['fields' => ['matricNo' => $why]]);
+    }
+
+    $st = self::pdo()->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
+    $st->execute([$email]);
+
+    if ((int) $st->fetchColumn() > 0) {
+        self::fail('An account with this email already exists. Log in to continue.', 422, [
+            'fields' => ['email' => 'Already registered — try logging in.']
+        ]);
+    }
+
+    $profile = [
+        'name' => $name,
+        'phone' => $phone,
+        'department' => $dept,
+        'level' => $level,
+        'matricNo' => $matric,
+        'categoryId' => (int) $in['categoryId']
+    ];
+
+    if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
+        self::startPaidRegistration($ed, null, $email, $hash, $profile, 'register');
+    }
+
+    try {
+        $accountId = Database::transaction(function (\PDO $db) use (
+            $email, $hash, $ed, $in, $name, $phone, $dept, $level, $matric
+        ) {
+            if ($matric !== null) {
+                $problem = Matric::claim($db, $matric, $email, 'nominee');
+
+                if ($problem !== null) {
+                    throw new \DomainException($problem);
+                }
+            }
+
+            $db->prepare(
+                'INSERT INTO accounts (email, password_hash, matric_no, level)
+                 VALUES (?, ?, ?, ?)'
+            )->execute([$email, $hash, $matric, $level]);
+
+            $aid = (int) $db->lastInsertId();
+
+            $db->prepare(
+                "INSERT INTO nominee_entries
+                    (edition_id, account_id, category_id, name, phone, department, level, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
+            )->execute([
+                $ed['id'], $aid, (int) $in['categoryId'],
+                $name, $phone, $dept, $level
+            ]);
+
+            return $aid;
+        });
+    } catch (\DomainException $e) {
+        self::fail($e->getMessage(), 422, [
+            'fields' => ['matricNo' => $e->getMessage()]
+        ]);
+    } catch (\PDOException $e) {
+        if ($e->getCode() === '23000') {
+            self::fail('That matric number or email is already registered.', 422);
+        }
+        throw $e;
+    }
+
+    $token = self::newToken($accountId, 'email_verify');
+    self::queue('nominee_verify_email', $email, [
+        'token' => $token,
+        'expiresMinutes' => self::TOKEN_MINUTES
+    ]);
+
+    Cache::flush();
+    Audit::log(null, 'Nominee registered', $email, (int) $ed['id']);
+
+    Session::signIn($accountId);
+
+    $a = [
+        'id' => $accountId,
+        'email' => $email,
+        'email_verified_at' => null,
+        'matric_no' => $matric,
+        'level' => $level
+    ];
+
+    Response::json(['ok' => true] + self::sessionPayload($a) + self::devToken($token));
+}
+
+    private static function setMatric(): never
+    {
+        $a = self::requireAccount();
+
+        if (!empty($a['matric_no'])) {
+            self::fail('Your matric number has already been saved and cannot be changed.', 409);
+        }
+
+        $in = Request::json();
+        $matric = self::matricField($in['matricNo'] ?? '', true);
+
+        try {
+            Database::transaction(function (\PDO $db) use ($a, $matric) {
+                $st = $db->prepare('SELECT matric_no FROM accounts WHERE id = ? FOR UPDATE');
+                $st->execute([$a['id']]);
+                $current = $st->fetchColumn();
+
+                if ($current !== null && $current !== false && $current !== '') {
+                    throw new \DomainException('Your matric number has already been saved and cannot be changed.');
+                }
+
+                $problem = Matric::claim($db, $matric, $a['email'], 'nominee');
+
+                if ($problem !== null) {
+                    throw new \DomainException($problem);
+                }
+
+                $db->prepare('UPDATE accounts SET matric_no = ? WHERE id = ?')
+                    ->execute([$matric, $a['id']]);
+            });
+        } catch (\DomainException $e) {
+            $status = str_contains($e->getMessage(), 'already been saved') ? 409 : 422;
+
+            self::fail($e->getMessage(), $status, [
+                'fields' => ['matricNo' => $e->getMessage()]
+            ]);
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23000') {
+                self::fail('That matric number is already registered with another email address.', 422);
+            }
+            throw $e;
+        }
+
+        $fresh = self::account();
+        Response::json(['ok' => true] + self::sessionPayload($fresh));
+    }
     private static function apply(): never
     {
         $a = self::requireAccount();
+        self::requireMatric($a);
+
+        $level = self::accountLevel($a);
+        if ($level === null) {
+            self::fail('Your student level is missing. Please contact the organisers.');
+        }
         $in = Request::json();
         $ed = self::openEdition($in);
+        self::assertEligible((int) $in['categoryId'], $level);
         $st = self::pdo()->prepare('SELECT COUNT(*) FROM nominee_entries WHERE account_id = ? AND edition_id = ?');
         $st->execute([$a['id'], $ed['id']]);
         if ((int) $st->fetchColumn() > 0) {
@@ -361,10 +478,10 @@ final class AccountApi
         $st->execute([$a['id']]);
         $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
         if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $prev['level'], 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard');
+            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $level, 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard');
         }
         self::pdo()->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')")
-            ->execute([$ed['id'], $a['id'], (int) $in['categoryId'], $prev['name'], $prev['phone'], $prev['department'], $prev['level'], $prev['bio']]);
+            ->execute([$ed['id'], $a['id'], (int) $in['categoryId'], $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio']]);
         $entryId = (string) self::pdo()->lastInsertId();
         Cache::flush();
         Audit::log(null, 'Nominee applied for a new edition', $a['email'], (int) $ed['id']);
@@ -425,7 +542,8 @@ final class AccountApi
             Response::json(['ok' => true, 'status' => 'paid', 'problem' => true,
                 'note' => "Your payment was received, but we could not finish your registration automatically. Please contact the organisers and quote this reference: $ref"]);
         }
-        $account = self::pdo()->prepare('SELECT id, email, email_verified_at FROM accounts WHERE id = ?');
+        $account = self::pdo()->prepare('SELECT id, email, email_verified_at, matric_no, level
+        FROM accounts WHERE id = ?');
         $account->execute([$row['account_id']]);
         $a = $account->fetch();
         if (Session::peek('pending_reg') === $ref) {
@@ -451,25 +569,39 @@ final class AccountApi
         return $e;
     }
 
-    private static function updateEntry(int $id): never
-    {
-        $a = self::requireAccount();
-        $e = self::ownEntry($id, $a);
-        $in = Request::json();
-        [$name, $phone, $dept, $level] = self::profile($in);
-        $bio = Request::str($in, 'bio', 600);
-        if (mb_strlen($bio) > 500) {
-            self::fail('Your bio can be at most 500 characters.', 422, ['fields' => ['bio' => 'At most 500 characters.']]);
-        }
-        self::pdo()->prepare('UPDATE nominee_entries SET name = ?, phone = ?, department = ?, level = ?, bio = ? WHERE id = ?')
-            ->execute([$name, $phone, $dept, $level, $bio ?: null, $id]);
-        Cache::flush();
-        Response::json(['ok' => true] + self::sessionPayload($a));
+private static function updateEntry(int $id): never
+{
+    $a = self::requireAccount();
+    self::requireMatric($a);
+
+    $e = self::ownEntry($id, $a);
+    $in = Request::json();
+
+    [$name, $phone, $dept, $level] = self::profile($in, self::accountLevel($a));
+    self::assertEligible((int) $e['category_id'], $level);
+
+    $bio = Request::str($in, 'bio', 600);
+
+    if (mb_strlen($bio) > 500) {
+        self::fail('Your bio can be at most 500 characters.', 422, [
+            'fields' => ['bio' => 'At most 500 characters.']
+        ]);
     }
 
+    self::pdo()->prepare(
+        'UPDATE nominee_entries
+         SET name = ?, phone = ?, department = ?, level = ?, bio = ?
+         WHERE id = ?'
+    )->execute([$name, $phone, $dept, $level, $bio ?: null, $id]);
+
+    Cache::flush();
+
+    Response::json(['ok' => true] + self::sessionPayload($a));
+}
     private static function uploadPhoto(int $id): never
     {
         $a = self::requireAccount();
+        self::requireMatric($a);
         $e = self::ownEntry($id, $a);
         $path = Photos::save($_FILES['photo'] ?? [], 'nominees');
         self::pdo()->prepare('UPDATE nominee_entries SET photo_path = ? WHERE id = ?')->execute([$path, $id]);
@@ -479,9 +611,11 @@ final class AccountApi
     }
 
     private static function removePhoto(int $id): never
-    {
-        $a = self::requireAccount();
-        $e = self::ownEntry($id, $a);
+{
+    $a = self::requireAccount();
+    self::requireMatric($a);
+
+    $e = self::ownEntry($id, $a);
         self::pdo()->prepare('UPDATE nominee_entries SET photo_path = NULL WHERE id = ?')->execute([$id]);
         Photos::delete($e['photo_path']);
         Cache::flush();

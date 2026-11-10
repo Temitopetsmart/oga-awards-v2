@@ -93,7 +93,7 @@ final class NomineeApi
         $order = Paging::order(['name' => 'n.name', 'categoryName' => 'c.name', 'department' => 'n.department', 'status' => 'n.status', 'createdAt' => 'n.id'], 'n.id DESC', 'n.id DESC');
         $r = Paging::run(
             self::pdo(),
-            'n.*, a.email AS account_email, a.email_verified_at',
+            'n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric',
             'nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id LEFT JOIN categories c ON c.id = n.category_id',
             $where, $args, $order
         );

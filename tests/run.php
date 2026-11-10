@@ -71,6 +71,17 @@ foreach (['na' => 'HSWF/24/0001', 'nb' => 'HSWF/24/0002'] as $n => $matricNo) {
 }
 $db->exec("INSERT INTO vote_orders (edition_id,reference,nominee_entry_id,category_id,votes,amount,voter_name,voter_email,status,source) VALUES
   (2,'VOT-T1',{$entry['na']},2,10,500,'A','a@x.test','paid','payment'),(2,'VOT-T2',{$entry['na']},2,5,250,'B','b@x.test','paid','payment'),(2,'VOT-T3',{$entry['na']},2,99,0,'C','c@x.test','pending','payment')");
+$db->exec(
+    "INSERT INTO vote_totals
+        (nominee_entry_id, category_id, edition_id, votes, manual_votes, amount)
+     SELECT nominee_entry_id, category_id, edition_id,
+            SUM(votes),
+            SUM(CASE WHEN source = 'manual' THEN votes ELSE 0 END),
+            SUM(amount)
+     FROM vote_orders
+     WHERE status = 'paid'
+     GROUP BY nominee_entry_id, category_id, edition_id"
+);
 $db->exec("INSERT INTO ticket_orders (edition_id,reference,ticket_type_id,qty,amount,buyer_name,buyer_email,buyer_phone,status) VALUES (2,'TIK-T1',1,1,3000,'T','t@x.test','0801','paid')");
 $db->exec("INSERT INTO ticket_groups (edition_id,order_id,group_code,seats) SELECT 2,id,'GRP-TEST0001',2 FROM ticket_orders WHERE reference='TIK-T1'");
 $db->exec("INSERT INTO tickets (edition_id,order_id,group_id,ticket_code,seat_no,holder_name,status) SELECT 2,o.id,g.id,CONCAT('TKT-T',n),n,'T','issued' FROM ticket_orders o JOIN ticket_groups g ON g.order_id=o.id JOIN (SELECT 1 n UNION SELECT 2) s WHERE o.reference='TIK-T1'");
