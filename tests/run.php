@@ -90,6 +90,11 @@ $db->exec("INSERT INTO tickets (edition_id,order_id,group_id,ticket_code,seat_no
 $server = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", '-t', $root], [0 => ['pipe', 'r'], 1 => ['file', $tmp . '/server.log', 'w'], 2 => ['file', $tmp . '/server.log', 'a']], $pipes, $root, array_merge(getenv(), ['OGA_CONFIG' => $cfgFile]));
 register_shutdown_function(function () use ($server, $admin, $testDb, $tmp) {
     if (is_resource($server)) { proc_terminate($server); proc_close($server); }
+        echo "\n===== TEST SERVER LOG =====\n";
+    echo is_file($tmp . '/server.log')
+        ? file_get_contents($tmp . '/server.log')
+        : "Server log not found.\n";
+    echo "===== END SERVER LOG =====\n";
     $admin->exec("DROP DATABASE IF EXISTS `$testDb`");
     if (is_dir($tmp)) {                                   // remove the temporary cache, uploads and config
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmp, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $f) {
@@ -188,10 +193,24 @@ $deny = [
     ['PUT', '/admin/assignments', ['edition' => $ed, 'editionId' => $ed, 'personId' => '1', 'patch' => ['roleIds' => ['role-super']]]],
     ['POST', '/admin/activity', ['edition' => $ed, 'kind' => 'export:votes']],
 ];
+// foreach ($deny as $d) {
+//     [$c] = $gate->call($d[0], $d[1], $d[2] ?? null);
+//     check("gate staff refused: {$d[0]} " . strtok($d[1], '?'), $c === 403, (string) $c);
+// }
+
 foreach ($deny as $d) {
-    [$c] = $gate->call($d[0], $d[1], $d[2] ?? null);
+    [$c, $data, $raw] = $gate->call($d[0], $d[1], $d[2] ?? null);
+
+    if ($d[0] === 'POST' && $d[1] === '/admin/editions') {
+        echo "\nGATE ERROR RESPONSE:\n";
+        echo $raw . "\n";
+    }
+
     check("gate staff refused: {$d[0]} " . strtok($d[1], '?'), $c === 403, (string) $c);
 }
+
+
+
 check('gate staff may open the scanner', $gate->get("/admin/scan?edition=$ed")[0] === 200);
 check('gate staff refused in an edition they are not assigned to', $gate->get('/admin/scan?edition=oga-9')[0] === 403);
 [, $me] = $gate->get('/admin/me');

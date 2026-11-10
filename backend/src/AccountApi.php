@@ -631,120 +631,32 @@ private static function updateEntry(int $id): never
         Response::json(['ok' => true] + self::sessionPayload($a));
     }
 
-    private static function removePhoto(int $id): never
+
+private static function removePhoto(int $id): never
 {
     $a = self::requireAccount();
     self::requireMatric($a);
 
     $e = self::ownEntry($id, $a);
-        self::pdo()->prepare('UPDATE nominee_entries SET photo_path = NULL WHERE id = ?')->execute([$id]);
-        Photos::delete($e['photo_path']);
-        Cache::flush();
-        Response::json(['ok' => true] + self::sessionPayload($a));
+
+    $photos = Entries::photosOf(
+        self::pdo(),
+        (int) $a['id'],
+        (int) $e['edition_id']
+    );
+
+    Entries::setPhoto(
+        self::pdo(),
+        (int) $a['id'],
+        (int) $e['edition_id'],
+        null
+    );
+
+    foreach ($photos as $photo) {
+        Photos::delete($photo);
     }
 
-    // ------------------------------------------------------------ passwords
-
-    private static function changePassword(): never
-    {
-        $a = self::requireAccount();
-        $in = Request::json();
-        self::throttle('nominee-pw', (string) $a['id'], 5, 15);
-        $st = self::pdo()->prepare('SELECT password_hash FROM accounts WHERE id = ?');
-        $st->execute([$a['id']]);
-        if (!password_verify((string) ($in['currentPassword'] ?? ''), (string) $st->fetchColumn())) {
-            self::record('nominee-pw', (string) $a['id'], false);
-            self::fail('Your current password is incorrect.', 422, ['fields' => ['currentPassword' => 'Password does not match.']]);
-        }
-        $hash = self::password((string) ($in['newPassword'] ?? ''), 'newPassword');
-        self::pdo()->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')->execute([$hash, $a['id']]);
-        Session::signIn((int) $a['id']);               // fresh session id after a password change
-        Response::json(['ok' => true, 'success' => true, 'csrf' => Session::csrf()]);
-    }
-
-    /** Always answers the same way, so nobody can use it to find out which emails have accounts. */
-    private static function forgotPassword(): never
-    {
-        $in = Request::json();
-        $email = mb_strtolower(Request::str($in, 'email', 190));
-        self::throttle('nominee-forgot', Request::ip(), 60, 60, false);
-        self::record('nominee-forgot', Request::ip(), true);
-
-        $st = self::pdo()->prepare('SELECT id FROM accounts WHERE email = ?');
-        $st->execute([$email]);
-        $id = $st->fetchColumn();
-        $extra = [];
-        if ($id !== false) {
-            $recent = self::pdo()->prepare("SELECT COUNT(*) FROM account_tokens WHERE account_id = ? AND type = 'password_reset' AND created_at > (NOW() - INTERVAL 1 HOUR)");
-            $recent->execute([$id]);
-            if ((int) $recent->fetchColumn() < 3) {
-                $token = self::newToken((int) $id, 'password_reset');
-                self::queue('nominee_password_reset', $email, ['token' => $token, 'expiresMinutes' => self::TOKEN_MINUTES]);
-                $extra = self::devToken($token);
-            }
-        }
-        Response::json(['ok' => true, 'expiresInMinutes' => self::TOKEN_MINUTES] + $extra);
-    }
-
-    private static function resetPassword(): never
-    {
-        $in = Request::json();
-        self::throttle('nominee-reset', Request::ip(), 60, 15);
-        $email = mb_strtolower(Request::str($in, 'email', 190));
-        $hash = self::password((string) ($in['password'] ?? ''));
-
-        $st = self::pdo()->prepare(
-            "SELECT t.id, t.account_id FROM account_tokens t JOIN accounts a ON a.id = t.account_id
-              WHERE t.token_hash = ? AND t.type = 'password_reset' AND a.email = ? AND t.used_at IS NULL AND t.expires_at > NOW()"
-        );
-        $st->execute([hash('sha256', trim((string) ($in['token'] ?? ''))), $email]);
-        $t = $st->fetch();
-        if (!$t) {
-            self::record('nominee-reset', Request::ip(), false);
-            self::fail('The reset token is invalid or has expired.');
-        }
-        Database::transaction(function (\PDO $db) use ($t, $hash) {
-            $db->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')->execute([$hash, $t['account_id']]);
-            $db->prepare("UPDATE account_tokens SET used_at = NOW() WHERE account_id = ? AND type = 'password_reset' AND used_at IS NULL")->execute([$t['account_id']]);
-        });
-        Audit::log(null, 'Nominee password reset', $email);
-        Response::json(['ok' => true, 'success' => true]);
-    }
-
-    // -------------------------------------------------------- email verify
-
-    private static function sendVerification(): never
-    {
-        $a = self::requireAccount();
-        if ($a['email_verified_at'] !== null) {
-            Response::json(['ok' => true, 'alreadyVerified' => true]);
-        }
-        $recent = self::pdo()->prepare("SELECT COUNT(*) FROM account_tokens WHERE account_id = ? AND type = 'email_verify' AND created_at > (NOW() - INTERVAL 1 HOUR)");
-        $recent->execute([$a['id']]);
-        if ((int) $recent->fetchColumn() >= 5) {
-            self::fail('Too many requests. Please wait a while and try again.', 429);
-        }
-        $token = self::newToken((int) $a['id'], 'email_verify');
-        self::queue('nominee_verify_email', $a['email'], ['token' => $token, 'expiresMinutes' => self::TOKEN_MINUTES]);
-        Response::json(['ok' => true, 'expiresInMinutes' => self::TOKEN_MINUTES] + self::devToken($token));
-    }
-
-    private static function verifyEmail(): never
-    {
-        $a = self::requireAccount();
-        $in = Request::json();
-        self::throttle('nominee-verify', (string) $a['id'], 10, 15);
-        $st = self::pdo()->prepare("SELECT id FROM account_tokens WHERE account_id = ? AND type = 'email_verify' AND token_hash = ? AND used_at IS NULL AND expires_at > NOW()");
-        $st->execute([$a['id'], hash('sha256', trim((string) ($in['token'] ?? '')))]);
-        $tid = $st->fetchColumn();
-        if ($tid === false) {
-            self::record('nominee-verify', (string) $a['id'], false);
-            self::fail('The verification token is invalid or has expired.');
-        }
-        Database::transaction(function (\PDO $db) use ($tid, $a) {
-            $db->prepare('UPDATE account_tokens SET used_at = NOW() WHERE id = ?')->execute([$tid]);
-            $db->prepare('UPDATE accounts SET email_verified_at = NOW() WHERE id = ?')->execute([$a['id']]);
-        });
-        Response::json(['ok' => true, 'success' => true]);
-    }
+    Cache::flush();
+    Response::json(['ok' => true] + self::sessionPayload($a));
+}
 }

@@ -25,12 +25,12 @@
 
 # (a) /index and /admin/index (with or without .html) -> / and /admin/
 
-RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/(?:[^\s?]\*/)?)index(?:\.html)?(?:[\s?])
+RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/(?:[^\s?]*/)?)index(?:\.html)?(?:[\s?])
 RewriteRule ^ %1 [R=301,L]
 
 # (b) /anything.html -> /anything (permanent; a query string such as ?nominee=3 is kept)
 
-RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]\*)\.html(?:[\s?])
+RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]*)\.html(?:[\s?])
 RewriteRule ^ %1 [R=301,L]
 
 # (c) /vote/ -> /vote (a trailing slash on something that is not a folder)
@@ -81,7 +81,7 @@ FileETag MTime Size
 
 # back (so every revalidation would be a full download). Strip the suffix from the request.
 
-RequestHeader edit "If-None-Match" "^\"(.\*)-(gzip|br|deflate)\"$" "\"$1\""
+RequestHeader edit "If-None-Match" "^\"(.*)-(gzip|br|deflate)\"$" "\"$1\""
   <FilesMatch "\.(html|js|css|json)$">
 Header set Cache-Control "no-cache"
 </FilesMatch>

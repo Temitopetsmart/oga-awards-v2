@@ -47,7 +47,8 @@ final class Catalog
                 s.price_per_vote,
                 s.max_votes_per_payment,
                 s.max_paid_payments_per_email_per_category,
-                s.nominee_registration_fee,\n s.max_categories_per_nominee
+                s.nominee_registration_fee,
+                s.max_categories_per_nominee
             FROM editions e
             LEFT JOIN edition_settings s ON s.edition_id = e.id
             ORDER BY e.year DESC, e.id DESC;'

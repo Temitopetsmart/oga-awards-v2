@@ -119,8 +119,16 @@ final class EditionApi
                 . ($copySettings ? ', ' . implode(', ', $cols) : '') . ')
                 VALUES (?, ?, ?, ?, ?, \'draft\', \'auto\', ?' . ($copySettings ? str_repeat(', ?', count($cols)) : '') . ')')
                 ->execute(array_merge(
-                    [$slug, $name, $label, $year, $tagline !== '' ? $tagline : ($src['tagline'] ?? null),
-                     $copySettings ? $src['features'] : json_encode(['tickets' => false, 'committeeRecruitment' => false]),
+                    [
+                        $slug,
+                        $name,
+                        $label,
+                        $year,
+                        $tagline !== '' ? $tagline : ($src['tagline'] ?? null),
+                        $copySettings
+                            ? $src['features']
+                            : json_encode(['tickets' => false, 'committeeRecruitment' => false]),
+                    ],
                     $copySettings ? array_map(fn ($c) => $src[$c], $cols) : []
                 ));
             $id = (int) $db->lastInsertId();
