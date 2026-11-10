@@ -96,6 +96,11 @@ final class Photos
         if ($path === null || !preg_match('#^uploads/[a-z0-9_-]+/[a-f0-9]{2}/[a-f0-9]+\.webp$#', $path)) {
             return;                                      // only ever delete files we made ourselves
         }
+        $st = Database::pdo()->prepare('SELECT COUNT(*) FROM nominee_entries WHERE photo_path = ?');
+        $st->execute([$path]);
+        if ((int) $st->fetchColumn() > 0) {
+            return;                                      // another entry of the same nominee still shows this photo
+        }
         foreach ([$path, self::thumbOf($path)] as $p) {
             @unlink(dirname(self::root()) . '/' . $p);
         }

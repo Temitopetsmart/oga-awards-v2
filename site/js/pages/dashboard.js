@@ -8,7 +8,11 @@ import { field } from "../../../shared/js/components/form-fields.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { bindForm } from "../../../shared/js/ui/form.js";
 import { notify } from "../../../shared/js/ui/notify.js";
-import { categoryLabel } from "../../../shared/js/components/matric-field.js";
+import {
+  categoryPicker,
+  pickedCategories,
+  bindCategoryPicker,
+} from "../../../shared/js/components/category-picker.js";
 import { normalizeMatric } from "../../../shared/js/core/matric.js";
 import { getCategories } from "../../../shared/js/services/catalog.service.js";
 import {
@@ -99,11 +103,28 @@ export default async function dashboard(ctx, { params }) {
 
   const entries = readOnly ? [] : listMyEntries();
 
-  const hasCurrentEntry = entries.some(
+  // Entries in this edition (one per category) and what is still open to this nominee.
+  const mineHere = entries.filter(
     (entry) => entry.occasionId === ctx.occasion.id,
   );
-
-  const canApply = !readOnly && ctx.state === "nominations" && !hasCurrentEntry;
+  const takenIds = mineHere.map((entry) => String(entry.categoryId));
+  const maxCategories = APP.voting.maxCategoriesPerNominee;
+  const stillOpen = categories.filter(
+    (item) =>
+      !takenIds.includes(String(item.id)) &&
+      (!item.eligibleLevels?.length ||
+        item.eligibleLevels.includes(me.accountLevel ?? me.level)),
+  );
+  const canApply =
+    !readOnly &&
+    ctx.state === "nominations" &&
+    mineHere.length < maxCategories &&
+    stillOpen.length > 0;
+  const feeDue =
+    mineHere.length === 0 && Number(APP.voting.nomineeRegistrationFee) > 0;
+  const catName = (entry) =>
+    categories.find((item) => String(item.id) === String(entry.categoryId))
+      ?.name;
 
   const status = STATUS[me.status] ?? STATUS.pending;
   const profileUrl = `${ROOT}nominee?id=${encodeURIComponent(me.id)}`;
@@ -144,7 +165,9 @@ export default async function dashboard(ctx, { params }) {
                       value="${entry.id}"
                       ${entry.id === me.id ? "selected" : ""}
                     >
-                      ${entry.occasionId} — ${entry.status}
+                      ${[entry.occasionId, catName(entry), entry.status]
+                        .filter(Boolean)
+                        .join(" — ")}
                     </option>
                   `,
                 )}
@@ -213,33 +236,36 @@ export default async function dashboard(ctx, { params }) {
         ? html`
             <div class="oga-card mb-4">
               <h2 class="h5 mt-0">
-                Apply for ${ctx.occasion.name} ${ctx.occasion.edition}
+                ${mineHere.length === 0
+                  ? html`Apply for ${ctx.occasion.name} ${ctx.occasion.edition}`
+                  : "Enter another category"}
               </h2>
 
               <p class="small text-secondary">
-                We’ll reuse your account and profile details, but create a new
-                entry for this edition.
+                ${mineHere.length === 0
+                  ? "We’ll reuse your account and profile details, but create a new entry for this edition."
+                  : "Same profile and photo, no extra registration fee. Each category is reviewed and voted on separately."}
+                ${feeDue
+                  ? " The registration fee is paid once, however many categories you pick."
+                  : ""}
               </p>
 
               <form id="newEntryForm" novalidate>
-                ${field({
-                  label: "Category",
-                  name: "categoryId",
-                  options: categories.map((item) => ({
-                    value: item.id,
-                    label: categoryLabel(item),
-                  })),
-                  required: true,
+                ${categoryPicker({
+                  categories,
+                  taken: takenIds,
+                  max: maxCategories,
                 })}
 
                 <button class="btn btn-gold" type="submit">
-                  Create edition entry
+                  ${mineHere.length === 0
+                    ? "Create edition entry"
+                    : "Enter the selected categories"}
                 </button>
               </form>
             </div>
           `
         : ""}
-
       <div class="row g-4">
         <div class="col-lg-4">
           <aside class="oga-card text-center align-items-center">
@@ -680,24 +706,39 @@ export function init(root, ctx, { params }) {
   const newEntryForm = root.querySelector("#newEntryForm");
 
   if (newEntryForm) {
-    bindForm(newEntryForm, {
-      schema: {
-        categoryId: [rules.required("Choose a category.")],
-      },
+    const mine = listMyEntries()
+      .filter((entry) => entry.occasionId === ctx.occasion.id)
+      .map((entry) => String(entry.categoryId));
 
-      async onSubmit(values) {
+    bindCategoryPicker(newEntryForm, {
+      max: APP.voting.maxCategoriesPerNominee,
+      taken: mine,
+      level: currentNominee()?.accountLevel ?? currentNominee()?.level ?? "",
+    });
+
+    bindForm(newEntryForm, {
+      schema: {},
+
+      async onSubmit(values, formEl) {
+        const categoryIds = pickedCategories(formEl);
+
+        if (categoryIds.length === 0) {
+          throw new Error("Choose at least one category.");
+        }
+
         const r = await createNomineeEntry({
           occasionId: ctx.occasion.id,
-          categoryId: values.categoryId,
+          categoryIds,
         });
-        if (r?.paymentRequired) {
-          location.assign(r.paymentLink); // this edition charges a fee: go and pay
-          await new Promise(() => {}); // the browser is leaving
+
+        if (r.paymentRequired) {
+          location.assign(r.paymentLink);
+          await new Promise(() => {});
         }
 
         await notify.success(
-          "New edition entry created",
-          "Your account is unchanged. Your new entry is pending review.",
+          "Entry created",
+          "Your new entry is pending review. Your profile and photo are shared by all your categories.",
         );
 
         location.reload();

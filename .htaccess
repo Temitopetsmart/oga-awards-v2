@@ -4,7 +4,7 @@
 
 # Works on cPanel (domain root) and on XAMPP (also inside a sub-folder such as htdocs/oga-awards-v2).
 
-# =====================================================================
+# ================================\*=====================================
 
 # ---- 1. Never serve project internals, even if someone guesses the address ----
 

@@ -207,6 +207,11 @@ final class NomineeApi
             });
         } catch (\DomainException $e) {
             self::fail($e->getMessage());
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23000') {
+                self::fail('This person already has an entry in that category.');
+            }
+            throw $e;
         }
         Cache::flush();
         Audit::log((int) $n['actor']['id'], 'Edited nominee', $name, (int) $n['edition_id']);

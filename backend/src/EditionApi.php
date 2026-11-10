@@ -120,14 +120,14 @@ final class EditionApi
                 VALUES (?, ?, ?, ?, ?, \'draft\', \'auto\', ?' . ($copySettings ? str_repeat(', ?', count($cols)) : '') . ')')
                 ->execute(array_merge(
                     [$slug, $name, $label, $year, $tagline !== '' ? $tagline : ($src['tagline'] ?? null),
-                     $copySettings ? $src['features'] : json_encode(['tickets' => false, 'committeeRecruitment' => false, 'showVoteCounts' => false])],
+                     $copySettings ? $src['features'] : json_encode(['tickets' => false, 'committeeRecruitment' => false]),
                     $copySettings ? array_map(fn ($c) => $src[$c], $cols) : []
                 ));
             $id = (int) $db->lastInsertId();
 
             if ($copySettings) {
-                $db->prepare('INSERT INTO edition_settings (edition_id, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee)
-                              SELECT ?, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee FROM edition_settings WHERE edition_id = ?')
+                $db->prepare('INSERT INTO edition_settings (edition_id, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, max_categories_per_nominee)
+                            SELECT ?, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, max_categories_per_nominee FROM edition_settings WHERE edition_id = ?')
                     ->execute([$id, $src['id']]);
             } else {
                 $db->prepare('INSERT INTO edition_settings (edition_id) VALUES (?)')->execute([$id]);
@@ -257,7 +257,8 @@ final class EditionApi
         }
 
         $features = json_decode((string) ($e['features'] ?? '{}'), true) ?: [];
-        foreach (['tickets', 'committeeRecruitment', 'showVoteCounts'] as $f) {
+        unset($features['showVoteCounts']);          // suspense results: live counts are never public, so there is no switch
+        foreach (['tickets', 'committeeRecruitment'] as $f) {
             if (array_key_exists($f, (array) ($in['features'] ?? []))) {
                 $features[$f] = (bool) $in['features'][$f];
             }
@@ -290,14 +291,17 @@ final class EditionApi
         $maxVotes = $whole('maxVotesPerPayment', 1, 10000, 'Max votes per payment');
         $maxPays = $whole('maxPaidVotesPerEmailPerCategory', 1, 1000, 'Max paid payments per email');
         $fee = $whole('nomineeRegistrationFee', 0, 10000000, 'Nominee registration fee');
+        $maxCats = array_key_exists('maxCategoriesPerNominee', $in)
+            ? $whole('maxCategoriesPerNominee', 1, 20, 'Categories per nominee')
+            : Entries::maxPerNominee((int) $e['id']);          // older callers that do not send it keep the limit
 
         self::pdo()->prepare(
-            'INSERT INTO edition_settings (edition_id, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?)
+            'INSERT INTO edition_settings (edition_id, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, max_categories_per_nominee, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE price_per_vote = VALUES(price_per_vote), max_votes_per_payment = VALUES(max_votes_per_payment),
                max_paid_payments_per_email_per_category = VALUES(max_paid_payments_per_email_per_category),
-               nominee_registration_fee = VALUES(nominee_registration_fee), updated_by = VALUES(updated_by)'
-        )->execute([$e['id'], $price, $maxVotes, $maxPays, $fee, $actor['id']]);
+               nominee_registration_fee = VALUES(nominee_registration_fee), max_categories_per_nominee = VALUES(max_categories_per_nominee), updated_by = VALUES(updated_by)'
+        )->execute([$e['id'], $price, $maxVotes, $maxPays, $fee, $maxCats, $actor['id']]);
         Cache::flush();
         Audit::log((int) $actor['id'], 'Updated voting rules', "₦$price per vote · nominee fee ₦$fee", (int) $e['id'],
             ['maxVotesPerPayment' => $maxVotes, 'maxPaymentsPerEmailPerCategory' => $maxPays]);

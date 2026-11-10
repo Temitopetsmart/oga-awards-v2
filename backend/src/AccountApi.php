@@ -257,7 +257,7 @@ final class AccountApi
 
     // ------------------------------------------------------------ register
 
-    /** Shared by "register" and "apply for another edition": the edition and the category must be valid. */
+    /** Shared by "register" and "apply": nominations must be open, and for the edition the page was built for. */
     private static function openEdition(array $in): array
     {
         $ed = EditionState::openForNominations()
@@ -265,13 +265,38 @@ final class AccountApi
         if (Request::str($in, 'occasionId', 60) !== $ed['slug']) {
             self::fail('This registration belongs to a different edition. Refresh the page and try again.');
         }
-        $st = self::pdo()->prepare('SELECT COUNT(*) FROM categories WHERE id = ? AND edition_id = ? AND active = 1');
-        $st->execute([(int) ($in['categoryId'] ?? 0), $ed['id']]);
-        if ((int) $st->fetchColumn() === 0) {
+        return $ed;
+    }
+
+    /**
+     * The categories asked for ("categoryIds", or the older "categoryId"): each active in this edition, open to the
+     * nominee's level, not already entered, and within the admin's limit. Returns the ids.
+     */
+    private static function chooseCategories(array $in, array $ed, string $level, array $already = []): array
+    {
+        $ids = Entries::requested($in);
+        if ($ids === []) {
             self::fail('Choose a category.', 422, ['fields' => ['categoryId' => 'Choose a category.']]);
         }
-        
-        return $ed;
+        $ok = self::pdo()->prepare('SELECT COUNT(*) FROM categories WHERE id = ? AND edition_id = ? AND active = 1');
+        foreach ($ids as $id) {
+            $ok->execute([$id, $ed['id']]);
+            if ((int) $ok->fetchColumn() === 0) {
+                self::fail('Choose a category.', 422, ['fields' => ['categoryId' => 'Choose a category.']]);
+            }
+            if (in_array($id, $already, true)) {
+                self::fail('You already entered that category.', 422, ['fields' => ['categoryId' => 'You already entered that category.']]);
+            }
+            self::assertEligible($id, $level);
+        }
+        $max = Entries::maxPerNominee((int) $ed['id']);
+        if (count($already) + count($ids) > $max) {
+            $msg = $already === []
+                ? "You can enter up to $max " . ($max === 1 ? 'category' : 'categories') . ' in this edition.'
+                : 'You have entered ' . count($already) . " of the $max " . ($max === 1 ? 'category' : 'categories') . ' allowed in this edition.';
+            self::fail($msg, 422, ['fields' => ['categoryId' => $msg]]);
+        }
+        return $ids;
     }
 
     private static function profile(array $in, ?string $keepLevel = null): array
@@ -297,119 +322,76 @@ final class AccountApi
         return [$name, $phone, $dept, $level];
     }
 
-private static function register(): never
-{
-    $in = Request::json();
-    self::throttle('nominee-register', Request::ip(), 60, 60, false);
-    self::record('nominee-register', Request::ip(), true);
+    private static function register(): never
+    {
+        $in = Request::json();
+        self::throttle('nominee-register', Request::ip(), 60, 60, false);
+        self::record('nominee-register', Request::ip(), true);
 
-    $email = mb_strtolower(Request::str($in, 'email', 190));
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        self::fail('Enter a valid email address.', 422, [
-            'fields' => ['email' => 'Enter a valid email address.']
-        ]);
-    }
-
-    $ed = self::openEdition($in);
-    [$name, $phone, $dept, $level] = self::profile($in);
-
-    $matric = self::matricField(
-        $in['matricNo'] ?? '',
-        Options::requiresMatric($level)
-    );
-
-    self::assertEligible((int) $in['categoryId'], $level);
-
-    $hash = self::password((string) ($in['password'] ?? ''));
-
-    if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
-        self::fail($why, 422, ['fields' => ['matricNo' => $why]]);
-    }
-
-    $st = self::pdo()->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
-    $st->execute([$email]);
-
-    if ((int) $st->fetchColumn() > 0) {
-        self::fail('An account with this email already exists. Log in to continue.', 422, [
-            'fields' => ['email' => 'Already registered — try logging in.']
-        ]);
-    }
-
-    $profile = [
-        'name' => $name,
-        'phone' => $phone,
-        'department' => $dept,
-        'level' => $level,
-        'matricNo' => $matric,
-        'categoryId' => (int) $in['categoryId']
-    ];
-
-    if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-        self::startPaidRegistration($ed, null, $email, $hash, $profile, 'register');
-    }
-
-    try {
-        $accountId = Database::transaction(function (\PDO $db) use (
-            $email, $hash, $ed, $in, $name, $phone, $dept, $level, $matric
-        ) {
-            if ($matric !== null) {
-                $problem = Matric::claim($db, $matric, $email, 'nominee');
-
-                if ($problem !== null) {
-                    throw new \DomainException($problem);
-                }
-            }
-
-            $db->prepare(
-                'INSERT INTO accounts (email, password_hash, matric_no, level)
-                 VALUES (?, ?, ?, ?)'
-            )->execute([$email, $hash, $matric, $level]);
-
-            $aid = (int) $db->lastInsertId();
-
-            $db->prepare(
-                "INSERT INTO nominee_entries
-                    (edition_id, account_id, category_id, name, phone, department, level, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
-            )->execute([
-                $ed['id'], $aid, (int) $in['categoryId'],
-                $name, $phone, $dept, $level
-            ]);
-
-            return $aid;
-        });
-    } catch (\DomainException $e) {
-        self::fail($e->getMessage(), 422, [
-            'fields' => ['matricNo' => $e->getMessage()]
-        ]);
-    } catch (\PDOException $e) {
-        if ($e->getCode() === '23000') {
-            self::fail('That matric number or email is already registered.', 422);
+        $email = mb_strtolower(Request::str($in, 'email', 190));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            self::fail('Enter a valid email address.', 422, ['fields' => ['email' => 'Enter a valid email address.']]);
         }
-        throw $e;
+
+        $ed = self::openEdition($in);
+        [$name, $phone, $dept, $level] = self::profile($in);
+
+        $matric = self::matricField($in['matricNo'] ?? '', Options::requiresMatric($level));
+        $catIds = self::chooseCategories($in, $ed, $level);
+        $hash = self::password((string) ($in['password'] ?? ''));
+
+        if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
+            self::fail($why, 422, ['fields' => ['matricNo' => $why]]);
+        }
+
+        $st = self::pdo()->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
+        $st->execute([$email]);
+        if ((int) $st->fetchColumn() > 0) {
+            self::fail('An account with this email already exists. Log in to continue.', 422, ['fields' => ['email' => 'Already registered — try logging in.']]);
+        }
+
+        $profile = ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'matricNo' => $matric, 'categoryIds' => $catIds];
+
+        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
+            self::startPaidRegistration($ed, null, $email, $hash, $profile, 'register');   // one fee, however many categories
+        }
+
+        try {
+            $accountId = Database::transaction(function (\PDO $db) use ($email, $hash, $ed, $catIds, $name, $phone, $dept, $level, $matric) {
+                if ($matric !== null) {
+                    $problem = Matric::claim($db, $matric, $email, 'nominee');
+                    if ($problem !== null) {
+                        throw new \DomainException($problem);
+                    }
+                }
+                $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')
+                    ->execute([$email, $hash, $matric, $level]);
+                $aid = (int) $db->lastInsertId();
+                $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')");
+                foreach ($catIds as $cid) {
+                    $ins->execute([$ed['id'], $aid, $cid, $name, $phone, $dept, $level]);
+                }
+                return $aid;
+            });
+        } catch (\DomainException $e) {
+            self::fail($e->getMessage(), 422, ['fields' => ['matricNo' => $e->getMessage()]]);
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23000') {
+                self::fail('That matric number or email is already registered.', 422);
+            }
+            throw $e;
+        }
+
+        $token = self::newToken($accountId, 'email_verify');
+        self::queue('nominee_verify_email', $email, ['token' => $token, 'expiresMinutes' => self::TOKEN_MINUTES]);
+
+        Cache::flush();
+        Audit::log(null, 'Nominee registered', $email, (int) $ed['id']);
+        Session::signIn($accountId);
+
+        $a = ['id' => $accountId, 'email' => $email, 'email_verified_at' => null, 'matric_no' => $matric, 'level' => $level];
+        Response::json(['ok' => true] + self::sessionPayload($a) + self::devToken($token));
     }
-
-    $token = self::newToken($accountId, 'email_verify');
-    self::queue('nominee_verify_email', $email, [
-        'token' => $token,
-        'expiresMinutes' => self::TOKEN_MINUTES
-    ]);
-
-    Cache::flush();
-    Audit::log(null, 'Nominee registered', $email, (int) $ed['id']);
-
-    Session::signIn($accountId);
-
-    $a = [
-        'id' => $accountId,
-        'email' => $email,
-        'email_verified_at' => null,
-        'matric_no' => $matric,
-        'level' => $level
-    ];
-
-    Response::json(['ok' => true] + self::sessionPayload($a) + self::devToken($token));
-}
 
     private static function setMatric(): never
     {
@@ -457,6 +439,7 @@ private static function register(): never
         $fresh = self::account();
         Response::json(['ok' => true] + self::sessionPayload($fresh));
     }
+    /** Enter one or more (more) categories: a returning nominee, or one adding to this edition. */
     private static function apply(): never
     {
         $a = self::requireAccount();
@@ -468,27 +451,63 @@ private static function register(): never
         }
         $in = Request::json();
         $ed = self::openEdition($in);
-        self::assertEligible((int) $in['categoryId'], $level);
-        $st = self::pdo()->prepare('SELECT COUNT(*) FROM nominee_entries WHERE account_id = ? AND edition_id = ?');
-        $st->execute([$a['id'], $ed['id']]);
-        if ((int) $st->fetchColumn() > 0) {
-            self::fail('You already have an entry for this edition.');
-        }
-        $st = self::pdo()->prepare('SELECT * FROM nominee_entries WHERE account_id = ? ORDER BY id DESC LIMIT 1');
-        $st->execute([$a['id']]);
-        $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
-        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, (int) $a['id'], $a['email'], null, ['name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $level, 'bio' => $prev['bio'], 'categoryId' => (int) $in['categoryId']], 'dashboard');
-        }
-        self::pdo()->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')")
-            ->execute([$ed['id'], $a['id'], (int) $in['categoryId'], $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio']]);
-        $entryId = (string) self::pdo()->lastInsertId();
-        Cache::flush();
-        Audit::log(null, 'Nominee applied for a new edition', $a['email'], (int) $ed['id']);
-        Response::json(['ok' => true, 'entryId' => $entryId] + self::sessionPayload($a));
-    }
+        $pdo = self::pdo();
+        $accountId = (int) $a['id'];
 
-        /**
+        $taken = Entries::takenCategories($pdo, $accountId, (int) $ed['id']);
+        $catIds = self::chooseCategories($in, $ed, $level, $taken);
+
+        // Details to reuse: this edition's newest entry (with its photo), else the newest from an earlier edition.
+        $st = $pdo->prepare('SELECT * FROM nominee_entries WHERE account_id = ? AND edition_id = ? ORDER BY id DESC LIMIT 1');
+        $st->execute([$accountId, $ed['id']]);
+        $prev = $st->fetch() ?: null;
+        $photo = $prev['photo_path'] ?? null;
+        if ($prev === null) {
+            $st = $pdo->prepare('SELECT * FROM nominee_entries WHERE account_id = ? ORDER BY id DESC LIMIT 1');
+            $st->execute([$accountId]);
+            $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
+        }
+
+        // The registration fee is paid once per edition: more categories in the same edition are free.
+        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0 && !Entries::feeSettled($pdo, $accountId, (int) $ed['id'])) {
+            self::startPaidRegistration($ed, $accountId, $a['email'], null, [
+                'name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $level,
+                'bio' => $prev['bio'], 'categoryIds' => $catIds,
+            ], 'dashboard');
+        }
+
+        $max = Entries::maxPerNominee((int) $ed['id']);
+        try {
+            $newIds = Database::transaction(function (\PDO $db) use ($accountId, $ed, $catIds, $prev, $level, $photo, $max) {
+                $db->prepare('SELECT id FROM accounts WHERE id = ? FOR UPDATE')->execute([$accountId]);   // one request at a time per nominee
+                $have = Entries::takenCategories($db, $accountId, (int) $ed['id']);
+                if (count($have) + count($catIds) > $max) {
+                    throw new \DomainException("You can enter up to $max " . ($max === 1 ? 'category' : 'categories') . ' in this edition.');
+                }
+                $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, photo_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                $ids = [];
+                foreach ($catIds as $cid) {
+                    if (in_array($cid, $have, true)) {
+                        throw new \DomainException('You already entered that category.');
+                    }
+                    $ins->execute([$ed['id'], $accountId, $cid, $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio'], $photo]);
+                    $ids[] = (string) $db->lastInsertId();
+                }
+                return $ids;
+            });
+        } catch (\DomainException $e) {
+            self::fail($e->getMessage(), 422, ['fields' => ['categoryId' => $e->getMessage()]]);
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23000') {
+                self::fail('You already entered that category.', 422, ['fields' => ['categoryId' => 'You already entered that category.']]);
+            }
+            throw $e;
+        }
+        Cache::flush();
+        Audit::log(null, $taken === [] ? 'Nominee applied for a new edition' : 'Nominee entered more categories', $a['email'], (int) $ed['id']);
+        Response::json(['ok' => true, 'entryId' => $newIds[0], 'entryIds' => $newIds] + self::sessionPayload($a));
+    }
+   /**
      * The edition charges a registration fee: keep the details safe, send the person to pay, and create nothing yet.
      * The account and entry are created by Registrations::complete() once Flutterwave has confirmed the money.
      */
@@ -588,11 +607,10 @@ private static function updateEntry(int $id): never
         ]);
     }
 
-    self::pdo()->prepare(
-        'UPDATE nominee_entries
-         SET name = ?, phone = ?, department = ?, level = ?, bio = ?
-         WHERE id = ?'
-    )->execute([$name, $phone, $dept, $level, $bio ?: null, $id]);
+    // The same person in every category of this edition: one set of details.
+    Entries::syncProfile(self::pdo(), (int) $a['id'], (int) $e['edition_id'], [
+        'name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'bio' => $bio ?: null,
+    ]);
 
     Cache::flush();
 
@@ -604,8 +622,11 @@ private static function updateEntry(int $id): never
         self::requireMatric($a);
         $e = self::ownEntry($id, $a);
         $path = Photos::save($_FILES['photo'] ?? [], 'nominees');
-        self::pdo()->prepare('UPDATE nominee_entries SET photo_path = ? WHERE id = ?')->execute([$path, $id]);
-        Photos::delete($e['photo_path']);
+        $old = Entries::photosOf(self::pdo(), (int) $a['id'], (int) $e['edition_id']);
+        Entries::setPhoto(self::pdo(), (int) $a['id'], (int) $e['edition_id'], $path);    // one photo for all of this edition's entries
+        foreach ($old as $p) {
+            Photos::delete($p);
+        }
         Cache::flush();
         Response::json(['ok' => true] + self::sessionPayload($a));
     }

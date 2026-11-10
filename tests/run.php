@@ -897,6 +897,183 @@ check('unless the admin says it is meant', $prog(['mode' => 'apply', 'confirm' =
 check('past entries keep the level they were made with', (string) $sqlv('SELECT level FROM nominee_entries WHERE id = ?', [$mine]) === 'ND I');
 $db->exec('DELETE FROM level_promotions');
 
+// ================================================================== J. MULTI-CATEGORY NOMINATIONS AND THE ONE-TIME FEE (Round 2, phase 8)
+group('J. Several categories per nominee, one registration fee per edition');
+check('migration 013 made entries unique per account, edition and category', $sqlv("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'nominee_entries' AND index_name = 'uq_entry_account_edition_cat'") == 3
+    && $sqlv("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'nominee_entries' AND index_name = 'uq_entry_account_edition'") == 0);
+check('the limit is a setting, 3 until the admin changes it', $sqlv("SELECT max_categories_per_nominee FROM edition_settings WHERE edition_id = 2") == 3);
+$db->exec("UPDATE edition_settings SET nominee_registration_fee = 0 WHERE edition_id = 2");
+$cats = array_map('intval', $db->query("SELECT id FROM categories WHERE edition_id = 2 AND active = 1 ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
+check('the sample edition has enough categories for these tests', count($cats) >= 4, (string) count($cats));
+$db->exec("DELETE FROM category_levels WHERE category_id IN (" . implode(',', $cats) . ")");
+$mk = fn (array $over = []) => (new Client('nominee'))->post('/nominee/register', array_merge(['occasionId' => $ed, 'name' => 'Multi Student', 'email' => 'multi1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II',
+    'matricNo' => 'HSWF/24/0910', 'categoryIds' => [(string) $cats[0], (string) $cats[1]], 'password' => 'Test-Pass-12345', 'terms' => 'on'], $over));
+$entriesOf = fn (string $email) => (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = (SELECT id FROM accounts WHERE email = ?)", [$email]);
+
+// ---- registering for several categories at once
+[$c, $r] = $mk();
+check('a nominee can register in two categories at once', $c === 200 && count($r['entries'] ?? []) === 2, json_encode($r['error'] ?? $c));
+check('each category is its own entry', $sqlv("SELECT COUNT(DISTINCT category_id) FROM nominee_entries WHERE account_id = (SELECT id FROM accounts WHERE email = 'multi1@test.dev')") == 2);
+check('the single "categoryId" from older pages still works', $mk(['email' => 'multi2@test.dev', 'matricNo' => 'HSWF/24/0911', 'categoryIds' => null, 'categoryId' => (string) $cats[0]])[0] === 200 && $entriesOf('multi2@test.dev') === 1);
+check('a repeated category in one request is counted once', $mk(['email' => 'multi3@test.dev', 'matricNo' => 'HSWF/24/0912', 'categoryIds' => [(string) $cats[0], (string) $cats[0]]])[0] === 200 && $entriesOf('multi3@test.dev') === 1);
+check('no category at all is refused', $mk(['email' => 'multi4@test.dev', 'matricNo' => 'HSWF/24/0913', 'categoryIds' => []])[0] === 422);
+check('a category from nowhere is refused, and nothing is half-made', $mk(['email' => 'multi4@test.dev', 'matricNo' => 'HSWF/24/0913', 'categoryIds' => [(string) $cats[0], '999999']])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi4@test.dev'") === 0);
+[$c, $r] = $mk(['email' => 'multi5@test.dev', 'matricNo' => 'HSWF/24/0914', 'categoryIds' => array_map('strval', array_slice($cats, 0, 4))]);
+check('more than the admin allows is refused', $c === 422 && isset($r['fields']['categoryId']) && str_contains($r['error'] ?? '', 'up to 3'), json_encode($r));
+$db->exec("INSERT INTO category_levels (category_id, level) VALUES ({$cats[2]}, 'HND I')");
+$c = $mk(['email' => 'multi6@test.dev', 'matricNo' => 'HSWF/24/0915', 'categoryIds' => [(string) $cats[0], (string) $cats[2]]])[0];
+$db->exec("DELETE FROM category_levels WHERE category_id = {$cats[2]}");
+check('an ineligible category in the list refuses the whole request', $c === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi6@test.dev'") === 0);
+
+// ---- adding categories later, from the dashboard
+$m1 = new Client('nominee');
+$m1->login('multi1@test.dev', 'Test-Pass-12345');
+$apply = fn (Client $c, array $ids) => $c->post('/nominee/entries', ['occasionId' => $ed, 'categoryIds' => $ids]);
+[$c, $r] = $apply($m1, [(string) $cats[1]]);
+check('entering a category you already have is refused', $c === 422 && str_contains($r['error'] ?? '', 'already entered'), json_encode($r));
+[$c, $r] = $apply($m1, [(string) $cats[2]]);
+check('a third category can be added', $c === 200 && count($r['entries'] ?? []) === 3 && !empty($r['entryId']) && count($r['entryIds'] ?? []) === 1, json_encode($r['error'] ?? $c));
+[$c, $r] = $apply($m1, [(string) $cats[3]]);
+check('but not a fourth: the limit counts what they already have', $c === 422 && str_contains($r['error'] ?? '', '3 of the 3'), json_encode($r));
+check('an empty choice is refused', $apply($m1, [])[0] === 422);
+$vr = ['pricePerVote' => 50, 'maxVotesPerPayment' => 100, 'maxPaidVotesPerEmailPerCategory' => 5, 'nomineeRegistrationFee' => 0];
+check('the limit must be a whole number from 1 to 20', $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 0])[0] === 422 && $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 21])[0] === 422);
+check('the admin can raise the limit, and the public site is told', $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 4])[0] === 200 && $sqlv("SELECT max_categories_per_nominee FROM edition_settings WHERE edition_id = 2") == 4
+    && (int) (array_column((new Client())->get('/editions')[1]['editions'] ?? [], null, 'id')[$ed]['voting']['maxCategoriesPerNominee'] ?? 0) === 4);
+check('saving the other voting rules without the limit keeps it', $sa->put("/admin/editions/$ed/voting", $vr)[0] === 200 && $sqlv("SELECT max_categories_per_nominee FROM edition_settings WHERE edition_id = 2") == 4);
+check('and then the fourth goes in', $apply($m1, [(string) $cats[3]])[0] === 200 && $entriesOf('multi1@test.dev') === 4);
+$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 1]);
+check('a limit of 1 gives the old one-category rule', $mk(['email' => 'multi7@test.dev', 'matricNo' => 'HSWF/24/0916'])[0] === 422 && $mk(['email' => 'multi7@test.dev', 'matricNo' => 'HSWF/24/0916', 'categoryIds' => [(string) $cats[0]]])[0] === 200);
+$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 3]);
+$m7 = new Client('nominee'); $m7->login('multi7@test.dev', 'Test-Pass-12345');
+check('with a limit of 3 again, that nominee can add two more at once', $apply($m7, [(string) $cats[1], (string) $cats[2]])[0] === 200 && $entriesOf('multi7@test.dev') === 3);
+$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 2]);
+$m8 = new Client('nominee');
+$m8->post('/nominee/register', ['occasionId' => $ed, 'name' => 'Race Student', 'email' => 'multi8@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'HSWF/24/0917', 'categoryIds' => [(string) $cats[0]], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
+$one = $apply($m8, [(string) $cats[1]])[0]; $two = $apply($m8, [(string) $cats[2]])[0];
+check('the limit holds for repeated requests', $one === 200 && $two === 422 && $entriesOf('multi8@test.dev') === 2);
+$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 4]);
+
+// ---- one profile, one photo, several categories
+$aid = (int) $sqlv("SELECT id FROM accounts WHERE email = 'multi1@test.dev'");
+$entryIds = array_map('intval', $db->query("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
+check('editing the profile in one category updates them all', $m1->patch("/nominee/entries/{$entryIds[0]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'One bio for all'])[0] === 200
+    && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND name = 'Multi Renamed' AND department = 'Law' AND bio = 'One bio for all'") === count($entryIds));
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = {$entryIds[0]}");
+check('approval stays separate for each category', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND status = 'approved'") === 1);
+$img = imagecreatetruecolor(400, 400); imagefill($img, 0, 0, imagecolorallocate($img, 200, 60, 60));
+$tmpImg = sys_get_temp_dir() . '/multi-photo.png'; imagepng($img, $tmpImg);
+$upload = fn (int $id) => $m1->call('POST', "/nominee/entries/$id/photo", ['photo' => new CURLFile($tmpImg, 'image/png', 'p.png')], [], true);
+[$c, $r] = $upload($entryIds[1]);
+$photoPath = (string) $sqlv("SELECT photo_path FROM nominee_entries WHERE id = {$entryIds[0]}");
+$photoFile = dirname(App\Photos::root()) . '/' . $photoPath;
+check('a photo added in one category shows in all of them', $c === 200 && $photoPath !== '' && (int) $sqlv("SELECT COUNT(DISTINCT photo_path) FROM nominee_entries WHERE account_id = $aid") === 1 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === count($entryIds), $c . ' ' . json_encode($r));
+check('the photo file is on disk', is_file($photoFile), $photoFile);
+App\Photos::delete($photoPath);
+clearstatcache();
+check('a photo still used by an entry is never deleted from disk', is_file($photoFile));
+[$c, $r] = $m1->delete("/nominee/entries/{$entryIds[0]}/photo");
+clearstatcache();
+check('removing it from one category removes it from all, and deletes the file', $c === 200 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === 0 && !is_file($photoFile), $c . ' ' . $photoFile);
+$upload($entryIds[0]);
+$p2 = (string) $sqlv("SELECT photo_path FROM nominee_entries WHERE id = {$entryIds[0]}");
+check('a new photo replaces the old one in every category', $p2 !== '' && $p2 !== $photoPath && (int) $sqlv("SELECT COUNT(DISTINCT photo_path) FROM nominee_entries WHERE account_id = $aid") === 1);
+
+// ---- the registration fee is paid once per edition
+$db->exec("UPDATE edition_settings SET nominee_registration_fee = 500 WHERE edition_id = 2");
+[$c, $r] = (new Client('nominee'))->post('/nominee/register', ['occasionId' => $ed, 'name' => 'Paying Student', 'email' => 'fee1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'HSWF/24/0920', 'categoryIds' => [(string) $cats[0], (string) $cats[1]], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
+check('with a fee, two categories start ONE payment (or fail cleanly if the gateway is unreachable)', (($r['paymentRequired'] ?? false) === true && (float) ($r['amount'] ?? 0) === 500.0) || $c === 502, json_encode($r));
+check('no account or entry exists before the money is confirmed', (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'fee1@test.dev'") === 0 && (int) $sqlv("SELECT COUNT(*) FROM payments WHERE payer_email = 'fee1@test.dev'") === 1);
+check('the pending registration remembers both categories', count(json_decode((string) $sqlv("SELECT profile FROM pending_registrations WHERE email = 'fee1@test.dev'"), true)['categoryIds'] ?? []) === 2);
+$paid = function (string $ref, string $email, string $matricNo, array $profileCats) use ($db, $pwHash) {
+    $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'nominee_fee', ?, 500, 'NGN', ?, 'successful')")->execute([$ref, $email]);
+    $pid = (int) $db->lastInsertId();
+    $db->prepare("INSERT INTO pending_registrations (reference, edition_id, account_id, email, password_hash, profile, payment_id, status) VALUES (?, 2, NULL, ?, ?, ?, ?, 'pending')")
+        ->execute([$ref, $email, $pwHash, json_encode(['name' => 'Paid Multi', 'phone' => '0803', 'department' => 'Law', 'level' => 'ND II', 'matricNo' => $matricNo] + $profileCats), $pid]);
+    App\Registrations::complete($db, ['id' => $pid]);
+    return $pid;
+};
+$pid = $paid('REG-J1', 'fee2@test.dev', 'HSWF/24/0921', ['categoryIds' => [$cats[0], $cats[1]]]);
+check('one payment creates an entry for every category chosen', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ?", [$pid]) === 2);
+$paid('REG-J2', 'fee3@test.dev', 'HSWF/24/0922', ['categoryIds' => []]);
+check('a paid registration with no category is flagged for an admin, not half-made', $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-J2'") === 'failed' && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'fee3@test.dev'") === 0);
+$pid3 = $paid('REG-J3', 'fee4@test.dev', 'HSWF/24/0923', ['categoryId' => $cats[0]]);
+check('an older pending registration with a single "categoryId" still completes', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ?", [$pid3]) === 1);
+$fee2 = new Client('nominee'); $fee2->login('fee2@test.dev', 'Test-Pass-12345');
+[$c, $r] = $apply($fee2, [(string) $cats[2]]);
+check('a third category for someone who already paid is free: no second payment', $c === 200 && empty($r['paymentRequired']) && $entriesOf('fee2@test.dev') === 3 && (int) $sqlv("SELECT COUNT(*) FROM payments WHERE payer_email = 'fee2@test.dev'") === 1, json_encode($r['error'] ?? $c));
+$fee2id = (int) $sqlv("SELECT id FROM accounts WHERE email = 'fee2@test.dev'");
+$db->exec("DELETE FROM nominee_entries WHERE account_id = $fee2id");
+check('even if every entry is removed, they do not pay again for that edition', App\Entries::feeSettled($db, $fee2id, 2) === true);
+check('someone who never registered in an edition still owes its fee', App\Entries::feeSettled($db, $fee2id, 1) === false);
+$db->exec("UPDATE edition_settings SET nominee_registration_fee = 0 WHERE edition_id = 2");
+
+// ---- admin side
+$entryA = (int) $sqlv("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id LIMIT 1");
+$entryB = (int) $sqlv("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id DESC LIMIT 1");
+$catA = $sqlv("SELECT category_id FROM nominee_entries WHERE id = $entryA");
+[$c, $r] = $sa->patch("/admin/nominees/$entryB", ['edition' => $ed, 'name' => 'Multi Renamed', 'department' => 'Law', 'categoryId' => (string) $catA, 'status' => 'pending', 'bio' => '']);
+check('an admin cannot move an entry into a category the nominee already has (clean message, no 500)', $c === 422 && str_contains($r['error'] ?? '', 'already has an entry'), $c . ' ' . json_encode($r));
+$list = $sa->get("/admin/nominees?edition=$ed&page=1&q=" . rawurlencode('Multi Renamed'))[1];
+check('the admin list shows every category as its own row', ($list['total'] ?? 0) === count($entryIds), json_encode($list['total'] ?? null));
+
+// ================================================================== K. LEAK AUDIT AND SUSPENSE RESULTS (Round 2, phase 9)
+group('K. Suspense results: no counts, rankings or early winners leak');
+$walk = function ($v, string $path = '') use (&$walk): array {
+    $keys = [];
+    if (is_array($v)) {
+        foreach ($v as $k => $x) { if (is_string($k)) { $keys[] = $k; } $keys = array_merge($keys, $walk($x)); }
+    }
+    return $keys;
+};
+$banned = ['votes', 'vote', 'voteCount', 'votesCount', 'tally', 'rank', 'ranking', 'position', 'total', 'totals', 'percent', 'percentage', 'revenue', 'runnerUp', 'runnersUp', 'showVoteCounts', 'passwordHash', 'password_hash', 'accountId', 'matricNo', 'matric_no'];
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting', results_publish_at = NOW() - INTERVAL 1 DAY WHERE id = 2");
+$db->exec("DELETE FROM winners WHERE edition_id = 2");
+$winCat = (int) $sqlv("SELECT category_id FROM nominee_entries WHERE id = ?", [$entry['na']]);
+$db->prepare("INSERT INTO winners (edition_id, category_id, nominee_entry_id) VALUES (2, ?, ?)")->execute([$winCat, $entry['na']]);
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id IN ({$entry['na']}, {$entry['nb']})");
+App\Cache::flush();
+$pub = new Client();
+$winnersOf = fn () => array_values(array_filter($pub->get('/winners')[1] ?? [], fn ($x) => ($x['occasionId'] ?? '') === $ed));   // oga-9 is completed: its winners are public by design
+foreach (['/editions', '/categories', '/nominees', '/ticket-types', '/winners', '/committee', '/settings', '/about', '/content', '/faqs', '/gallery', '/legal'] as $p) {
+    [$c, $body, $rawBody] = $pub->get($p);
+    $hits = array_values(array_intersect($walk($body), $banned));
+    check("public $p exposes no counts, rankings or private fields", $c === 200 && $hits === [], $p . ' ' . implode(',', $hits));
+}
+[, $nomList, $rawNom] = $pub->get('/nominees');
+check('public nominees carry no email, phone or matric number', !preg_match('/@test\.dev|HSWF\/\d\d|"phone"|"email"/', $rawNom));
+check('the public edition list no longer carries a vote-count switch', !str_contains($pub->get('/editions')[2], 'showVoteCounts'));
+check('winners stay hidden while the edition is forced to an earlier state, even if the publish time has passed', $winnersOf() === []);
+$db->exec("UPDATE editions SET force_state = 'voting-closed' WHERE id = 2"); App\Cache::flush();
+check('also hidden while voting is closed and results are not yet out', $winnersOf() === []);
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_publish_at = NOW() + INTERVAL 1 DAY, voting_close_at = NOW() - INTERVAL 1 HOUR WHERE id = 2"); App\Cache::flush();
+check('hidden in automatic mode until the publish time', $winnersOf() === []);
+$db->exec("UPDATE editions SET results_publish_at = NOW() - INTERVAL 1 MINUTE WHERE id = 2"); App\Cache::flush();
+$w = $winnersOf();
+check('winners appear once the publish time passes', count($w) === 1 && (string) $w[0]['nomineeId'] === (string) $entry['na']);
+check('and only the winner: no counts, no ranking, no runner-up', array_keys($w[0] ?? []) === ['occasionId', 'categoryId', 'nomineeId'] && count($w) === 1);
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting' WHERE id = 2"); App\Cache::flush();
+check('an admin can pull results back by forcing an earlier state', $winnersOf() === []);
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'results' WHERE id = 2"); App\Cache::flush();
+check('or push them out by forcing the results state', count($winnersOf()) === 1);
+
+// ---- what a nominee can see about themselves
+$ns = new Client('nominee'); $ns->login('na@test.dev', 'Test-Pass-12345');
+[$c, $me, $rawMe] = $ns->get('/nominee/me');
+$voteKeys = array_diff($banned, ['matricNo', 'accountId', 'matric_no']);   // their own matric number and account id are theirs to see
+check('a nominee never sees counts or rankings, even for themselves', $c === 200 && array_intersect($walk($me), $voteKeys) === [], implode(',', array_intersect($walk($me), $voteKeys)));
+// ---- order references and lookups
+check('an unknown vote order reference reveals nothing', ($r = (new Client())->post('/votes/orders/VOT-NOPE00000000/confirm', []))[0] === 404 && !str_contains(json_encode($r[1]), 'votes"'));
+[$c, $r] = (new Client())->post('/tickets/lookup', ['code' => 'TKT-T1', 'email' => 'someone-else@x.test']);
+check('ticket lookup with the wrong email finds nothing', $c !== 200 || empty($r['tickets'] ?? []), $c . ' ' . json_encode($r));
+// ---- staff without a results permission
+foreach (['/admin/results', '/admin/votes', '/admin/dashboard'] as $p) {
+    $c = $gate->get("$p?edition=$ed")[0];
+    check("gate staff cannot read $p", in_array($c, [403, 404], true), (string) $c);
+}
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL WHERE id = 2");
+App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

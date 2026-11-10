@@ -30,6 +30,8 @@ export const APP = {
     pricePerVote: 100,
     maxVotesPerPayment: 50,
     maxPaidVotesPerEmailPerCategory: 5,
+    nomineeRegistrationFee: 0,
+    maxCategoriesPerNominee: 3,
   },
 
   contact: { email: "info@example.com", phone: "" }, // TODO: real contact details

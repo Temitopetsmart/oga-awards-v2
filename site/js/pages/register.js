@@ -19,8 +19,12 @@ import {
   matricField,
   matricRule,
   bindMatricVisibility,
-  categoryLabel,
 } from "../../../shared/js/components/matric-field.js";
+import {
+  categoryPicker,
+  pickedCategories,
+  bindCategoryPicker,
+} from "../../../shared/js/components/category-picker.js";
 
 export const title = "Register as Nominee";
 const LEVELS = APP.levels.map((l) => ({
@@ -110,12 +114,11 @@ export default async function register(ctx) {
           col: "col-md-6",
         })}
         ${matricField()}
-        ${field({
-          label: "Category",
-          name: "categoryId",
-          options: cats.map((c) => ({ value: c.id, label: categoryLabel(c) })),
-          required: true,
-          col: "col-md-6",
+        ${categoryPicker({
+          categories: cats,
+          max: APP.voting.maxCategoriesPerNominee,
+          feeNote: Number(APP.voting.nomineeRegistrationFee) > 0,
+          col: "col-12",
         })}
         ${field({
           label: "Password",
@@ -190,6 +193,7 @@ export function init(root, ctx) {
   const form = root.querySelector("#registerForm");
   if (!form) return;
   bindMatricVisibility(form);
+  bindCategoryPicker(form, { max: APP.voting.maxCategoriesPerNominee });
 
   bindForm(form, {
     schema: {
@@ -199,7 +203,6 @@ export function init(root, ctx) {
       department: [rules.required()],
       level: [rules.required("Choose your level.")],
       matricNo: [matricRule],
-      categoryId: [rules.required("Choose a category.")],
       password: [rules.required(), rules.min(8)],
       confirm: [
         rules.required(),
@@ -207,14 +210,20 @@ export function init(root, ctx) {
       ],
       terms: [rules.required("You must accept to continue.")],
     },
-    async onSubmit(values) {
+    async onSubmit(values, formEl) {
+      const categoryIds = pickedCategories(formEl);
+      if (categoryIds.length === 0) {
+        throw new Error("Choose at least one category.");
+      }
       const r = await registerNominee({
         ...values,
+        categoryIds,
         occasionId: ctx.occasion.id,
       });
+
       if (r.paymentRequired) {
-        location.assign(r.paymentLink); // this edition charges a fee: go and pay
-        await new Promise(() => {}); // the browser is leaving
+        location.assign(r.paymentLink);
+        await new Promise(() => {});
       }
       await notify.success(
         "Welcome aboard!",

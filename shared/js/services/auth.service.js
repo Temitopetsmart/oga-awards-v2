@@ -227,10 +227,11 @@ export async function changeNomineePassword({ currentPassword, newPassword }) {
   });
 }
 
-export async function createNomineeEntry({ occasionId, categoryId }) {
+/** Enter one or more (more) categories. A nominee who already paid this edition's fee is not charged again. */
+export async function createNomineeEntry({ occasionId, categoryIds }) {
   const r = await call("/nominee/entries", {
     method: "POST",
-    body: { occasionId, categoryId },
+    body: { occasionId, categoryIds },
   });
   if (r.paymentRequired) return paymentStep(r);
   hydrate(r);

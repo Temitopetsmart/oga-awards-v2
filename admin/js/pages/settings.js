@@ -145,10 +145,6 @@ export default async function settings({ edition: ed, can, access }) {
                 "committeeRecruitment",
                 "Committee recruitment",
                 o.features?.committeeRecruitment,
-              )}${sw(
-                "showVoteCounts",
-                "Show vote counts publicly",
-                o.features?.showVoteCounts,
               )}
               ${save("Save state, dates & features")}
             </fieldset>
@@ -192,7 +188,16 @@ export default async function settings({ edition: ed, can, access }) {
                 required: true,
                 value: o.voting?.nomineeRegistrationFee ?? 0,
                 col: "col-md-4",
-                help: "Charged when someone registers as a nominee. Enter 0 to make registration free.",
+                help: "Charged once per nominee for this edition, however many categories they enter. Enter 0 to make registration free.",
+              })}
+              ${field({
+                label: "Categories per nominee",
+                name: "maxCategoriesPerNominee",
+                type: "number",
+                required: true,
+                value: o.voting?.maxCategoriesPerNominee ?? 3,
+                col: "col-md-4",
+                help: "How many categories one nominee may enter in this edition. Enter 1 to allow only one. Enforced by the server.",
               })}
             </div>
             ${save("Save voting rules")}
@@ -540,7 +545,6 @@ export async function init(root, { admin, edition: ed, can, access }) {
             tickets: eventForm.elements.tickets.checked,
             committeeRecruitment:
               eventForm.elements.committeeRecruitment.checked,
-            showVoteCounts: eventForm.elements.showVoteCounts.checked,
           },
         });
         showState();
@@ -559,6 +563,7 @@ export async function init(root, { admin, edition: ed, can, access }) {
         maxVotesPerPayment: [rules.required(), whole(1, 10000)],
         maxPaidVotesPerEmailPerCategory: [rules.required(), whole(1, 1000)],
         nomineeRegistrationFee: [rules.required(), whole(0, 10000000)],
+        maxCategoriesPerNominee: [rules.required(), whole(1, 20)],
       },
       async onSubmit(v) {
         await saveVotingRules(ed.id, {
@@ -568,6 +573,7 @@ export async function init(root, { admin, edition: ed, can, access }) {
             v.maxPaidVotesPerEmailPerCategory,
           ),
           nomineeRegistrationFee: Number(v.nomineeRegistrationFee),
+          maxCategoriesPerNominee: Number(v.maxCategoriesPerNominee),
         });
         notify.toast("success", "Voting rules saved");
       },

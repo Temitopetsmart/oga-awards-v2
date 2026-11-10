@@ -32,7 +32,13 @@ final class Catalog
     {
         return $v === null || $v === '' ? $default : (json_decode($v, true) ?? $default);
     }
-
+    /** Feature switches for the public site. Nothing about vote counts is ever included (suspense results). */
+    private static function publicFeatures(?string $json): array|\stdClass
+    {
+        $f = (array) self::jsonCol($json, []);
+        unset($f['showVoteCounts']);
+        return $f === [] ? new \stdClass() : $f;
+    }
         public static function editions(bool $includeDrafts = false): array
     {
         
@@ -41,7 +47,7 @@ final class Catalog
                 s.price_per_vote,
                 s.max_votes_per_payment,
                 s.max_paid_payments_per_email_per_category,
-                s.nominee_registration_fee
+                s.nominee_registration_fee,\n s.max_categories_per_nominee
             FROM editions e
             LEFT JOIN edition_settings s ON s.edition_id = e.id
             ORDER BY e.year DESC, e.id DESC;'
@@ -88,12 +94,13 @@ final class Catalog
                 'mode'       => $e['state_mode'],
                 'forceState' => $e['force_state'],
                 'timeline'   => $timeline ?: new \stdClass(),
-                'features'   => self::jsonCol($e['features'], new \stdClass()),
+                'features'   => self::publicFeatures($e['features']),
                 'voting'     => [
                     'pricePerVote'                    => self::num($e['price_per_vote']),
                     'maxVotesPerPayment'              => self::num($e['max_votes_per_payment']),
                     'maxPaidVotesPerEmailPerCategory' => self::num($e['max_paid_payments_per_email_per_category']),
-                    'nomineeRegistrationFee'          => self::num($e['nominee_registration_fee']),                
+                    'nomineeRegistrationFee'          => self::num($e['nominee_registration_fee']),               
+                    'maxCategoriesPerNominee'         => (int) ($e['max_categories_per_nominee'] ?? 3),
                     ],
                 'occasions'  => $occ[$e['id']] ?? [],
             ];
@@ -165,25 +172,27 @@ final class Catalog
     }
 
     /**
-     * Winners are secret until results are public: the edition is completed/archived, the publish
-     * time has passed, or an admin manually forced the "results" state.
+     * Winners are secret until results are public. The edition's own state decides, the same rule the rest of the
+     * site uses: "results" (by date or forced by an admin), or the edition is completed/archived. A forced earlier
+     * state such as "voting-closed" keeps them hidden even if the publish time has passed. Winners only: never counts,
+     * rankings or runners-up.
      */
     public static function winners(): array
     {
         $rows = self::db()->query(
-            'SELECT w.category_id, w.nominee_entry_id, e.slug AS edition_slug
+            'SELECT w.category_id, w.nominee_entry_id, e.slug AS edition_slug, e.status, e.state_mode, e.force_state,
+                    e.nominations_open_at, e.nominations_close_at, e.voting_open_at, e.voting_close_at, e.results_publish_at
                FROM winners w JOIN editions e ON e.id = w.edition_id
-              WHERE e.status IN (\'completed\',\'archived\')
-                 OR (e.status = \'active\' AND (
-                        (e.results_publish_at IS NOT NULL AND e.results_publish_at <= NOW())
-                     OR (e.state_mode = \'manual\' AND e.force_state = \'results\')))
+              WHERE e.status IN (\'active\', \'completed\', \'archived\')
               ORDER BY e.year DESC, w.category_id'
         )->fetchAll();
-        return array_map(fn ($w) => [
-            'occasionId' => $w['edition_slug'],
-            'categoryId' => (string) $w['category_id'],
-            'nomineeId'  => (string) $w['nominee_entry_id'],
-        ], $rows);
+        $out = [];
+        foreach ($rows as $w) {
+            if (in_array($w['status'], ['completed', 'archived'], true) || EditionState::of($w) === 'results') {
+                $out[] = ['occasionId' => $w['edition_slug'], 'categoryId' => (string) $w['category_id'], 'nomineeId' => (string) $w['nominee_entry_id']];
+            }
+        }
+        return $out;
     }
 
     public static function committee(): array

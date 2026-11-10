@@ -18,6 +18,12 @@ final class Registrations
         $accountId = $r['account_id'] === null ? null : (int) $r['account_id'];
         $newAccount = $accountId === null;
 
+        // One fee covers every category asked for (the older single "categoryId" is still understood).
+        $catIds = Entries::requested($p);
+        if ($catIds === []) {
+            self::conflict($db, $r, 'no category was chosen');
+            return;
+        }
         if ($newAccount) {
             $q = $db->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
             $q->execute([$r['email']]);
@@ -26,10 +32,9 @@ final class Registrations
                 return;
             }
         } else {
-            $q = $db->prepare('SELECT COUNT(*) FROM nominee_entries WHERE account_id = ? AND edition_id = ?');
-            $q->execute([$accountId, $r['edition_id']]);
-            if ((int) $q->fetchColumn() > 0) {
-                self::conflict($db, $r, 'the account already has an entry for this edition');
+            $catIds = array_values(array_diff($catIds, Entries::takenCategories($db, $accountId, (int) $r['edition_id'])));
+            if ($catIds === []) {
+                self::conflict($db, $r, 'the account already has an entry for every category chosen');
                 return;
             }
         }
@@ -47,9 +52,11 @@ final class Registrations
             }
         }
         
-        $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status, registration_payment_id)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-            ->execute([$r['edition_id'], $accountId, (int) $p['categoryId'], $p['name'], $p['phone'] ?? null, $p['department'] ?? null, $p['level'] ?? null, $p['bio'] ?? null, $payment['id']]);
+        $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status, registration_payment_id)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
+        foreach ($catIds as $cid) {
+            $ins->execute([$r['edition_id'], $accountId, $cid, $p['name'], $p['phone'] ?? null, $p['department'] ?? null, $p['level'] ?? null, $p['bio'] ?? null, $payment['id']]);
+        }
         if ($newAccount) {
             $token = AccountApi::newToken($accountId, 'email_verify');
             AccountApi::queue('nominee_verify_email', $r['email'], ['token' => $token, 'expiresMinutes' => 30]);
