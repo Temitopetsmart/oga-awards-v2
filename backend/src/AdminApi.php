@@ -202,6 +202,13 @@ final class AdminApi
             VoteAdminApi::saveWinners();
         }
 
+        if ($method === 'POST' && $path === '/admin/results/publish') {
+            VoteAdminApi::publishResults();
+        }
+        if ($method === 'POST' && $path === '/admin/results/retract') {
+            VoteAdminApi::retractResults();
+        }
+
         // ---- tickets and the gate scanner ----
         if ($method === 'GET' && $path === '/admin/tickets') {
             TicketAdminApi::list();

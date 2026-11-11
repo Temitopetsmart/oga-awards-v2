@@ -65,3 +65,17 @@ export const saveWinners = (rows) =>
     method: "PUT",
     body: { edition: viewing(), rows },
   });
+
+/** Makes the winners public now, or at `at` (an ISO date-time) for a ceremony reveal. */
+export const publishResults = ({ at = null, allowMissing = false } = {}) =>
+  adminApi("/admin/results/publish", {
+    method: "POST",
+    body: { edition: viewing(), at, allowMissing },
+  });
+
+/** Takes published or scheduled results down. The reason goes in the activity log. */
+export const retractResults = (reason) =>
+  adminApi("/admin/results/retract", {
+    method: "POST",
+    body: { edition: viewing(), reason },
+  });

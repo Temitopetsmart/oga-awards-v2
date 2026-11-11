@@ -182,14 +182,14 @@ final class Catalog
     {
         $rows = self::db()->query(
             'SELECT w.category_id, w.nominee_entry_id, e.slug AS edition_slug, e.status, e.state_mode, e.force_state,
-                    e.nominations_open_at, e.nominations_close_at, e.voting_open_at, e.voting_close_at, e.results_publish_at
-               FROM winners w JOIN editions e ON e.id = w.edition_id
+                    e.nominations_open_at, e.nominations_close_at, e.voting_open_at, e.voting_close_at, e.results_publish_at,
+                    (e.results_published_at IS NOT NULL AND e.results_published_at <= NOW()) AS published               FROM winners w JOIN editions e ON e.id = w.edition_id
               WHERE e.status IN (\'active\', \'completed\', \'archived\')
               ORDER BY e.year DESC, w.category_id'
         )->fetchAll();
         $out = [];
         foreach ($rows as $w) {
-            if (in_array($w['status'], ['completed', 'archived'], true) || EditionState::of($w) === 'results') {
+            if (in_array($w['status'], ['completed', 'archived'], true) || ((int) $w['published'] === 1 && EditionState::of($w) === 'results')) {
                 $out[] = ['occasionId' => $w['edition_slug'], 'categoryId' => (string) $w['category_id'], 'nomineeId' => (string) $w['nominee_entry_id']];
             }
         }

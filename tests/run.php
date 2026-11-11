@@ -90,11 +90,7 @@ $db->exec("INSERT INTO tickets (edition_id,order_id,group_id,ticket_code,seat_no
 $server = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", '-t', $root], [0 => ['pipe', 'r'], 1 => ['file', $tmp . '/server.log', 'w'], 2 => ['file', $tmp . '/server.log', 'a']], $pipes, $root, array_merge(getenv(), ['OGA_CONFIG' => $cfgFile]));
 register_shutdown_function(function () use ($server, $admin, $testDb, $tmp) {
     if (is_resource($server)) { proc_terminate($server); proc_close($server); }
-        echo "\n===== TEST SERVER LOG =====\n";
-    echo is_file($tmp . '/server.log')
-        ? file_get_contents($tmp . '/server.log')
-        : "Server log not found.\n";
-    echo "===== END SERVER LOG =====\n";
+
     $admin->exec("DROP DATABASE IF EXISTS `$testDb`");
     if (is_dir($tmp)) {                                   // remove the temporary cache, uploads and config
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmp, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $f) {
@@ -193,23 +189,10 @@ $deny = [
     ['PUT', '/admin/assignments', ['edition' => $ed, 'editionId' => $ed, 'personId' => '1', 'patch' => ['roleIds' => ['role-super']]]],
     ['POST', '/admin/activity', ['edition' => $ed, 'kind' => 'export:votes']],
 ];
-// foreach ($deny as $d) {
-//     [$c] = $gate->call($d[0], $d[1], $d[2] ?? null);
-//     check("gate staff refused: {$d[0]} " . strtok($d[1], '?'), $c === 403, (string) $c);
-// }
-
 foreach ($deny as $d) {
-    [$c, $data, $raw] = $gate->call($d[0], $d[1], $d[2] ?? null);
-
-    if ($d[0] === 'POST' && $d[1] === '/admin/editions') {
-        echo "\nGATE ERROR RESPONSE:\n";
-        echo $raw . "\n";
-    }
-
+    [$c] = $gate->call($d[0], $d[1], $d[2] ?? null);
     check("gate staff refused: {$d[0]} " . strtok($d[1], '?'), $c === 403, (string) $c);
 }
-
-
 
 check('gate staff may open the scanner', $gate->get("/admin/scan?edition=$ed")[0] === 200);
 check('gate staff refused in an edition they are not assigned to', $gate->get('/admin/scan?edition=oga-9')[0] === 403);
@@ -505,7 +488,7 @@ $sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
 
 [$c, $r] = $sa->get("/admin/email?edition=$ed");
 $keys = array_column($r['templates'] ?? [], 'key');
-check('admin sees all nine email templates, none customised yet', $c === 200 && count($keys) === 9 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('admin sees all eleven email templates, none customised yet', $c === 200 && count($keys) === 11 && !array_filter($r['templates'], fn ($t) => $t['custom']));
 check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
 check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
 check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);
@@ -1046,7 +1029,7 @@ $walk = function ($v, string $path = '') use (&$walk): array {
     return $keys;
 };
 $banned = ['votes', 'vote', 'voteCount', 'votesCount', 'tally', 'rank', 'ranking', 'position', 'total', 'totals', 'percent', 'percentage', 'revenue', 'runnerUp', 'runnersUp', 'showVoteCounts', 'passwordHash', 'password_hash', 'accountId', 'matricNo', 'matric_no'];
-$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting', results_publish_at = NOW() - INTERVAL 1 DAY WHERE id = 2");
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting', results_publish_at = NOW() - INTERVAL 1 DAY, results_published_at = NOW() - INTERVAL 1 HOUR WHERE id = 2");
 $db->exec("DELETE FROM winners WHERE edition_id = 2");
 $winCat = (int) $sqlv("SELECT category_id FROM nominee_entries WHERE id = ?", [$entry['na']]);
 $db->prepare("INSERT INTO winners (edition_id, category_id, nominee_entry_id) VALUES (2, ?, ?)")->execute([$winCat, $entry['na']]);
@@ -1092,6 +1075,121 @@ foreach (['/admin/results', '/admin/votes', '/admin/dashboard'] as $p) {
 }
 $db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL WHERE id = 2");
 App\Cache::flush();
+
+// ================================================================== L. RESULT PUBLISHING (Round 2, phase 10)
+group('L. Results are published on purpose: reasons, checks, schedule, retract');
+$db->exec("UPDATE nominee_entries SET status = 'pending' WHERE edition_id = 2 AND id NOT IN ({$entry['na']}, {$entry['nb']})");
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id IN ({$entry['na']}, {$entry['nb']})");
+$db->exec("DELETE FROM winners WHERE edition_id = 2");
+$db->exec("DELETE FROM vote_totals WHERE edition_id = 2 AND category_id = 2");
+$db->exec("INSERT INTO vote_totals (nominee_entry_id, category_id, edition_id, votes) VALUES ({$entry['na']}, 2, 2, 15), ({$entry['nb']}, 2, 2, 3)");
+$setTimes = fn (string $close, string $publish) => $db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NULL, results_published_by = NULL, voting_open_at = NOW() - INTERVAL 30 DAY, voting_close_at = $close, results_publish_at = $publish WHERE id = 2");
+$pubWinners = fn () => array_values(array_filter((new Client())->get('/winners')[1] ?? [], fn ($x) => ($x['occasionId'] ?? '') === $ed));
+$save = fn (array $rows) => $sa->put('/admin/results/winners', ['edition' => $ed, 'rows' => $rows]);
+$pub = fn (array $extra = []) => $sa->post('/admin/results/publish', ['edition' => $ed] + $extra);
+$setTimes('NOW() + INTERVAL 2 DAY', 'NOW() + INTERVAL 5 DAY'); App\Cache::flush();
+check('migration 014 added the publish stamp, the override reason, the review note and the permission', $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND ((table_name = 'editions' AND column_name = 'results_published_at') OR (table_name = 'winners' AND column_name = 'override_reason') OR (table_name = 'nominee_entries' AND column_name = 'review_note'))") == 3
+    && $sqlv("SELECT COUNT(*) FROM permissions WHERE perm_key = 'results.publish'") == 1);
+
+// ---- choosing winners: a reason is needed when it is not simply the vote leader
+[$c, $r] = $save([['categoryId' => '2', 'nomineeId' => (string) $entry['nb']]]);
+check('choosing someone who is not the vote leader needs a written reason', $c === 422 && str_contains($r['error'] ?? '', 'not the vote leader'), json_encode($r));
+check('a reason that is too short is refused', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['nb'], 'reason' => 'no']])[0] === 422);
+check('the vote leader needs no reason', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['na']]])[0] === 200 && $sqlv("SELECT override_reason FROM winners WHERE edition_id = 2") === null);
+check('with a reason, a non-leader can be chosen and the reason is kept', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['nb'], 'reason' => 'Votes from 40 duplicate cards were removed']])[0] === 200 && str_contains((string) $sqlv("SELECT override_reason FROM winners WHERE edition_id = 2"), 'duplicate cards'));
+$db->exec("UPDATE vote_totals SET votes = 15 WHERE nominee_entry_id = {$entry['nb']}");
+check('in a tie even the leaders need a reason', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['na']]])[0] === 422);
+check('and the tie is flagged to the admin', in_array('2', $sa->get("/admin/results?edition=$ed")[1]['ties'] ?? [], true));
+check('a tie broken with a reason is accepted', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['na'], 'reason' => 'Tie broken by the committee vote']])[0] === 200);
+$db->exec("UPDATE vote_totals SET votes = 3 WHERE nominee_entry_id = {$entry['nb']}");
+$save([['categoryId' => '2', 'nomineeId' => (string) $entry['na']]]);
+
+// ---- publishing: who may, and when
+check('staff without the publish permission cannot publish', $gate->post('/admin/results/publish', ['edition' => $ed])[0] === 403);
+[$c, $r] = $pub();
+check('results cannot be published while voting is still open', $c === 422 && str_contains($r['error'] ?? '', 'Voting is not over'), json_encode($r));
+$setTimes('NOW() - INTERVAL 1 DAY', 'NOW() + INTERVAL 5 DAY'); App\Cache::flush();
+$db->exec("DELETE FROM winners WHERE edition_id = 2");
+[$c, $r] = $pub();
+check('and not before any winner is saved', $c === 422 && str_contains($r['error'] ?? '', 'Save the winners'), json_encode($r));
+$save([['categoryId' => '2', 'nomineeId' => (string) $entry['na']]]);
+$db->exec("INSERT INTO categories (edition_id, name, sort_order, active) VALUES (2, 'Phase 10 extra', 99, 1)");
+$xcat = (int) $db->lastInsertId();
+$db->exec("INSERT INTO nominee_entries (edition_id, category_id, name, status) VALUES (2, $xcat, 'Unjudged Nominee', 'approved')");
+[$c, $r] = $pub();
+check('a category with approved nominees but no winner stops the publish', $c === 422 && str_contains($r['error'] ?? '', 'no winner'), json_encode($r));
+check('nothing became public by that attempt', $sqlv("SELECT results_published_at FROM editions WHERE id = 2") === null && $pubWinners() === []);
+$db->exec("DELETE FROM nominee_entries WHERE category_id = $xcat"); $db->exec("DELETE FROM categories WHERE id = $xcat");
+check('a bad date is refused', $pub(['at' => 'not a date'])[0] === 422);
+
+// ---- publish now
+[$c, $r] = $pub();
+check('the admin can publish', $c === 200 && ($r['published']['live'] ?? false) === true, json_encode($r));
+check('publishing moves the site to "winners announced" at the same time (automatic mode)', $sqlv("SELECT results_publish_at = results_published_at FROM editions WHERE id = 2") == 1);
+$w = $pubWinners();
+check('the public now sees the winner, and only the winner', count($w) === 1 && array_keys($w[0]) === ['occasionId', 'categoryId', 'nomineeId'] && (string) $w[0]['nomineeId'] === (string) $entry['na']);
+check('the admin results page shows it as published, by whom', ($pr = $sa->get("/admin/results?edition=$ed")[1])['published']['live'] === true && !empty($pr['published']['by']) && $pr['state'] === 'results');
+check('publishing twice is refused', $pub()[0] === 422);
+check('winners cannot be changed while published', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['nb'], 'reason' => 'Changing my mind later']])[0] === 422);
+check('the publish is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Published results'") === 1);
+
+// ---- retract
+check('retracting needs a reason', $sa->post('/admin/results/retract', ['edition' => $ed, 'reason' => ''])[0] === 422);
+check('staff without the permission cannot retract', $gate->post('/admin/results/retract', ['edition' => $ed, 'reason' => 'Because I can'])[0] === 403);
+check('an admin can retract, and the winners disappear at once', $sa->post('/admin/results/retract', ['edition' => $ed, 'reason' => 'A recount was requested'])[0] === 200 && $pubWinners() === []);
+check('the reason is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Retracted results' AND target LIKE '%recount%'") === 1);
+check('retracting something unpublished is refused', $sa->post('/admin/results/retract', ['edition' => $ed, 'reason' => 'Nothing to retract'])[0] === 422);
+check('after a retract the winners can be changed again', $save([['categoryId' => '2', 'nomineeId' => (string) $entry['nb'], 'reason' => 'Recount found the cards were duplicates']])[0] === 200);
+$save([['categoryId' => '2', 'nomineeId' => (string) $entry['na']]]);
+
+// ---- scheduled reveal
+$setTimes('NOW() - INTERVAL 1 DAY', 'NOW() + INTERVAL 5 DAY'); App\Cache::flush();
+[$c, $r] = $pub(['at' => date('c', time() + 3600)]);
+check('results can be scheduled for a later moment (the ceremony)', $c === 200 && ($r['published']['scheduled'] ?? false) === true && $pubWinners() === [], json_encode($r));
+check('the admin sees that it is scheduled', ($sa->get("/admin/results?edition=$ed")[1]['published']['scheduled'] ?? false) === true);
+$db->exec("UPDATE editions SET results_published_at = NOW() - INTERVAL 1 MINUTE, results_publish_at = NOW() - INTERVAL 1 MINUTE WHERE id = 2"); App\Cache::flush();
+check('and they appear when that moment arrives', count($pubWinners()) === 1);
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting-closed' WHERE id = 2"); App\Cache::flush();
+check('a state forced by hand still keeps them hidden', $pubWinners() === []);
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NULL, results_publish_at = NOW() - INTERVAL 1 HOUR WHERE id = 2"); App\Cache::flush();
+check('results time passed but never published: still hidden', $pubWinners() === []);
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting-closed' WHERE id = 2");
+[$c, $r] = $pub();
+check('publishing while the state is forced earlier warns the admin', $c === 200 && !empty($r['warning']), json_encode($r));
+$sa->post('/admin/results/retract', ['edition' => $ed, 'reason' => 'Test is over, clean up']);
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL WHERE id = 2"); App\Cache::flush();
+
+// ================================================================== M. NOMINEE PORTAL (Round 2, phase 11)
+group('M. Nominee portal: reviewer notes, decision emails, send for review again');
+$db->exec("UPDATE editions SET voting_open_at = NULL, voting_close_at = NULL, results_publish_at = NULL, nominations_open_at = NOW() - INTERVAL 2 DAY, nominations_close_at = NOW() + INTERVAL 20 DAY WHERE id = 2"); App\Cache::flush();
+$db->exec("DELETE FROM notification_outbox");
+$pn = new Client('nominee'); $pn->login('na@test.dev', 'Test-Pass-12345');
+$db->exec("UPDATE nominee_entries SET status = 'pending', review_note = NULL WHERE id = {$entry['na']}");
+[$c, $r] = $sa->patch("/admin/nominees/{$entry['na']}", ['edition' => $ed, 'name' => 'Nominee na', 'department' => 'Software', 'categoryId' => '2', 'status' => 'rejected', 'bio' => '', 'reviewNote' => 'Please upload a clear face photo.']);
+check('an admin can reject with a note for the nominee', $c === 200 && $sqlv("SELECT review_note FROM nominee_entries WHERE id = {$entry['na']}") === 'Please upload a clear face photo.', $c . json_encode($r));
+$me = $pn->get('/nominee/me')[1];
+$mine = array_values(array_filter($me['entries'] ?? [], fn ($x) => (string) $x['id'] === (string) $entry['na']))[0] ?? [];
+check('the nominee sees the status and the note', ($mine['status'] ?? '') === 'rejected' && ($mine['reviewNote'] ?? '') === 'Please upload a clear face photo.');
+$row = $db->query("SELECT type, recipient, payload FROM notification_outbox ORDER BY id DESC LIMIT 1")->fetch();
+check('a "needs changes" email was queued to the nominee with the note', $row && $row['type'] === 'nominee_entry_rejected' && $row['recipient'] === 'na@test.dev' && str_contains((string) $row['payload'], 'clear face photo'), json_encode($row));
+$mail = App\MailTemplates::render('nominee_entry_rejected', 'na@test.dev', json_decode((string) $row['payload'], true));
+check('the email shows the note and links to the dashboard', is_array($mail) && str_contains(json_encode($mail), 'clear face photo') && str_contains(json_encode($mail), 'dashboard'), json_encode($mail));
+check('a note is only a note: nothing about it is public', !str_contains((new Client())->get('/nominees')[2], 'face photo'));
+$pn2 = new Client('nominee'); $pn2->login('nb@test.dev', 'Test-Pass-12345');
+check('one nominee cannot send another nominee’s entry for review', $pn2->post("/nominee/entries/{$entry['na']}/resubmit")[0] === 404);
+check('the nominee can send a rejected entry for review again', $pn->post("/nominee/entries/{$entry['na']}/resubmit")[0] === 200 && $sqlv("SELECT status FROM nominee_entries WHERE id = {$entry['na']}") === 'pending');
+check('an entry that is not rejected cannot be "sent again"', $pn->post("/nominee/entries/{$entry['na']}/resubmit")[0] === 422);
+$db->exec("DELETE FROM notification_outbox");
+$sa->patch("/admin/nominees/{$entry['na']}", ['edition' => $ed, 'name' => 'Nominee na', 'department' => 'Software', 'categoryId' => '2', 'status' => 'approved', 'bio' => '', 'reviewNote' => 'ignored on approve']);
+check('approving clears the note and queues an "approved" email', $sqlv("SELECT review_note FROM nominee_entries WHERE id = {$entry['na']}") === null && $sqlv("SELECT type FROM notification_outbox ORDER BY id DESC LIMIT 1") === 'nominee_entry_approved');
+$db->exec("DELETE FROM notification_outbox");
+$sa->patch("/admin/nominees/{$entry['na']}", ['edition' => $ed, 'name' => 'Nominee na renamed', 'department' => 'Software', 'categoryId' => '2', 'status' => 'approved', 'bio' => '']);
+check('editing without changing the status sends no email', (int) $sqlv("SELECT COUNT(*) FROM notification_outbox") === 0);
+[$c] = $sa->post('/admin/nominees/status', ['ids' => [$entry['nb']], 'status' => 'rejected', 'note' => 'Bulk note']);
+check('the bulk reject carries one note to everyone chosen', $c === 200 && $sqlv("SELECT review_note FROM nominee_entries WHERE id = {$entry['nb']}") === 'Bulk note');
+$db->exec("UPDATE editions SET nominations_close_at = NOW() - INTERVAL 1 DAY, voting_open_at = NOW() - INTERVAL 1 HOUR, voting_close_at = NOW() + INTERVAL 5 DAY WHERE id = 2"); App\Cache::flush();
+check('once nominations close, a rejected entry cannot be sent again', $pn2->post("/nominee/entries/{$entry['nb']}/resubmit")[0] === 403);
+$db->exec("UPDATE editions SET nominations_open_at = NULL, nominations_close_at = NULL, voting_open_at = NULL, voting_close_at = NULL WHERE id = 2"); App\Cache::flush();
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

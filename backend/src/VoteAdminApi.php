@@ -18,7 +18,7 @@ final class VoteAdminApi
 
     private static function edition(string $slug): array
     {
-        $st = self::pdo()->prepare('SELECT id, slug FROM editions WHERE slug = ?');
+        $st = self::pdo()->prepare('SELECT * FROM editions WHERE slug = ?');
         $st->execute([$slug]);
         return $st->fetch() ?: self::fail('That edition was not found.', 404);
     }
@@ -206,6 +206,42 @@ final class VoteAdminApi
 
     // ------------------------------------------------------------ results
 
+        /** Per category: how many approved nominees, who leads, and whether the top spot is tied. */
+    private static function standings(int $editionId): array
+    {
+        $tally = VoteTotals::perNominee($editionId);
+        $st = self::pdo()->prepare("SELECT id, category_id, name FROM nominee_entries WHERE edition_id = ? AND status = 'approved' ORDER BY id");
+        $st->execute([$editionId]);
+        $cats = [];
+        foreach ($st->fetchAll() as $n) {
+            $cats[(int) $n['category_id']][] = ['id' => (int) $n['id'], 'name' => $n['name'], 'votes' => $tally[(string) $n['id']] ?? 0];
+        }
+        $out = [];
+        foreach ($cats as $cid => $list) {
+            $max = max(array_column($list, 'votes'));
+            $top = array_values(array_filter($list, fn ($x) => $x['votes'] === $max));
+            $out[$cid] = ['max' => $max, 'leaders' => array_column($top, 'id'), 'tied' => count($top) > 1 && $max > 0, 'votes' => array_column($list, 'votes', 'id'), 'names' => array_column($list, 'name', 'id')];
+        }
+        return $out;
+    }
+
+    private static function publishedShape(array $ed): array
+    {
+        $at = $ed['results_published_at'] ?? null;
+        $by = null;
+        if (!empty($ed['results_published_by'])) {
+            $st = self::pdo()->prepare('SELECT name FROM people WHERE id = ?');
+            $st->execute([$ed['results_published_by']]);
+            $by = $st->fetchColumn() ?: null;
+        }
+        return [
+            'at'        => $at ? (new \DateTimeImmutable($at))->format('c') : null,
+            'by'        => $by,
+            'live'      => $at !== null && strtotime($at) <= time(),
+            'scheduled' => $at !== null && strtotime($at) > time(),
+        ];
+    }
+
     public static function results(): never
     {
         $slug = (string) ($_GET['edition'] ?? '');
@@ -213,11 +249,16 @@ final class VoteAdminApi
         $ed = self::edition($slug);
         $pdo = self::pdo();
         $tally = VoteTotals::perNominee((int) $ed['id']);
-        $w = $pdo->prepare('SELECT category_id, nominee_entry_id FROM winners WHERE edition_id = ?');
+        $w = $pdo->prepare('SELECT category_id, nominee_entry_id, override_reason FROM winners WHERE edition_id = ?');
         $w->execute([$ed['id']]);
+        $stand = self::standings((int) $ed['id']);
         Response::json(['ok' => true, 'tally' => (object) $tally, 'winners' => array_map(fn ($r) => [
-            'categoryId' => (string) $r['category_id'], 'nomineeId' => (string) $r['nominee_entry_id'],
-        ], $w->fetchAll())]);
+            'categoryId' => (string) $r['category_id'], 'nomineeId' => (string) $r['nominee_entry_id'], 'reason' => (string) ($r['override_reason'] ?? ''),
+        ], $w->fetchAll()),
+            'ties'      => array_map('strval', array_keys(array_filter($stand, fn ($x) => $x['tied']))),
+            'published' => self::publishedShape($ed),
+            'state'     => EditionState::of($ed),
+        ]);
     }
 
     public static function saveWinners(): never
@@ -226,11 +267,15 @@ final class VoteAdminApi
         $slug = Request::str($in, 'edition', 60);
         $actor = Access::require('results.save', $slug);
         $ed = self::edition($slug);
+        if (($ed['results_published_at'] ?? null) !== null) {
+            self::fail('The results are published. Retract them first if a winner has to change.');
+        }
         $rows = array_values((array) ($in['rows'] ?? []));
+        $stand = self::standings((int) $ed['id']);
         $seen = [];
         $check = self::pdo()->prepare("SELECT COUNT(*) FROM nominee_entries n JOIN categories c ON c.id = n.category_id
                                         WHERE n.id = ? AND n.category_id = ? AND n.edition_id = ? AND c.edition_id = ? AND n.status = 'approved'");
-        foreach ($rows as $r) {
+        foreach ($rows as $i => $r) {
             $cat = (int) ($r['categoryId'] ?? 0);
             $nom = (int) ($r['nomineeId'] ?? 0);
             if (isset($seen[$cat])) {
@@ -241,16 +286,96 @@ final class VoteAdminApi
             if ((int) $check->fetchColumn() === 0) {
                 self::fail('Each winner must be an approved nominee of that category.');
             }
+            // A winner who is not simply the vote leader (or who wins a tie) needs a written reason on record.
+            $s = $stand[$cat] ?? null;
+            $reason = trim((string) ($r['reason'] ?? ''));
+            $isLeader = $s !== null && in_array($nom, $s['leaders'], true);
+            $needs = $s !== null && $s['max'] > 0 && (!$isLeader || $s['tied']);
+            if ($needs && mb_strlen($reason) < 5) {
+                $why = $isLeader ? 'is tied for the lead' : 'is not the vote leader';
+                self::fail(($s['names'][$nom] ?? 'This nominee') . " $why. Write the reason for choosing them (at least 5 characters).");
+            }
+            $rows[$i]['reason'] = $needs ? mb_substr($reason, 0, 255) : null;
         }
         Database::transaction(function (\PDO $db) use ($ed, $rows, $actor) {
             $db->prepare('DELETE FROM winners WHERE edition_id = ?')->execute([$ed['id']]);       // other editions are never touched
-            $ins = $db->prepare('INSERT INTO winners (edition_id, category_id, nominee_entry_id, set_by) VALUES (?, ?, ?, ?)');
+            $ins = $db->prepare('INSERT INTO winners (edition_id, category_id, nominee_entry_id, set_by, override_reason) VALUES (?, ?, ?, ?, ?)');
             foreach ($rows as $r) {
-                $ins->execute([$ed['id'], (int) $r['categoryId'], (int) $r['nomineeId'], $actor['id']]);
+                $ins->execute([$ed['id'], (int) $r['categoryId'], (int) $r['nomineeId'], $actor['id'], $r['reason']]);
             }
         });
         Cache::flush();
-        Audit::log((int) $actor['id'], 'Saved winners', count($rows) . ' categories', (int) $ed['id']);
+        $overrides = count(array_filter($rows, fn ($r) => $r['reason'] !== null));
+        Audit::log((int) $actor['id'], 'Saved winners', count($rows) . ' categories' . ($overrides ? ", $overrides with a written reason" : ''), (int) $ed['id']);
+        Response::json(['ok' => true]);
+    }
+
+    /**
+     * Makes the winners public: now, or at a time the admin picks (for a ceremony reveal). Needs voting to be over
+     * and a winner in every category that has approved nominees (unless the admin says some are intentionally left out).
+     */
+    public static function publishResults(): never
+    {
+        $in = Request::json();
+        $slug = Request::str($in, 'edition', 60);
+        $actor = Access::require('results.publish', $slug);
+        $ed = self::edition($slug);
+        if (($ed['results_published_at'] ?? null) !== null) {
+            self::fail('The results are already published' . (self::publishedShape($ed)['scheduled'] ? ' (scheduled).' : '.') . ' Retract them first to change anything.');
+        }
+        if (in_array(EditionState::of($ed), ['landing', 'nominations', 'voting'], true)) {
+            self::fail('Voting is not over yet. Results can only be published after voting closes.');
+        }
+        $stand = self::standings((int) $ed['id']);
+        $w = self::pdo()->prepare('SELECT category_id FROM winners WHERE edition_id = ?');
+        $w->execute([$ed['id']]);
+        $have = array_map('intval', $w->fetchAll(\PDO::FETCH_COLUMN));
+        if ($have === []) {
+            self::fail('Save the winners first. Nothing has been chosen yet.');
+        }
+        $missing = array_values(array_diff(array_keys($stand), $have));
+        if ($missing !== [] && empty($in['allowMissing'])) {
+            self::fail(count($missing) . ' categor' . (count($missing) === 1 ? 'y has' : 'ies have') . ' no winner yet. Choose them, or confirm that they should be left out.', 422);
+        }
+        $at = null;
+        if (($in['at'] ?? null) !== null && $in['at'] !== '') {
+            $ts = strtotime((string) $in['at']);
+            if ($ts === false) {
+                self::fail('That date and time is not valid.');
+            }
+            $at = max($ts, time());
+        }
+        $when = date('Y-m-d H:i:s', $at ?? time());
+        self::pdo()->prepare('UPDATE editions SET results_published_at = ?, results_published_by = ? WHERE id = ?')->execute([$when, $actor['id'], $ed['id']]);
+        $warning = null;
+        if ($ed['state_mode'] === 'auto') {
+            // The site's "winners announced" state moves at the same moment.
+            self::pdo()->prepare('UPDATE editions SET results_publish_at = ? WHERE id = ?')->execute([$when, $ed['id']]);
+        } elseif ($ed['force_state'] !== 'results') {
+            $warning = 'This edition is set by hand to “' . $ed['force_state'] . '”, so visitors will not see the winners until you change its state to “Winners announced” in Settings.';
+        }
+        Cache::flush();
+        Audit::log((int) $actor['id'], $at !== null && $at > time() + 5 ? 'Scheduled results' : 'Published results', count($have) . ' winners, live ' . $when . ($missing ? ', ' . count($missing) . ' categories left out' : ''), (int) $ed['id']);
+        Response::json(['ok' => true, 'published' => self::publishedShape(self::edition($slug)), 'warning' => $warning]);
+    }
+
+    /** Takes published (or scheduled) results back down. The reason is kept in the activity log. */
+    public static function retractResults(): never
+    {
+        $in = Request::json();
+        $slug = Request::str($in, 'edition', 60);
+        $actor = Access::require('results.publish', $slug);
+        $ed = self::edition($slug);
+        if (($ed['results_published_at'] ?? null) === null) {
+            self::fail('The results are not published.');
+        }
+        $reason = trim((string) ($in['reason'] ?? ''));
+        if (mb_strlen($reason) < 5) {
+            self::fail('Say why the results are being taken down (at least 5 characters).');
+        }
+        self::pdo()->prepare('UPDATE editions SET results_published_at = NULL, results_published_by = NULL WHERE id = ?')->execute([$ed['id']]);
+        Cache::flush();
+        Audit::log((int) $actor['id'], 'Retracted results', mb_substr($reason, 0, 200), (int) $ed['id']);
         Response::json(['ok' => true]);
     }
 }

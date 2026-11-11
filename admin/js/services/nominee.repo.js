@@ -38,6 +38,7 @@ const FIELDS = [
   "level",
   "matricNo",
   "phone",
+  "reviewNote",
 ];
 
 async function write(path, method, body = {}) {
@@ -50,8 +51,12 @@ async function write(path, method, body = {}) {
 }
 
 /** One id or a list of ids. Approve / reject / set pending. */
-export const setNomineeStatus = (ids, status) =>
-  write("/admin/nominees/status", "POST", { ids: [].concat(ids), status });
+export const setNomineeStatus = (ids, status, note = "") =>
+  write("/admin/nominees/status", "POST", {
+    ids: [].concat(ids),
+    status,
+    note,
+  });
 
 /** id = null adds a new nominee; otherwise edits the nominee. */
 export async function saveNominee(id, data) {

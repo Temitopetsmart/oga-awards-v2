@@ -87,10 +87,10 @@ final class Matric
             }
             [$re, $shortest] = self::compile($pattern);
             if ($shortest > $max) {
-                throw new \InvalidArgumentException("“$label” needs at least $shortest characters, but the maximum length is $max.");
+                throw new \InvalidArgumentException('“' . $label . '” needs at least ' . $shortest . ' characters, but the maximum length is ' . $max . '.');
             }
             if ($example !== '' && (!preg_match($re, $example) || strlen($example) > $max)) {
-                throw new \InvalidArgumentException("The example for “$label” does not match its pattern and the maximum length.");
+                throw new \InvalidArgumentException('The example for “' . $label . '” does not match its pattern and the maximum length.');
             }
             $formats[] = ['label' => $label, 'pattern' => $pattern, 'example' => $example];
         }

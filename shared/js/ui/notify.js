@@ -73,6 +73,7 @@ export const notify = {
     placeholder = "",
     confirmText = "Save",
     dismissible = true,
+    autocapitalize = "characters",
     save,
   } = {}) {
     const r = await swal().fire({
@@ -81,7 +82,7 @@ export const notify = {
       text,
       input: "text",
       inputPlaceholder: placeholder,
-      inputAttributes: { autocapitalize: "characters", autocomplete: "off" },
+      inputAttributes: { autocapitalize, autocomplete: "off" },
       confirmButtonText: confirmText,
       showCancelButton: dismissible,
       allowOutsideClick: dismissible,

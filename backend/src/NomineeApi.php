@@ -110,7 +110,11 @@ final class NomineeApi
         Response::json(['ok' => true, 'nominee' => [
             'id' => (string) $n['id'], 'occasionId' => $n['edition_slug'], 'categoryId' => (string) $n['category_id'],
             'name' => $n['name'], 'phone' => $n['phone'] ?? '', 'department' => $n['department'] ?? '', 'level' => $n['level'] ?? '',
-            'bio' => $n['bio'] ?? '', 'photo' => $n['photo_path'], 'thumb' => Photos::thumbOf($n['photo_path']), 'status' => $n['status'],
+            'bio' => $n['bio'] ?? '', 
+            'photo' => $n['photo_path'], 
+            'thumb' => Photos::thumbOf($n['photo_path']), 
+            'status' => $n['status'],
+            'reviewNote'    => $n['review_note'] ?? '',
             'email' => $acc['email'], 'emailVerified' => $acc['email_verified_at'] !== null, 'entries' => [],
         ]]);
     }
@@ -166,6 +170,25 @@ final class NomineeApi
         Response::json(['ok' => true, 'nomineeId' => $id]);
     }
 
+    /** Tells the nominee (if they have an account) when their entry is approved or sent back. Never blocks the admin. */
+    private static function tellNominee(array $n, string $oldStatus, string $status, string $note): void
+    {
+        if ($n['account_id'] === null || $status === $oldStatus || !in_array($status, ['approved', 'rejected'], true)) {
+            return;
+        }
+        try {
+            $st = self::pdo()->prepare('SELECT a.email, c.name AS category_name, e.name AS edition_name, e.edition_label FROM accounts a JOIN categories c ON c.id = ? JOIN editions e ON e.id = ? WHERE a.id = ?');
+            $st->execute([$n['category_id'], $n['edition_id'], $n['account_id']]);
+            if ($r = $st->fetch()) {
+                AccountApi::queue($status === 'approved' ? 'nominee_entry_approved' : 'nominee_entry_rejected', $r['email'], [
+                    'categoryName' => $r['category_name'], 'note' => $note, 'editionName' => trim($r['edition_name'] . ' ' . ($r['edition_label'] ?? '')),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            error_log('Could not queue nominee decision email: ' . $e->getMessage());
+        }
+    }
+
     public static function update(int $id): never
     {
         $in = Request::json();
@@ -179,15 +202,18 @@ final class NomineeApi
         if ($status !== $n['status'] && !Access::can($n['actor'], 'nominees.approve', (int) $n['edition_id'])) {
             self::fail('Changing a nominee’s status needs the approval permission.', 403);
         }
+        $note = array_key_exists('reviewNote', $in) ? trim(mb_substr((string) $in['reviewNote'], 0, 500)) : (string) ($n['review_note'] ?? '');
+        if ($status === 'approved') {
+            $note = '';                                           // an approved entry carries no "needs changes" note
+        }
         $newMatric = null;
         if ($n['account_id'] !== null && trim((string) ($in['matricNo'] ?? '')) !== '') {   // an admin can correct a matric number
             $newMatric = Matric::normalize((string) $in['matricNo']) ?? self::fail('That is not a valid matric number. Check the format in Settings → Matric number.');
         }
         try {
-            Database::transaction(function (\PDO $db) use ($n, $id, $name, $dept, $level, $phone, $bio, $cat, $status, $newMatric) {
-                $db->prepare('UPDATE nominee_entries SET name = ?, department = ?, level = ?, phone = ?, bio = ?, category_id = ?, status = ? WHERE id = ?')
-                    ->execute([$name, $dept, $level, $phone, $bio, $cat, $status, $id]);
-                if ($n['account_id'] !== null) {
+            Database::transaction(function (\PDO $db) use ($n, $id, $name, $dept, $level, $phone, $bio, $cat, $status, $newMatric, $note) {
+                $db->prepare('UPDATE nominee_entries SET name = ?, department = ?, level = ?, phone = ?, bio = ?, category_id = ?, status = ?, review_note = ? WHERE id = ?')
+                    ->execute([$name, $dept, $level, $phone, $bio, $cat, $status, $note !== '' ? $note : null, $id]);                if ($n['account_id'] !== null) {
                     if ($level !== null) {
                         $db->prepare('UPDATE accounts SET level = ? WHERE id = ?')->execute([$level, $n['account_id']]);   // the level the admin keeps for this student
                     }
@@ -214,6 +240,7 @@ final class NomineeApi
             throw $e;
         }
         Cache::flush();
+        self::tellNominee($n + ['category_id' => $cat], $n['status'], $status, $note);
         Audit::log((int) $n['actor']['id'], 'Edited nominee', $name, (int) $n['edition_id']);
         Response::json(['ok' => true]);
     }
@@ -234,13 +261,17 @@ final class NomineeApi
         foreach ($ids as $id) {
             $rows[] = self::own($id, 'nominees.approve');         // refuses everything if any one is not allowed
         }
-        Database::transaction(function (\PDO $db) use ($ids, $status) {
-            $st = $db->prepare('UPDATE nominee_entries SET status = ? WHERE id = ?');
+        $note = $status === 'approved' ? '' : trim(mb_substr((string) ($in['note'] ?? ''), 0, 500));
+        Database::transaction(function (\PDO $db) use ($ids, $status, $note) {
+            $st = $db->prepare('UPDATE nominee_entries SET status = ?, review_note = ? WHERE id = ?');
             foreach ($ids as $id) {
-                $st->execute([$status, $id]);
+                $st->execute([$status, $status === 'approved' ? null : ($note !== '' ? $note : null), $id]);
             }
         });
         Cache::flush();
+        foreach ($rows as $row) {
+            self::tellNominee($row, $row['status'], $status, $note);
+        }
         $verb = $status === 'approved' ? 'Approved' : ($status === 'rejected' ? 'Rejected' : 'Set to pending');
         if (count($rows) === 1) {
             Audit::log((int) $rows[0]['actor']['id'], $verb . ' nominee', $rows[0]['name'], (int) $rows[0]['edition_id']);

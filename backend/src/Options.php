@@ -67,7 +67,7 @@ final class Options
             }
             $key = mb_strtolower($name);
             if (isset($seen[$key])) {
-                throw new \InvalidArgumentException("“$name” is listed twice.");
+                throw new \InvalidArgumentException('“' . $name . '” is listed twice.');
             }
             $seen[$key] = true;
             $clean[] = ['name' => $name, 'active' => !empty($x['active']), 'requiresMatric' => !array_key_exists('requiresMatric', $x) || !empty($x['requiresMatric'])];

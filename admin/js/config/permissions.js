@@ -33,6 +33,7 @@ export const PERMISSIONS = [
 
   P("Results", "results.view", "View results", "read"),
   P("Results", "results.save", "Save winners"),
+  P("Results", "results.publish", "Publish or retract results"),
 
   P("Finance", "finance.view", "See payment amounts and revenue", "read"),
   P("Finance", "finance.export", "Export financial data", "read"),

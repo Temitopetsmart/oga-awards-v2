@@ -283,3 +283,11 @@ export async function confirmRegistration(reference) {
   }
   return { signedIn: false, note: r.note };
 }
+
+/** A rejected entry goes back to review once the nominee has fixed what the reviewer asked for. */
+export async function resubmitNomineeEntry(id) {
+  const r = await call(`/nominee/entries/${id}/resubmit`, { method: "POST" });
+  hydrate(r);
+  store.set(SELECTED, String(id));
+  return currentNominee();
+}

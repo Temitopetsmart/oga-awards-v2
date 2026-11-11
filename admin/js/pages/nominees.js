@@ -208,6 +208,13 @@ export async function init(root, { admin, can }) {
       rows: 4,
       help: "Shown on the public profile.",
     },
+    {
+      name: "reviewNote",
+      label: "Note to the nominee",
+      type: "textarea",
+      rows: 2,
+      help: "Shown on their dashboard and emailed when the status changes to Rejected. Cleared when approved. Never public.",
+    },
   ];
   const schema = {
     name: [rules.required(), rules.min(2)],
@@ -215,10 +222,11 @@ export async function init(root, { admin, can }) {
     categoryId: [rules.required("Choose a category.")],
     status: [rules.required()],
     bio: [rules.max(500)],
+    reviewNote: [rules.max(500)],
   };
 
-  const setStatus = async (n, status) => {
-    await setNomineeStatus(n.id, status);
+  const setStatus = async (n, status, note = "") => {
+    await setNomineeStatus(n.id, status, note);
     logAudit(
       admin,
       status === "approved" ? "Approved nominee" : "Rejected nominee",
@@ -289,19 +297,19 @@ export async function init(root, { admin, can }) {
       refresh();
     },
     async reject(n) {
-      if (
-        !(await notify.confirm({
-          title: `Reject ${n.name}?`,
-          text: "They won’t appear on the public site.",
-          confirmText: "Reject",
-          danger: true,
-        }))
-      )
-        return;
-      await setStatus(n, "rejected");
+      const done = await notify.prompt({
+        title: `Reject ${n.name}?`,
+        text: "They won’t appear on the public site. Optional: tell them what to fix. They see it on their dashboard and by email.",
+        placeholder: "Note to the nominee (optional)",
+        confirmText: "Reject",
+        autocapitalize: "sentences",
+        save: (note) => setStatus(n, "rejected", note),
+      });
+      if (!done) return;
       notify.toast("info", `${n.name} rejected`);
       refresh();
     },
+
     edit: (n) =>
       openFormModal({
         title: `Edit ${n.name}`,
@@ -374,17 +382,27 @@ export async function init(root, { admin, can }) {
 
   async function bulk(key, list) {
     const status = key === "approve" ? "approved" : "rejected";
-    if (
-      !(await notify.confirm({
-        title: `${key === "approve" ? "Approve" : "Reject"} ${list.length} nominee${list.length === 1 ? "" : "s"}?`,
-        confirmText: key === "approve" ? "Approve" : "Reject",
-        danger: key === "reject",
-      }))
-    )
+    const title = `${key === "approve" ? "Approve" : "Reject"} ${list.length} nominee${list.length === 1 ? "" : "s"}?`;
+    let note = "";
+    if (key === "reject") {
+      const done = await notify.prompt({
+        title,
+        text: "Optional: one note for all of them. Each nominee sees it on their dashboard and by email.",
+        placeholder: "Note to the nominees (optional)",
+        confirmText: "Reject",
+        autocapitalize: "sentences",
+        save: async (value) => {
+          note = value;
+        },
+      });
+      if (!done) return;
+    } else if (!(await notify.confirm({ title, confirmText: "Approve" }))) {
       return;
+    }
     await setNomineeStatus(
       list.map((n) => n.id),
       status,
+      note,
     );
     logAudit(
       admin,

@@ -49,6 +49,22 @@ final class MailTemplates
             'subject' => 'Reset your password',
             'body' => "We received a request to reset your password. The link below fills in your reset code. It expires in {{expires_minutes}} minutes.\n\n[[Choose a new password | {{link}}]]\n\nReset code:\n\n{{code}}\n\nIf you did not ask for this, you can ignore this email.",
         ],
+        'nominee_entry_approved' => [
+            'label' => 'Nominee entry approved', 'group' => 'Nominee account',
+            'description' => 'Sent when an admin approves a nominee’s entry for a category.',
+            'placeholders' => ['category' => 'The category name', 'link' => 'Link to the nominee dashboard'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your {{edition}} entry is approved',
+            'body' => "Good news: your entry in {{category}} has been approved for {{edition}}.\n\nShare your profile and ask your friends to vote.\n\n[[Open my dashboard | {{link}}]]",
+        ],
+        'nominee_entry_rejected' => [
+            'label' => 'Nominee entry needs changes', 'group' => 'Nominee account',
+            'description' => 'Sent when an admin rejects a nominee’s entry. The reviewer’s note is included.',
+            'placeholders' => ['category' => 'The category name', 'note' => 'The reviewer’s note (may be empty)', 'link' => 'Link to the nominee dashboard'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your {{edition}} entry needs changes',
+            'body' => "Your entry in {{category}} was not approved yet.\n\nReviewer’s note: {{note}}\n\nYou can update your details and send it for review again from your dashboard.\n\n[[Open my dashboard | {{link}}]]",
+        ],
         'admin_invitation' => [
             'label' => 'Team invitation', 'group' => 'Team',
             'description' => 'Sent when an admin invites someone to help run an edition.',
@@ -238,6 +254,10 @@ final class MailTemplates
             case 'nominee_password_reset':
                 $token = (string) ($p['token'] ?? '');
                 $v += ['code' => $token, 'expires_minutes' => $mins, 'link' => self::url('forgot-password') . '?' . http_build_query(['email' => $recipient, 'token' => $token])];
+                break;
+            case 'nominee_entry_approved':
+            case 'nominee_entry_rejected':
+                $v += ['category' => (string) ($p['categoryName'] ?? ''), 'note' => trim((string) ($p['note'] ?? '')), 'link' => self::url('dashboard')];
                 break;
             case 'admin_invitation':
                 $v += ['link' => self::url('accept-invite') . '?' . http_build_query(['token' => (string) ($p['token'] ?? '')]), 'expires_at' => (string) ($p['expiresAt'] ?? '')];

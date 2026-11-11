@@ -37,6 +37,7 @@ final class AccountApi
         if ($method === 'POST' && $path === '/nominee/matric')   self::setMatric();
         if ($method === 'POST' && $path === '/nominee/register/confirm') self::confirmRegistration();
         if ($method === 'PATCH' && preg_match('#^/nominee/entries/(\d+)$#', $path, $m)) self::updateEntry((int) $m[1]);
+        if ($method === 'POST' && preg_match('#^/nominee/entries/(\\d+)/resubmit$#', $path, $m)) self::resubmit((int) $m[1]);
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
         if ($method === 'POST' && $path === '/nominee/password/change') self::changePassword();
@@ -171,6 +172,7 @@ final class AccountApi
             'photo'      => $e['photo_path'],
             'thumb'      => Photos::thumbOf($e['photo_path']),
             'status'     => $e['status'],
+            'reviewNote' => $e['review_note'] ?? '',
             'createdAt'  => (new \DateTimeImmutable($e['created_at']))->format('c'),
         ];
     }
@@ -576,6 +578,25 @@ final class AccountApi
 
     // ------------------------------------------------------ my entry, photo
 
+        /** A rejected entry goes back to review after the nominee has fixed what the reviewer asked for. */
+    private static function resubmit(int $id): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
+        $e = self::ownEntry($id, $a);
+        if ($e['status'] !== 'rejected') {
+            self::fail('Only an entry that needs changes can be sent for review again.');
+        }
+        $open = EditionState::openForNominations();
+        if ($open === null || (int) $open['id'] !== (int) $e['edition_id']) {
+            self::fail('Nominations are closed, so this entry can no longer be sent for review.', 403);
+        }
+        self::pdo()->prepare("UPDATE nominee_entries SET status = 'pending' WHERE id = ?")->execute([$id]);
+        Cache::flush();
+        Audit::log(null, 'Nominee sent an entry for review again', $a['email'], (int) $e['edition_id']);
+        Response::json(['ok' => true] + self::sessionPayload($a));
+    }
+    
     /** My own entry, in an edition that is still open to changes. */
     private static function ownEntry(int $id, array $account): array
     {

@@ -14,7 +14,10 @@ import {
   bindCategoryPicker,
 } from "../../../shared/js/components/category-picker.js";
 import { normalizeMatric } from "../../../shared/js/core/matric.js";
-import { getCategories } from "../../../shared/js/services/catalog.service.js";
+import {
+  getCategories,
+  getWinners,
+} from "../../../shared/js/services/catalog.service.js";
 import {
   currentNominee,
   updateNominee,
@@ -28,6 +31,7 @@ import {
   confirmRegistration,
   requestEmailVerification,
   verifyNomineeEmail,
+  resubmitNomineeEntry,
 } from "../../../shared/js/services/auth.service.js";
 import { pageHero, pageBody, notice } from "../sections/page-sections.js";
 
@@ -128,6 +132,35 @@ export default async function dashboard(ctx, { params }) {
 
   const status = STATUS[me.status] ?? STATUS.pending;
   const profileUrl = `${ROOT}nominee?id=${encodeURIComponent(me.id)}`;
+
+  // Winners are only ever known here once the organisers have published them.
+  const winners =
+    ctx.state === "results" && me.occasionId === ctx.occasion.id
+      ? await getWinners(ctx.occasion.id).catch(() => [])
+      : [];
+  const isWinner = winners.some((w) => String(w.nomineeId) === String(me.id));
+
+  // How complete the public profile is.
+  const checklist = [
+    ["A profile photo", Boolean(me.photo)],
+    ["A short bio", Boolean((me.bio ?? "").trim())],
+    ["A phone number", Boolean((me.phone ?? "").trim())],
+    ["A verified email", Boolean(me.emailVerified)],
+  ];
+  const done = checklist.filter(([, ok]) => ok).length;
+  const percent = Math.round((done / checklist.length) * 100);
+
+  const steps = [
+    ["nominations", "Nominations"],
+    ["voting", "Voting"],
+    ["voting-closed", "Counting"],
+    ["results", "Winners"],
+  ];
+  const at = Math.max(
+    0,
+    steps.findIndex(([key]) => key === ctx.state),
+  );
+  const shareText = `Vote for me, ${me.name}, in the ${ctx.occasion.name} ${ctx.occasion.edition}${cat ? ` (${cat.name})` : ""}!`;
 
   return html`
     ${readOnly
@@ -295,11 +328,89 @@ export default async function dashboard(ctx, { params }) {
         </div>
 
         <div class="col-lg-8">
+          ${me.status === "rejected"
+            ? html`<div class="alert alert-warning mb-4" role="alert">
+                <strong>This entry needs changes.</strong>
+                ${me.reviewNote
+                  ? html`<p class="mb-2 mt-1">
+                      Reviewer’s note: ${me.reviewNote}
+                    </p>`
+                  : html`<p class="mb-2 mt-1">
+                      Update your details, then send it for review again.
+                    </p>`}
+                ${!readOnly && ctx.state === "nominations"
+                  ? html`<button
+                      class="btn btn-gold btn-sm"
+                      id="resubmitBtn"
+                      type="button"
+                    >
+                      Send for review again
+                    </button>`
+                  : html`<span class="small"
+                      >Nominations are closed, so this entry can’t be sent
+                      again.</span
+                    >`}
+              </div>`
+            : ""}
+          ${isWinner
+            ? html`<div class="oga-card mb-4 text-center">
+                <h2 class="h4 mt-0">
+                  <i class="fa-solid fa-trophy text-gold me-2"></i>
+                  Congratulations, you won${cat ? ` ${cat.name}` : ""}!
+                </h2>
+                <p class="mb-0">The organisers have announced the winners.</p>
+              </div>`
+            : ""}
+
           <div class="oga-card mb-4">
             <h2 class="h5 mt-0">Your category</h2>
-            <p class="mb-0">${cat?.name ?? "—"}</p>
+            <p>${cat?.name ?? "—"}</p>
+            <ol class="list-unstyled d-flex flex-wrap gap-2 mb-2 small">
+              ${steps.map(
+                ([, label], i) =>
+                  html`<li
+                    class="oga-badge ${i === at ? "" : "opacity-50"}"
+                    aria-current="${i === at ? "step" : "false"}"
+                  >
+                    ${i + 1}. ${label}
+                  </li>`,
+              )}
+            </ol>
+            <p class="small text-secondary mb-0">
+              ${ctx.state === "voting"
+                ? "Voting is open. Live counts and rankings are never shown to anyone, so everyone stays in suspense until the winners are announced."
+                : ctx.state === "voting-closed"
+                  ? "Voting has closed and the results are being verified. Winners are announced by the organisers."
+                  : ctx.state === "results"
+                    ? isWinner
+                      ? "You are one of the announced winners."
+                      : "The winners have been announced."
+                    : me.status === "approved"
+                      ? "You’re approved. Share your profile so people are ready when voting opens."
+                      : "Complete your profile while your entry is reviewed."}
+            </p>
           </div>
 
+          ${percent < 100 && !readOnly
+            ? html`<div class="oga-card mb-4">
+                <h2 class="h5 mt-0">Profile ${percent}% complete</h2>
+                <div class="progress mb-2" style="height:6px">
+                  <div
+                    class="progress-bar"
+                    role="progressbar"
+                    style="width:${percent}%"
+                    aria-valuenow="${percent}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                  ></div>
+                </div>
+                <ul class="small mb-0">
+                  ${checklist
+                    .filter(([, ok]) => !ok)
+                    .map(([label]) => html`<li>Add: ${label}</li>`)}
+                </ul>
+              </div>`
+            : ""}
           ${me.status === "approved"
             ? html`
                 <div class="oga-card mb-4">
@@ -326,6 +437,45 @@ export default async function dashboard(ctx, { params }) {
                         Copy profile link
                       </button>
                     </div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 mt-3">
+                    <a
+                      class="btn btn-ghost btn-sm"
+                      target="_blank"
+                      rel="noopener"
+                      href="https://wa.me/?text=${encodeURIComponent(
+                        `${shareText} ${new URL(profileUrl, window.location.href).href}`,
+                      )}"
+                      ><i class="fa-brands fa-whatsapp me-1"></i>WhatsApp</a
+                    >
+                    <a
+                      class="btn btn-ghost btn-sm"
+                      target="_blank"
+                      rel="noopener"
+                      href="https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                        shareText,
+                      )}&url=${encodeURIComponent(
+                        new URL(profileUrl, window.location.href).href,
+                      )}"
+                      ><i class="fa-brands fa-x-twitter me-1"></i>Post</a
+                    >
+                    <a
+                      class="btn btn-ghost btn-sm"
+                      target="_blank"
+                      rel="noopener"
+                      href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                        new URL(profileUrl, window.location.href).href,
+                      )}"
+                      ><i class="fa-brands fa-facebook me-1"></i>Facebook</a
+                    >
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      id="shareBtn"
+                      type="button"
+                      hidden
+                    >
+                      <i class="fa-solid fa-share-nodes me-1"></i>Share…
+                    </button>
                   </div>
                 </div>
               `
@@ -589,6 +739,35 @@ export function init(root, ctx, { params }) {
       notify.failure(error);
     }
   });
+
+  root
+    .querySelector("#resubmitBtn")
+    ?.addEventListener("click", async (event) => {
+      event.currentTarget.disabled = true;
+      try {
+        await resubmitNomineeEntry(currentNominee().id);
+        notify.toast("success", "Sent for review again");
+        window.location.reload();
+      } catch (err) {
+        event.currentTarget.disabled = false;
+        await notify.warning("Couldn’t send it", err.message);
+      }
+    });
+
+  const shareBtn = root.querySelector("#shareBtn");
+  if (shareBtn && navigator.share) {
+    shareBtn.hidden = false;
+    shareBtn.addEventListener("click", () => {
+      const me = currentNominee();
+      navigator
+        .share({
+          title: me.name,
+          text: `Vote for me, ${me.name}!`,
+          url: root.querySelector("#profileUrl").value,
+        })
+        .catch(() => {});
+    });
+  }
 
   root.querySelector("#copyBtn")?.addEventListener("click", async () => {
     try {
