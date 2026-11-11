@@ -65,6 +65,14 @@ final class MailTemplates
             'subject' => 'Your {{edition}} entry needs changes',
             'body' => "Your entry in {{category}} was not approved yet.\n\nReviewer’s note: {{note}}\n\nYou can update your details and send it for review again from your dashboard.\n\n[[Open my dashboard | {{link}}]]",
         ],
+        'nominee_access_pass' => [
+            'label' => 'Nominee Access Pass ready', 'group' => 'Nominee account',
+            'description' => 'Sent when a nominee claims their free Access Pass for the event.',
+            'placeholders' => ['link' => 'Link to the nominee dashboard where the pass is shown'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your {{edition}} Access Pass is ready',
+            'body' => "Your Nominee Access Pass for {{edition}} is ready.\n\nOpen your dashboard and show the QR code at the gate. Each code can be scanned once.\n\n[[Open my dashboard | {{link}}]]",
+        ],
         'admin_invitation' => [
             'label' => 'Team invitation', 'group' => 'Team',
             'description' => 'Sent when an admin invites someone to help run an edition.',
@@ -254,6 +262,9 @@ final class MailTemplates
             case 'nominee_password_reset':
                 $token = (string) ($p['token'] ?? '');
                 $v += ['code' => $token, 'expires_minutes' => $mins, 'link' => self::url('forgot-password') . '?' . http_build_query(['email' => $recipient, 'token' => $token])];
+                break;
+            case 'nominee_access_pass':
+                $v += ['link' => self::url('dashboard')];
                 break;
             case 'nominee_entry_approved':
             case 'nominee_entry_rejected':

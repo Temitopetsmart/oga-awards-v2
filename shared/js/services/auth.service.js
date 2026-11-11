@@ -162,6 +162,7 @@ export async function updateNominee(patch) {
       department: next.department,
       level: next.level,
       bio: next.bio ?? "",
+      nickname: next.nickname ?? "",
     },
   });
   hydrate(r);
@@ -291,3 +292,10 @@ export async function resubmitNomineeEntry(id) {
   store.set(SELECTED, String(id));
   return currentNominee();
 }
+
+/** The nominee's Access Pass for the active edition: { enabled, eligible, claimed, guests, tickets[] }. */
+export const getAccessPass = () => call("/nominee/access-pass");
+
+/** Claims the free pass (once per edition). */
+export const claimAccessPass = () =>
+  call("/nominee/access-pass", { method: "POST" });

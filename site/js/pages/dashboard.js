@@ -1,5 +1,5 @@
 import { ROOT, APP } from "../../../shared/js/config/app.config.js";
-import { html } from "../../../shared/js/core/dom.js";
+import { html, toHTML } from "../../../shared/js/core/dom.js";
 import { go } from "../../../shared/js/core/nav.js";
 import { store } from "../../../shared/js/core/store.js";
 import { mediaUrl } from "../../../shared/js/core/media.js";
@@ -7,6 +7,12 @@ import { rules } from "../../../shared/js/core/validate.js";
 import { field } from "../../../shared/js/components/form-fields.js";
 import { avatar } from "../../../shared/js/components/cards.js";
 import { bindForm } from "../../../shared/js/ui/form.js";
+import {
+  FLIER_SIZES,
+  drawFlier,
+  downloadFlier,
+  loadQr,
+} from "../../../shared/js/components/flier.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import {
   categoryPicker,
@@ -32,6 +38,8 @@ import {
   requestEmailVerification,
   verifyNomineeEmail,
   resubmitNomineeEntry,
+  getAccessPass,
+  claimAccessPass,
 } from "../../../shared/js/services/auth.service.js";
 import { pageHero, pageBody, notice } from "../sections/page-sections.js";
 
@@ -411,6 +419,45 @@ export default async function dashboard(ctx, { params }) {
                 </ul>
               </div>`
             : ""}
+          ${!readOnly && me.occasionId === ctx.occasion.id
+            ? html`<div id="passCard" class="mb-4"></div>`
+            : ""}
+          ${ctx.occasion.flier?.enabled && me.occasionId === ctx.occasion.id
+            ? html`<div class="oga-card mb-4" id="flierCard">
+                <h2 class="h5 mt-0">Your promo flier</h2>
+                <p class="small text-secondary">
+                  Download a ready-made flier with your photo, name and a QR
+                  code to your profile. Share it on your status and stories.
+                  ${me.photo ? "" : "Add a profile photo to make it stand out."}
+                </p>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                  <select
+                    class="form-select form-select-sm w-auto"
+                    id="flierSize"
+                    aria-label="Flier size"
+                  >
+                    ${Object.entries(FLIER_SIZES).map(
+                      ([key, v]) =>
+                        html`<option value="${key}">${v.label}</option>`,
+                    )}
+                  </select>
+                  <button
+                    class="btn btn-gold btn-sm"
+                    id="flierDownload"
+                    type="button"
+                  >
+                    <i class="fa-solid fa-download me-1"></i>Download PNG
+                  </button>
+                </div>
+                <canvas
+                  id="flierCanvas"
+                  data-category="${cat?.name ?? ""}"
+                  class="w-100 rounded"
+                  style="max-width:360px;height:auto"
+                  aria-label="Preview of your promo flier"
+                ></canvas>
+              </div>`
+            : ""}
           ${me.status === "approved"
             ? html`
                 <div class="oga-card mb-4">
@@ -628,6 +675,15 @@ export default async function dashboard(ctx, { params }) {
 
                             <div class="col-12 col-md-6">
                               ${field({
+                                label: "Nickname (optional)",
+                                name: "nickname",
+                                value: me.nickname ?? "",
+                                help: "Shown on your promo flier only. Up to 40 characters.",
+                              })}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              ${field({
                                 label: "Phone number",
                                 name: "phone",
                                 type: "tel",
@@ -740,6 +796,150 @@ export function init(root, ctx, { params }) {
     }
   });
 
+  // ---- Access Pass (free event entry) ----
+  const passBox = root.querySelector("#passCard");
+  const passView = (st) =>
+    html`<div class="oga-card">
+      <h2 class="h5 mt-0">
+        <i class="fa-solid fa-ticket me-2"></i>Your Nominee Access Pass
+      </h2>
+      ${st.claimed
+        ? html`<p class="small text-secondary">
+              Show a QR code at the gate. Each code is scanned once. You are
+              invited whether or not you win; winners are announced at the
+              event.
+            </p>
+            <div class="row g-3">
+              ${st.tickets.map(
+                (t) =>
+                  html`<div class="col-6 col-md-4">
+                    <div
+                      class="border rounded p-2 text-center bg-white text-dark"
+                    >
+                      <div
+                        data-pass-qr="${t.code}"
+                        style="max-width:150px;margin:0 auto"
+                      ></div>
+                      <div class="small fw-bold mt-1">${t.holder}</div>
+                      <code class="small">${t.code}</code>
+                      <div class="small">
+                        ${t.void
+                          ? "Cancelled"
+                          : t.used
+                            ? "Used"
+                            : "Not used yet"}
+                      </div>
+                    </div>
+                  </div>`,
+              )}
+            </div>
+            <button
+              class="btn btn-ghost btn-sm mt-3"
+              id="passPrint"
+              type="button"
+            >
+              <i class="fa-solid fa-print me-1"></i>Print
+            </button>`
+        : st.eligible
+          ? html`<p class="small text-secondary">
+                You are approved. Claim your free
+                pass${st.guests
+                  ? ` (it admits you and ${st.guests} guest${st.guests === 1 ? "" : "s"})`
+                  : ""}.
+              </p>
+              <button class="btn btn-gold btn-sm" id="passClaim" type="button">
+                Claim my Access Pass
+              </button>`
+          : html`<p class="small text-secondary mb-0">
+              Your Access Pass opens once one of your entries is approved.
+            </p>`}
+    </div>`;
+  const showPass = async () => {
+    if (!passBox) return;
+    let st;
+    try {
+      st = await getAccessPass();
+    } catch {
+      return;
+    }
+    if (!st.enabled && !st.claimed) {
+      passBox.replaceChildren();
+      return;
+    }
+    passBox.innerHTML = toHTML(passView(st));
+    passBox
+      .querySelector("#passPrint")
+      ?.addEventListener("click", () => print());
+    passBox
+      .querySelector("#passClaim")
+      ?.addEventListener("click", async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          await claimAccessPass();
+          notify.toast("success", "Your Access Pass is ready");
+          await showPass();
+        } catch (err) {
+          event.currentTarget.disabled = false;
+          await notify.warning("Couldn’t claim it", err.message);
+        }
+      });
+    if (st.claimed) {
+      try {
+        const qrcode = await loadQr();
+        passBox.querySelectorAll("[data-pass-qr]").forEach((el) => {
+          const qr = qrcode(0, "M");
+          qr.addData(el.dataset.passQr);
+          qr.make();
+          el.innerHTML = qr.createSvgTag({
+            cellSize: 4,
+            margin: 0,
+            scalable: true,
+          });
+        });
+      } catch {
+        passBox
+          .querySelectorAll("[data-pass-qr]")
+          .forEach(
+            (el) => (el.textContent = "Show the code below at the gate."),
+          );
+      }
+    }
+  };
+  showPass();
+
+  // ---- promo flier ----
+  const flierCanvas = root.querySelector("#flierCanvas");
+  if (flierCanvas) {
+    const who = currentNominee();
+    const draw = () =>
+      drawFlier(flierCanvas, {
+        size: root.querySelector("#flierSize").value,
+        cfg: ctx.occasion.flier,
+        name: who.name,
+        nickname: who.nickname,
+        category: flierCanvas.dataset.category,
+        edition: `${ctx.occasion.name} ${ctx.occasion.edition}`,
+        photo: who.photo,
+        voteUrl: new URL(
+          `${ROOT}nominee?id=${encodeURIComponent(who.id)}`,
+          window.location.href,
+        ).href,
+      });
+    draw();
+    root.querySelector("#flierSize").addEventListener("change", draw);
+    root.querySelector("#flierDownload").addEventListener("click", async () => {
+      try {
+        await draw();
+        await downloadFlier(
+          flierCanvas,
+          `${who.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-flier.png`,
+        );
+      } catch (err) {
+        await notify.warning("Couldn’t create the flier", err.message);
+      }
+    });
+  }
+
   root
     .querySelector("#resubmitBtn")
     ?.addEventListener("click", async (event) => {
@@ -850,12 +1050,14 @@ export function init(root, ctx, { params }) {
         department: [rules.required()],
         level: [rules.required()],
         bio: [rules.max(500)],
+        nickname: [rules.max(40)],
       },
 
       async onSubmit(values) {
         try {
           await updateNominee({
             name: values.name.trim(),
+            nickname: (values.nickname ?? "").trim(),
             phone: values.phone.trim(),
             department: values.department.trim(),
             level: values.level,

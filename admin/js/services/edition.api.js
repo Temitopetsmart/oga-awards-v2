@@ -88,3 +88,11 @@ export const updateOccasion = (id, occasion) =>
 export const toggleOccasion = (id) =>
   write(`/admin/occasions/${id}/toggle`, "POST");
 export const deleteOccasion = (id) => write(`/admin/occasions/${id}`, "DELETE");
+
+/** { enabled, guests }: the free Nominee Access Pass for the edition. */
+export const saveAccessPass = (id, body) =>
+  write(`/admin/editions/${id}/access-pass`, "PUT", body);
+
+/** { enabled, headline, tagline, footer, bg, accent, text, showQr, showCategory }: the nominee promo flier. */
+export const saveFlier = (id, body) =>
+  write(`/admin/editions/${id}/flier`, "PUT", body);

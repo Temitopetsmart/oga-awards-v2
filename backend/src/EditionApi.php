@@ -134,8 +134,27 @@ final class EditionApi
             $id = (int) $db->lastInsertId();
 
             if ($copySettings) {
-                $db->prepare('INSERT INTO edition_settings (edition_id, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, max_categories_per_nominee)
-                            SELECT ?, price_per_vote, max_votes_per_payment, max_paid_payments_per_email_per_category, nominee_registration_fee, max_categories_per_nominee FROM edition_settings WHERE edition_id = ?')
+                $db->prepare('INSERT INTO edition_settings (
+                                edition_id,
+                                price_per_vote,
+                                max_votes_per_payment,
+                                max_paid_payments_per_email_per_category,
+                                nominee_registration_fee,
+                                max_categories_per_nominee,
+                                access_pass_guests,
+                                flier_config
+                            )
+                            SELECT
+                                ?,
+                                price_per_vote,
+                                max_votes_per_payment,
+                                max_paid_payments_per_email_per_category,
+                                nominee_registration_fee,
+                                max_categories_per_nominee,
+                                access_pass_guests,
+                                flier_config
+                            FROM edition_settings
+                            WHERE edition_id = ?')
                     ->execute([$id, $src['id']]);
             } else {
                 $db->prepare('INSERT INTO edition_settings (edition_id) VALUES (?)')->execute([$id]);
@@ -147,7 +166,7 @@ final class EditionApi
             }
             if ($src && !empty($copy['ticketTypes'])) {
                 $db->prepare('INSERT INTO ticket_types (edition_id, name, price, seats, description, perks, max_per_order, active, sort_order)
-                              SELECT ?, name, price, seats, description, perks, max_per_order, active, sort_order FROM ticket_types WHERE edition_id = ?')
+                            SELECT ?, name, price, seats, description, perks, max_per_order, active, sort_order FROM ticket_types WHERE edition_id = ? AND kind = \'public\'')
                     ->execute([$id, $src['id']]);
             }
             if ($src && !empty($copy['occasions'])) {
@@ -281,6 +300,43 @@ final class EditionApi
     }
 
     // ---------------------------------------------------------- voting rules
+
+    /** Phase 12: switch the Nominee Access Pass on or off and set how many guests each pass admits. */
+    public static function saveAccessPass(string $slug): never
+    {
+        $in = Request::json();
+        $e = self::find($slug);
+        $actor = Access::require('settings.edit', $slug);
+        $g = $in['guests'] ?? null;
+        if (!is_numeric($g) || (float) $g != (int) $g || (int) $g < 0 || (int) $g > 5) {
+            self::fail('Guests per pass: enter a whole number from 0 to 5.');
+        }
+        $enabled = !empty($in['enabled']) ? 1 : 0;
+        self::pdo()->prepare('INSERT INTO edition_settings (edition_id, access_pass_enabled, access_pass_guests, updated_by) VALUES (?, ?, ?, ?)
+                              ON DUPLICATE KEY UPDATE access_pass_enabled = VALUES(access_pass_enabled), access_pass_guests = VALUES(access_pass_guests), updated_by = VALUES(updated_by)')
+            ->execute([$e['id'], $enabled, (int) $g, $actor['id']]);
+        Cache::flush();
+        Audit::log((int) $actor['id'], 'Updated the Access Pass', ($enabled ? 'on' : 'off') . ", $g guests per pass", (int) $e['id']);
+        Response::json(['ok' => true]);
+    }
+
+    /** Phase 13: the look and wording of the nominee promo flier. */
+    public static function saveFlier(string $slug): never
+    {
+        $in = Request::json();
+        $e = self::find($slug);
+        $actor = Access::require('settings.edit', $slug);
+        [$cfg, $problem] = Flier::validate($in);
+        if ($problem !== null) {
+            self::fail($problem);
+        }
+        self::pdo()->prepare('INSERT INTO edition_settings (edition_id, flier_config, updated_by) VALUES (?, ?, ?)
+                              ON DUPLICATE KEY UPDATE flier_config = VALUES(flier_config), updated_by = VALUES(updated_by)')
+            ->execute([$e['id'], json_encode($cfg, JSON_UNESCAPED_UNICODE), $actor['id']]);
+        Cache::flush();
+        Audit::log((int) $actor['id'], 'Updated the promo flier', $cfg['headline'], (int) $e['id']);
+        Response::json(['ok' => true]);
+    }
 
     public static function saveVoting(string $slug): never
     {

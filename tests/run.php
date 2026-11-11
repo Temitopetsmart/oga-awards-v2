@@ -488,7 +488,7 @@ $sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
 
 [$c, $r] = $sa->get("/admin/email?edition=$ed");
 $keys = array_column($r['templates'] ?? [], 'key');
-check('admin sees all eleven email templates, none customised yet', $c === 200 && count($keys) === 11 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('admin sees all twelve email templates, none customised yet', $c === 200 && count($keys) === 12 && !array_filter($r['templates'], fn ($t) => $t['custom']));
 check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
 check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
 check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);
@@ -567,9 +567,8 @@ check('outbox filters by status', $sa->get("/admin/email/outbox?edition=$ed&stat
 check('outbox searches by recipient on request', $sa->get("/admin/email/outbox?edition=$ed&q=bulk17")[1]['total'] === 1 && $sa->get("/admin/email/outbox?edition=$ed&q=" . rawurlencode('%'))[1]['total'] === 0);
 check('outbox never shows message contents or codes', !str_contains($raw, 'payload') && !str_contains($raw, 'REAL-SECRET') && !str_contains($raw, '"token"'));
 check('outbox is closed to gate staff', $gate->post('/admin/email/outbox/send', ['edition' => $ed])[0] === 403);
-[$c, $r] = $sa->post('/admin/email/outbox/send', ['edition' => $ed]);
-check('"send now" sends the waiting messages', $c === 200 && ($r['result']['sent'] ?? 0) === 30, json_encode($r));
-
+[$c, $r, $raw] = $sa->post('/admin/email/outbox/send', ['edition' => $ed]);
+check('"send now" sends the waiting messages', $c === 200 && ($r['result']['sent'] ?? 0) === 30, "HTTP $c | Response: " . substr($raw, 0, 1000));
 // failures and retry
 $q("INSERT INTO notification_outbox (type, recipient, payload, status, attempts, last_error) VALUES ('committee_reserve', 'retry@x.test', ?, 'failed', 5, 'Connection refused')", [json_encode(['applicantName' => 'Zed', 'message' => 'm'])]);
 $failOk = (int) $db->lastInsertId();
@@ -1190,6 +1189,111 @@ check('the bulk reject carries one note to everyone chosen', $c === 200 && $sqlv
 $db->exec("UPDATE editions SET nominations_close_at = NOW() - INTERVAL 1 DAY, voting_open_at = NOW() - INTERVAL 1 HOUR, voting_close_at = NOW() + INTERVAL 5 DAY WHERE id = 2"); App\Cache::flush();
 check('once nominations close, a rejected entry cannot be sent again', $pn2->post("/nominee/entries/{$entry['nb']}/resubmit")[0] === 403);
 $db->exec("UPDATE editions SET nominations_open_at = NULL, nominations_close_at = NULL, voting_open_at = NULL, voting_close_at = NULL WHERE id = 2"); App\Cache::flush();
+
+
+// ================================================================== N. NOMINEE ACCESS PASS (Round 2, phase 12)
+group('N. Nominee Access Pass: free event entry for approved nominees');
+$db->exec("UPDATE editions SET status = 'active' WHERE id = 2");
+$db->exec("UPDATE edition_settings SET access_pass_enabled = 0, access_pass_guests = 0 WHERE edition_id = 2");
+$db->exec("UPDATE nominee_entries SET status = 'approved', review_note = NULL WHERE id = {$entry['na']}");
+$db->exec("UPDATE nominee_entries SET status = 'rejected' WHERE id = {$entry['nb']}");
+$db->exec("DELETE FROM notification_outbox"); App\Cache::flush();
+check('migration 015 added the pass type, the order owner, the settings, the flier config and the nickname', $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND ((table_name = 'ticket_types' AND column_name = 'kind') OR (table_name = 'ticket_orders' AND column_name = 'account_id') OR (table_name = 'edition_settings' AND column_name IN ('access_pass_enabled', 'access_pass_guests', 'flier_config')) OR (table_name = 'nominee_entries' AND column_name = 'nickname'))") == 6);
+$na = new Client('nominee'); $na->login('na@test.dev', 'Test-Pass-12345');
+$nb = new Client('nominee'); $nb->login('nb@test.dev', 'Test-Pass-12345');
+[$c, $r] = $na->get('/nominee/access-pass');
+check('the pass is off until the admin switches it on', $c === 200 && $r['enabled'] === false && $r['claimed'] === false && $r['tickets'] === []);
+check('claiming while it is off is refused', $na->post('/nominee/access-pass')[0] === 403);
+check('anonymous visitors cannot see or claim a pass', (new Client('nominee'))->get('/nominee/access-pass')[0] === 401 && (new Client('nominee'))->post('/nominee/access-pass')[0] === 401);
+
+// ---- the admin switch
+$ap = fn (array $b) => $sa->put("/admin/editions/$ed/access-pass", $b);
+check('guests per pass must be a whole number from 0 to 5', $ap(['enabled' => true, 'guests' => 6])[0] === 422 && $ap(['enabled' => true, 'guests' => -1])[0] === 422 && $ap(['enabled' => true, 'guests' => 'x'])[0] === 422 && $ap(['enabled' => true])[0] === 422);
+check('staff without settings access cannot change it', $gate->put("/admin/editions/$ed/access-pass", ['enabled' => true, 'guests' => 1])[0] === 403);
+check('the admin can switch it on with 2 guests per pass', $ap(['enabled' => true, 'guests' => 2])[0] === 200 && $sqlv("SELECT access_pass_guests FROM edition_settings WHERE edition_id = 2") == 2);
+$pubEd = array_column((new Client())->get('/editions')[1]['editions'] ?? [], null, 'id')[$ed] ?? [];
+check('the public edition list says so', ($pubEd['accessPass'] ?? null) === ['enabled' => true, 'guests' => 2], json_encode($pubEd['accessPass'] ?? null));
+
+// ---- who may claim
+[$c, $r] = $nb->get('/nominee/access-pass');
+check('a nominee whose entry is not approved sees it as not yet open', $c === 200 && $r['enabled'] === true && $r['eligible'] === false && $r['claimed'] === false);
+check('and cannot claim it', $nb->post('/nominee/access-pass')[0] === 403 && (int) $sqlv("SELECT COUNT(*) FROM ticket_orders WHERE account_id IS NOT NULL") === 0);
+[$c, $r] = $na->get('/nominee/access-pass');
+check('an approved nominee is eligible but has not claimed', $r['eligible'] === true && $r['claimed'] === false);
+[$c, $r] = $na->post('/nominee/access-pass');
+check('claiming gives the nominee plus 2 guest tickets', $c === 200 && $r['claimed'] === true && count($r['tickets']) === 3, json_encode($r));
+$codes = array_column($r['tickets'] ?? [], 'code');
+check('each ticket has its own scannable code', count(array_unique($codes)) === 3 && count(array_filter($codes, fn ($x) => preg_match('/^TKT-[A-F0-9]{12}$/', $x))) === 3);
+check('seat 1 is the nominee, the others are their guests', str_starts_with($r['tickets'][0]['holder'], 'Nominee na'));
+check('the guests are named after the nominee', str_starts_with($r['tickets'][1]['holder'], 'Guest 1 of'));
+check('it is a free, paid order owned by the account, on a type that is never on sale', $sqlv("SELECT COUNT(*) FROM ticket_orders o JOIN ticket_types t ON t.id = o.ticket_type_id WHERE o.account_id IS NOT NULL AND o.status = 'paid' AND o.amount = 0 AND t.kind = 'access_pass' AND t.active = 0") == 1);
+check('the three seats share one group', $sqlv("SELECT COUNT(DISTINCT group_id) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE o.account_id IS NOT NULL") == 1 && $sqlv("SELECT seats FROM ticket_groups g JOIN ticket_orders o ON o.id = g.order_id WHERE o.account_id IS NOT NULL") == 3);
+[$c, $again] = $na->post('/nominee/access-pass');
+check('claiming again changes nothing', $c === 200 && array_column($again['tickets'], 'code') === $codes && (int) $sqlv("SELECT COUNT(*) FROM ticket_orders WHERE account_id IS NOT NULL") === 1);
+check('exactly one "ready" email was queued', (int) $sqlv("SELECT COUNT(*) FROM notification_outbox WHERE type = 'nominee_access_pass'") === 1);
+check('another nominee never sees these tickets', $nb->get('/nominee/access-pass')[1]['tickets'] === []);
+
+// ---- the pass is not a public product
+check('the pass type is not in the public ticket list', !in_array('Nominee Access Pass', array_column((new Client())->get('/ticket-types')[1], 'name'), true));
+check('nor in the admin ticket types', !in_array('Nominee Access Pass', array_column($sa->get("/admin/ticket-types?edition=$ed")[1]['types'] ?? [], 'name'), true));
+$passType = (int) $sqlv("SELECT id FROM ticket_types WHERE kind = 'access_pass' LIMIT 1");
+check('it cannot be bought through the public order form', (new Client())->post('/tickets/orders', ['typeId' => $passType, 'qty' => 1, 'name' => 'Sneaky Buyer', 'email' => 'sneak@test.dev', 'phone' => '08030000000'])[0] === 422);
+check('and the admin cannot edit or delete it like a normal type', $sa->patch("/admin/ticket-types/$passType", ['edition' => $ed, 'name' => 'Hacked', 'price' => 5000, 'seats' => 1, 'maxPerOrder' => 5, 'description' => '', 'perks' => [], 'active' => true])[0] === 422 && $sa->delete("/admin/ticket-types/$passType", ['edition' => $ed])[0] === 422);
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => $codes[0], 'email' => 'na@test.dev']);
+check('the pass can be looked up with its code and the nominee’s email', $c === 200 && count($r['tickets'] ?? []) >= 1, $c . json_encode($r));
+
+// ---- at the gate
+[$c, $r] = $gate->post('/admin/scan', ['edition' => $ed, 'code' => $codes[0]]);
+check('the gate accepts the nominee’s ticket and shows it is an Access Pass', $c === 200 && $r['result'] === 'valid' && ($r['ticket']['accessPass'] ?? false) === true && ($r['ticket']['typeName'] ?? '') === 'Nominee Access Pass', json_encode($r));
+$catName = (string) $sqlv("SELECT name FROM categories WHERE id = 2");
+check('and which categories they are nominated in', in_array($catName, $r['ticket']['nomineeCategories'] ?? [], true), json_encode($r['ticket']['nomineeCategories'] ?? null));
+check('the gate shows the whole group, so staff know who came together', count($r['group'] ?? []) === 3);
+check('the same code cannot be used twice', $gate->post('/admin/scan', ['edition' => $ed, 'code' => $codes[0]])[1]['result'] === 'used');
+check('a guest ticket is valid on its own', $gate->post('/admin/scan', ['edition' => $ed, 'code' => $codes[1]])[1]['result'] === 'valid');
+$st = $sa->get("/admin/tickets?edition=$ed&page=1&view=orders&stats=1")[1];
+check('admin totals count the passes apart from paid tickets and revenue', ($st['stats']['accessPasses'] ?? null) === 3 && (float) ($st['stats']['revenue'] ?? 0) === (float) $sqlv("SELECT COALESCE(SUM(amount),0) FROM ticket_orders WHERE status = 'paid' AND account_id IS NULL"), json_encode($st['stats'] ?? $st));
+
+// ---- settings changes afterwards
+$ap(['enabled' => true, 'guests' => 0]);
+$nc = new Client('nominee'); $db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = {$entry['nb']}");
+$nc->login('nb@test.dev', 'Test-Pass-12345');
+check('a later change to guests applies to new claims only', count($nc->post('/nominee/access-pass')[1]['tickets'] ?? []) === 1 && count($na->get('/nominee/access-pass')[1]['tickets']) === 3);
+$ap(['enabled' => false, 'guests' => 0]);
+check('switching the pass off hides nothing already claimed', $na->get('/nominee/access-pass')[1]['claimed'] === true && count($na->get('/nominee/access-pass')[1]['tickets']) === 3);
+$db->exec("UPDATE nominee_entries SET status = 'rejected' WHERE id = {$entry['nb']}");
+$sa->put("/admin/editions/$ed/access-pass", ['enabled' => false, 'guests' => 0]);
+
+// ================================================================== O. PROMO FLIER AND NICKNAME (Round 2, phase 13)
+group('O. Promo flier: admin look and wording, nominee nickname');
+$pubFlier = fn () => (array_column((new Client())->get('/editions')[1]['editions'] ?? [], null, 'id')[$ed]['flier'] ?? null);
+$f0 = $pubFlier();
+check('a new edition has a working default flier', is_array($f0) && $f0['enabled'] === true && $f0['headline'] !== '' && preg_match('/^#[0-9a-f]{6}$/', $f0['bg']) === 1, json_encode($f0));
+$fl = ['enabled' => true, 'headline' => 'Vote for me', 'tagline' => 'OGA 10.0 nominee', 'footer' => 'Scan to vote', 'bg' => '#101820', 'accent' => '#ffcc00', 'text' => '#FFFFFF', 'showQr' => true, 'showCategory' => false];
+check('the admin can set the look and wording', $sa->put("/admin/editions/$ed/flier", $fl)[0] === 200);
+$f1 = $pubFlier();
+check('the public edition list carries it (colours normalised)', $f1['headline'] === 'Vote for me' && $f1['accent'] === '#ffcc00' && $f1['text'] === '#ffffff' && $f1['showCategory'] === false && $f1['tagline'] === 'OGA 10.0 nominee', json_encode($f1));
+check('a headline is required', $sa->put("/admin/editions/$ed/flier", ['headline' => '  '] + $fl)[0] === 422);
+check('colours must be six-digit hex', $sa->put("/admin/editions/$ed/flier", ['bg' => 'red'] + $fl)[0] === 422 && $sa->put("/admin/editions/$ed/flier", ['accent' => 'url(javascript:1)'] + $fl)[0] === 422 && $sa->put("/admin/editions/$ed/flier", ['text' => '#12345'] + $fl)[0] === 422);
+check('texts are length-limited', $sa->put("/admin/editions/$ed/flier", ['headline' => str_repeat('x', 41)] + $fl)[0] === 422 && $sa->put("/admin/editions/$ed/flier", ['footer' => str_repeat('x', 81)] + $fl)[0] === 422);
+check('a rejected save changes nothing', $pubFlier()['accent'] === '#ffcc00');
+check('staff without settings access cannot change it', $gate->put("/admin/editions/$ed/flier", $fl)[0] === 403);
+check('the flier can be switched off for the edition', $sa->put("/admin/editions/$ed/flier", ['enabled' => false] + $fl)[0] === 200 && $pubFlier()['enabled'] === false);
+$sa->put("/admin/editions/$ed/flier", $fl);
+check('the change is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Updated the promo flier'") >= 2);
+
+// ---- the nickname
+$eid = (int) $sqlv("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id LIMIT 1");
+$prof = fn (array $o = []) => $m1->patch("/nominee/entries/$eid", array_merge(['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'One bio for all'], $o));
+check('a nominee can set a nickname', $prof(['nickname' => 'Mr Multi'])[0] === 200 && $sqlv("SELECT nickname FROM nominee_entries WHERE id = $eid") === 'Mr Multi');
+check('it is shared by all their categories in the edition', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND nickname = 'Mr Multi'") === (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid"));
+check('the nominee sees it back on their entries', in_array('Mr Multi', array_column($m1->get('/nominee/me')[1]['entries'] ?? [], 'nickname'), true));
+check('saving the profile without a nickname keeps it', $prof()[0] === 200 && $sqlv("SELECT nickname FROM nominee_entries WHERE id = $eid") === 'Mr Multi');
+check('an empty nickname clears it', $prof(['nickname' => ''])[0] === 200 && $sqlv("SELECT nickname FROM nominee_entries WHERE id = $eid") === null);
+$prof(['nickname' => 'Mr Multi']);
+check('a nickname with markup or control characters is refused', $prof(['nickname' => '<b>Hi</b>'])[0] === 422 && $prof(['nickname' => "Bad\x07name"])[0] === 422);
+check('a nickname longer than 40 characters is refused', $prof(['nickname' => str_repeat('n', 41)])[0] === 422);
+check('the nickname is never in the public data', !str_contains((new Client())->get('/nominees')[2], 'Mr Multi'));
+check('another nominee cannot set it on someone else’s entry', $na->patch("/nominee/entries/$eid", ['name' => 'Hijack', 'phone' => '08031111111', 'department' => 'X', 'nickname' => 'Hijacked'])[0] === 404 && $sqlv("SELECT nickname FROM nominee_entries WHERE id = $eid") === 'Mr Multi');
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

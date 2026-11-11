@@ -48,8 +48,8 @@ final class Entries
 
     public static function syncProfile(\PDO $db, int $accountId, int $editionId, array $f): void
     {
-        $db->prepare('UPDATE nominee_entries SET name = ?, phone = ?, department = ?, level = ?, bio = ? WHERE account_id = ? AND edition_id = ?')
-            ->execute([$f['name'], $f['phone'], $f['department'], $f['level'], $f['bio'], $accountId, $editionId]);
+        $db->prepare('UPDATE nominee_entries SET name = ?, nickname = ?, phone = ?, department = ?, level = ?, bio = ? WHERE account_id = ? AND edition_id = ?')
+            ->execute([$f['name'], $f['nickname'] ?? null, $f['phone'], $f['department'], $f['level'], $f['bio'], $accountId, $editionId]);
     }
 
     public static function photosOf(\PDO $db, int $accountId, int $editionId): array

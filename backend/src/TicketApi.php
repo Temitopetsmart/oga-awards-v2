@@ -56,7 +56,7 @@ final class TicketApi
         if (!$ed || empty($features['tickets'])) {
             self::fail('Ticket sales are not open right now.');
         }
-        $st = $pdo->prepare('SELECT * FROM ticket_types WHERE id = ? AND edition_id = ? AND active = 1');
+        $st = $pdo->prepare("SELECT * FROM ticket_types WHERE id = ? AND edition_id = ? AND active = 1 AND kind = 'public'");
         $st->execute([(int) ($in['typeId'] ?? 0), $ed['id']]);
         $type = $st->fetch() ?: self::fail('That ticket type is not available.');
 

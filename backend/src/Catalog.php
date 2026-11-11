@@ -48,7 +48,10 @@ final class Catalog
                 s.max_votes_per_payment,
                 s.max_paid_payments_per_email_per_category,
                 s.nominee_registration_fee,
-                s.max_categories_per_nominee
+                s.max_categories_per_nominee,
+                s.access_pass_enabled,
+                s.access_pass_guests,
+                s.flier_config
             FROM editions e
             LEFT JOIN edition_settings s ON s.edition_id = e.id
             ORDER BY e.year DESC, e.id DESC;'
@@ -102,7 +105,9 @@ final class Catalog
                     'maxPaidVotesPerEmailPerCategory' => self::num($e['max_paid_payments_per_email_per_category']),
                     'nomineeRegistrationFee'          => self::num($e['nominee_registration_fee']),               
                     'maxCategoriesPerNominee'         => (int) ($e['max_categories_per_nominee'] ?? 3),
-                    ],
+                ],
+                'accessPass' => ['enabled' => (bool) ($e['access_pass_enabled'] ?? 0), 'guests' => (int) ($e['access_pass_guests'] ?? 0)],
+                'flier'      => Flier::merged($e['flier_config'] ?? null),                    
                 'occasions'  => $occ[$e['id']] ?? [],
             ];
         }
@@ -156,7 +161,7 @@ final class Catalog
         $rows = self::db()->query(
             'SELECT t.*, e.slug AS edition_slug FROM ticket_types t
                JOIN editions e ON e.id = t.edition_id
-              WHERE t.active = 1 AND e.status <> \'draft\'
+              WHERE t.active = 1 AND t.kind = \'public\' AND e.status <> \'draft\'
               ORDER BY e.year DESC, t.sort_order, t.id'
         )->fetchAll();
         return array_map(fn ($t) => [

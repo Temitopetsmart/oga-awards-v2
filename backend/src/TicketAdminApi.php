@@ -51,10 +51,12 @@ final class TicketAdminApi
         $t = $pdo->prepare('SELECT COUNT(*) AS issued, SUM(checked_in_at IS NOT NULL) AS used FROM tickets WHERE edition_id = ?');
         $t->execute([$editionId]);
         $t = $t->fetch();
-        $o = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) AS qty, COALESCE(SUM(amount), 0) AS amount FROM ticket_orders WHERE edition_id = ? AND status = 'paid'");
+        $o = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) AS qty, COALESCE(SUM(amount), 0) AS amount FROM ticket_orders WHERE edition_id = ? AND status = 'paid' AND account_id IS NULL");
         $o->execute([$editionId]);
         $o = $o->fetch();
-        return ['issued' => (int) $t['issued'], 'used' => (int) $t['used'], 'paidQty' => (int) $o['qty'], 'revenue' => $money ? (float) $o['amount'] : 0.0];
+        $p = $pdo->prepare('SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE k.edition_id = ? AND o.account_id IS NOT NULL');
+        $p->execute([$editionId]);
+        return ['issued' => (int) $t['issued'], 'used' => (int) $t['used'], 'paidQty' => (int) $o['qty'], 'revenue' => $money ? (float) $o['amount'] : 0.0, 'accessPasses' => (int) $p->fetchColumn()];
     }
 
     /**
@@ -226,6 +228,9 @@ final class TicketAdminApi
         $st = self::pdo()->prepare('SELECT t.*, e.slug AS edition_slug FROM ticket_types t JOIN editions e ON e.id = t.edition_id WHERE t.id = ?');
         $st->execute([$id]);
         $t = $st->fetch() ?: self::fail('That ticket type was not found.', 404);
+        if ($t['kind'] !== 'public') {
+            self::fail('The Nominee Access Pass is managed in Settings, not here.');
+        }
         return $t + ['actor' => Access::require('tickets.manageTypes', $t['edition_slug'])];
     }
 
@@ -277,7 +282,7 @@ final class TicketAdminApi
             $pdo->prepare('INSERT INTO ticket_scans (edition_id, code_scanned, ticket_id, result, scanned_by) VALUES (?, ?, ?, ?, ?)')
                 ->execute([$ed['id'], mb_substr($code, 0, 60), $ticketId, $result, $actor['id']]);
         };
-        $answer = function (string $result, ?array $k, string $detail = '') use ($log): never {
+        $answer = function (string $result, ?array $k, string $detail = '') use ($log, $pdo): never {
             $log($result === 'bad' ? 'invalid' : $result, $k ? (int) $k['id'] : null);
             $out = ['ok' => true, 'result' => $result, 'detail' => $detail];
             if ($k) {
@@ -285,6 +290,15 @@ final class TicketAdminApi
                     'seats' => (int) $k['seats'], 'groupCode' => $k['group_code'], 'tableLabel' => $k['table_label'],
                     'usedAt' => $k['checked_in_at'] ? (new \DateTimeImmutable($k['checked_in_at']))->format('c') : null, 'usedBy' => $k['checked_by'] ?? null];
                 $out['group'] = self::groupInfo((int) $k['group_id']);
+                if (!empty($k['account_id'])) {          // a Nominee Access Pass: show whose it is and what they are nominated for
+                    $cs = $pdo->prepare("SELECT c.name FROM nominee_entries n JOIN categories c ON c.id = n.category_id WHERE n.account_id = ? AND n.edition_id = ? AND n.status = 'approved' ORDER BY n.id");
+                    $cs->execute([$k['account_id'], $k['edition_id']]);
+                    $out['ticket']['accessPass'] = true;
+                    $out['ticket']['nomineeCategories'] = $cs->fetchAll(\PDO::FETCH_COLUMN);
+                    if ($out['ticket']['nomineeCategories'] !== []) {
+                        $out['detail'] .= ' · Nominated: ' . implode(', ', $out['ticket']['nomineeCategories']);
+                    }
+                }
             }
             Response::json($out);
         };
@@ -297,10 +311,10 @@ final class TicketAdminApi
         $won = $flip->rowCount() === 1;
 
         $st = $pdo->prepare(
-            'SELECT k.*, ty.name AS type_name, g.group_code, g.seats, g.table_label, p.name AS checked_by
-               FROM tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id
-               JOIN ticket_groups g ON g.id = k.group_id LEFT JOIN people p ON p.id = k.checked_in_by
-              WHERE k.ticket_code = ?'
+            'SELECT k.*, o.account_id, ty.name AS type_name, ty.kind AS type_kind, g.group_code, g.seats, g.table_label, p.name AS checked_by
+            FROM tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id
+            JOIN ticket_groups g ON g.id = k.group_id LEFT JOIN people p ON p.id = k.checked_in_by
+            WHERE k.ticket_code = ?'
         );
         $st->execute([$code]);
         $k = $st->fetch();

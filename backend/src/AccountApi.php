@@ -38,6 +38,8 @@ final class AccountApi
         if ($method === 'POST' && $path === '/nominee/register/confirm') self::confirmRegistration();
         if ($method === 'PATCH' && preg_match('#^/nominee/entries/(\d+)$#', $path, $m)) self::updateEntry((int) $m[1]);
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\\d+)/resubmit$#', $path, $m)) self::resubmit((int) $m[1]);
+        if ($method === 'GET' && $path === '/nominee/access-pass') self::accessPass(false);
+        if ($method === 'POST' && $path === '/nominee/access-pass') self::accessPass(true);
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
         if ($method === 'POST' && $path === '/nominee/password/change') self::changePassword();
@@ -173,6 +175,7 @@ final class AccountApi
             'thumb'      => Photos::thumbOf($e['photo_path']),
             'status'     => $e['status'],
             'reviewNote' => $e['review_note'] ?? '',
+            'nickname'   => $e['nickname'] ?? '',
             'createdAt'  => (new \DateTimeImmutable($e['created_at']))->format('c'),
         ];
     }
@@ -486,13 +489,13 @@ final class AccountApi
                 if (count($have) + count($catIds) > $max) {
                     throw new \DomainException("You can enter up to $max " . ($max === 1 ? 'category' : 'categories') . ' in this edition.');
                 }
-                $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, photo_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, photo_path, nickname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
                 $ids = [];
                 foreach ($catIds as $cid) {
                     if (in_array($cid, $have, true)) {
                         throw new \DomainException('You already entered that category.');
                     }
-                    $ins->execute([$ed['id'], $accountId, $cid, $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio'], $photo]);
+                    $ins->execute([$ed['id'], $accountId, $cid, $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio'], $photo, $prev['nickname'] ?? null]);
                     $ids[] = (string) $db->lastInsertId();
                 }
                 return $ids;
@@ -578,6 +581,37 @@ final class AccountApi
 
     // ------------------------------------------------------ my entry, photo
 
+    /** Phase 12: the nominee's free event pass. GET shows it; POST claims it (once per edition). */
+    private static function accessPass(bool $claim): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
+        $pdo = self::pdo();
+        $ed = AccessPass::activeEdition();
+        $cfg = $ed ? AccessPass::settings((int) $ed['id']) : ['enabled' => false, 'guests' => 0];
+        $out = ['ok' => true, 'enabled' => $cfg['enabled'], 'guests' => $cfg['guests'], 'eligible' => false, 'claimed' => false, 'tickets' => [], 'edition' => $ed['slug'] ?? null];
+        $tickets = $ed ? AccessPass::tickets($pdo, (int) $a['id'], (int) $ed['id']) : [];   // a claimed pass stays visible even if the admin later switches the feature off
+        if ($ed && $cfg['enabled']) {
+            $out['eligible'] = AccessPass::eligible($pdo, (int) $a['id'], (int) $ed['id']);
+            if ($claim && $tickets === []) {
+                if (!$out['eligible']) {
+                    self::fail('Your Access Pass opens once one of your entries is approved.', 403);
+                }
+                $tickets = AccessPass::claim($a, $ed);
+                self::queue('nominee_access_pass', $a['email'], ['editionName' => trim($ed['name'] . ' ' . ($ed['edition_label'] ?? ''))]);
+                Audit::log(null, 'Nominee claimed an Access Pass', $a['email'], (int) $ed['id']);
+            }
+            $out['tickets'] = $tickets;
+            $out['claimed'] = $tickets !== [];
+        } elseif ($claim && $tickets === []) {
+            self::fail('The Access Pass is not available right now.', 403);
+        } else {
+            $out['tickets'] = $tickets;
+            $out['claimed'] = $tickets !== [];
+        }
+        Response::json($out);
+    }
+    
         /** A rejected entry goes back to review after the nominee has fixed what the reviewer asked for. */
     private static function resubmit(int $id): never
     {
@@ -622,6 +656,11 @@ private static function updateEntry(int $id): never
 
     $bio = Request::str($in, 'bio', 600);
 
+    $nick = array_key_exists('nickname', $in) ? trim(Request::str($in, 'nickname', 60)) : (string) ($e['nickname'] ?? '');
+    if (mb_strlen($nick) > 40 || preg_match('/[\x00-\x1F\x7F<>]/', $nick)) {
+        self::fail('Your nickname can be at most 40 characters, with no special symbols.', 422, ['fields' => ['nickname' => 'At most 40 characters.']]);
+    }
+
     if (mb_strlen($bio) > 500) {
         self::fail('Your bio can be at most 500 characters.', 422, [
             'fields' => ['bio' => 'At most 500 characters.']
@@ -630,7 +669,7 @@ private static function updateEntry(int $id): never
 
     // The same person in every category of this edition: one set of details.
     Entries::syncProfile(self::pdo(), (int) $a['id'], (int) $e['edition_id'], [
-        'name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'bio' => $bio ?: null,
+        'name' => $name, 'nickname' => $nick !== '' ? $nick : null, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'bio' => $bio ?: null,
     ]);
 
     Cache::flush();

@@ -14,6 +14,8 @@ import {
   // updateEditionDetails,
   saveEditionState,
   saveVotingRules,
+  saveAccessPass,
+  saveFlier,
 } from "../services/edition.api.js";
 
 export const title = "Settings";
@@ -204,6 +206,110 @@ export default async function settings({ edition: ed, can, access }) {
           </fieldset>
         </form>`,
         "cardVoting",
+      )}
+      ${card(
+        "Nominee Access Pass",
+        html` <form id="passForm" novalidate>
+          <fieldset ${lock}>
+            <p class="small text-secondary">
+              A free event ticket for approved nominees. Each nominee claims one
+              pass for this edition and can bring the number of guests you set.
+              Nominees come whether they win or not; winners stay secret until
+              you publish them. Passes use the normal gate scanner.
+            </p>
+            ${sw(
+              "passEnabled",
+              "Nominees can claim an Access Pass",
+              o.accessPass?.enabled,
+            )}
+            <div class="row">
+              ${field({
+                label: "Guests per pass",
+                name: "guests",
+                type: "number",
+                required: true,
+                value: o.accessPass?.guests ?? 0,
+                col: "col-md-4",
+                help: "0 to 5 extra tickets with each pass. A later change applies to passes claimed after it.",
+              })}
+            </div>
+            ${save("Save Access Pass")}
+          </fieldset>
+        </form>`,
+        "cardPass",
+      )}
+      ${card(
+        "Nominee promo flier",
+        html` <form id="flierForm" novalidate>
+          <fieldset ${lock}>
+            <p class="small text-secondary">
+              Nominees download a flier with their photo, name and a QR code to
+              their profile. You decide how it looks and what it says.
+            </p>
+            ${sw(
+              "flierEnabled",
+              "Nominees can download a flier",
+              o.flier?.enabled ?? true,
+            )}
+            ${sw(
+              "showQr",
+              "Show a QR code to the nominee’s profile",
+              o.flier?.showQr ?? true,
+            )}
+            ${sw(
+              "showCategory",
+              "Show the category",
+              o.flier?.showCategory ?? true,
+            )}
+            <div class="row">
+              ${field({
+                label: "Headline",
+                name: "headline",
+                required: true,
+                value: o.flier?.headline ?? "Vote for me",
+                col: "col-md-4",
+                help: "Up to 40 characters.",
+              })}
+              ${field({
+                label: "Tagline",
+                name: "tagline",
+                value: o.flier?.tagline ?? "",
+                col: "col-md-4",
+                help: "Optional, up to 80 characters.",
+              })}
+              ${field({
+                label: "Footer",
+                name: "footer",
+                value: o.flier?.footer ?? "",
+                col: "col-md-4",
+                help: "Shown above the QR code, up to 80 characters.",
+              })}
+              ${field({
+                label: "Background colour",
+                name: "bg",
+                type: "color",
+                value: o.flier?.bg ?? "#14110a",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "Accent colour",
+                name: "accent",
+                type: "color",
+                value: o.flier?.accent ?? "#d4a84b",
+                col: "col-md-4",
+              })}
+              ${field({
+                label: "Text colour",
+                name: "text",
+                type: "color",
+                value: o.flier?.text ?? "#ffffff",
+                col: "col-md-4",
+              })}
+            </div>
+            ${save("Save flier")}
+          </fieldset>
+        </form>`,
+        "cardFlier",
       )}
       ${card(
         "Contact & social links (all editions)",
@@ -576,6 +682,37 @@ export async function init(root, { admin, edition: ed, can, access }) {
           maxCategoriesPerNominee: Number(v.maxCategoriesPerNominee),
         });
         notify.toast("success", "Voting rules saved");
+      },
+    });
+    bindForm(root.querySelector("#passForm"), {
+      schema: { guests: [rules.required(), whole(0, 5)] },
+      async onSubmit(v, form) {
+        await saveAccessPass(ed.id, {
+          enabled: form.elements.passEnabled.checked,
+          guests: Number(v.guests),
+        });
+        notify.toast("success", "Access Pass saved");
+      },
+    });
+    bindForm(root.querySelector("#flierForm"), {
+      schema: {
+        headline: [rules.required(), rules.max(40)],
+        tagline: [rules.max(80)],
+        footer: [rules.max(80)],
+      },
+      async onSubmit(v, form) {
+        await saveFlier(ed.id, {
+          enabled: form.elements.flierEnabled.checked,
+          showQr: form.elements.showQr.checked,
+          showCategory: form.elements.showCategory.checked,
+          headline: v.headline.trim(),
+          tagline: (v.tagline ?? "").trim(),
+          footer: (v.footer ?? "").trim(),
+          bg: v.bg,
+          accent: v.accent,
+          text: v.text,
+        });
+        notify.toast("success", "Flier saved");
       },
     });
     bindForm(root.querySelector("#contactForm"), {
