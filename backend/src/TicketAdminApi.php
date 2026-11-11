@@ -172,7 +172,7 @@ final class TicketAdminApi
         $slug = (string) ($_GET['edition'] ?? '');
         Access::require('tickets.view', $slug);
         $ed = self::edition($slug);
-        $st = self::pdo()->prepare('SELECT * FROM ticket_types WHERE edition_id = ? ORDER BY sort_order, id');
+        $st = self::pdo()->prepare("SELECT * FROM ticket_types WHERE edition_id = ? AND kind = 'public' ORDER BY sort_order, id");
         $st->execute([$ed['id']]);
         Response::json(['ok' => true, 'types' => array_map(fn ($t) => [
             'id' => (string) $t['id'], 'occasionId' => $slug, 'name' => $t['name'], 'description' => $t['description'],
