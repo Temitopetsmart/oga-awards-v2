@@ -299,3 +299,7 @@ export const getAccessPass = () => call("/nominee/access-pass");
 /** Claims the free pass (once per edition). */
 export const claimAccessPass = () =>
   call("/nominee/access-pass", { method: "POST" });
+
+/** Announcements for a signed-in nominee: the public ones plus the "nominees only" ones. */
+export const getNomineeAnnouncements = async () =>
+  (await call("/nominee/announcements")).announcements;

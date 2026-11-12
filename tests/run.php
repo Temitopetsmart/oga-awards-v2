@@ -1295,6 +1295,120 @@ check('a nickname longer than 40 characters is refused', $prof(['nickname' => st
 check('the nickname is never in the public data', !str_contains((new Client())->get('/nominees')[2], 'Mr Multi'));
 check('another nominee cannot set it on someone else’s entry', $na->patch("/nominee/entries/$eid", ['name' => 'Hijack', 'phone' => '08031111111', 'department' => 'X', 'nickname' => 'Hijacked'])[0] === 404 && $sqlv("SELECT nickname FROM nominee_entries WHERE id = $eid") === 'Mr Multi');
 
+// ================================================================== P. ANNOUNCEMENTS (Round 2, phase 14)
+group('P. Announcements: public, nominees only, scheduled, pinned');
+$db->exec("UPDATE editions SET status = 'active', state_mode = 'auto', force_state = NULL WHERE id = 2");
+check('migration 016 made the announcements and Face of the period tables and the permissions', $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('announcements', 'face_of_period')") == 2
+    && $sqlv("SELECT COUNT(*) FROM permissions WHERE perm_key IN ('announcements.view', 'announcements.manage', 'spotlight.view', 'spotlight.manage')") == 4);
+check('the editor and publicity roles got them by default', $sqlv("SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug IN ('editor', 'publicity') AND rp.perm_key IN ('announcements.manage', 'spotlight.manage')") == 4);
+$ann = fn (array $o = []) => $sa->post('/admin/announcements', array_merge(['edition' => $ed, 'title' => 'Voting opens Monday', 'body' => "Get ready.\nVoting opens Monday at 9am.", 'audience' => 'public', 'pinned' => false, 'status' => 'published'], $o));
+$pubAnn = fn () => (new Client())->get('/announcements')[1];
+$titles = fn (array $l) => array_column($l, 'title');
+check('staff without announcement permissions cannot list or add', $gate->get("/admin/announcements?edition=$ed")[0] === 403 && $gate->post('/admin/announcements', ['edition' => $ed, 'title' => 'Nope nope', 'body' => 'x'])[0] === 403);
+check('anonymous callers are refused', (new Client())->get("/admin/announcements?edition=$ed")[0] === 401);
+[$c, $r] = $ann();
+check('an admin can publish an announcement', $c === 200 && !empty($r['id']), json_encode($r));
+$id1 = (int) $r['id'];
+check('it shows on the public site straight away', in_array('Voting opens Monday', $titles($pubAnn()), true));
+check('line breaks are kept', str_contains(json_encode($pubAnn()[0]['body']), '\n'));
+check('a title that is too short, a missing message or a bad audience is refused', $ann(['title' => 'ab'])[0] === 422 && $ann(['body' => ''])[0] === 422 && $ann(['audience' => 'everyone'])[0] === 422 && $ann(['status' => 'later'])[0] === 422);
+check('a message over 2000 characters is refused', $ann(['body' => str_repeat('x', 2001)])[0] === 422);
+check('control characters are refused', $ann(['title' => "Bad\x07title"])[0] === 422);
+check('dates must be valid and the end must come after the start', $ann(['publishAt' => 'soon'])[0] === 422 && $ann(['publishAt' => '2030-01-02T10:00:00+01:00', 'expiresAt' => '2030-01-01T10:00:00+01:00'])[0] === 422);
+check('nothing was half-saved by the refusals', (int) $sqlv("SELECT COUNT(*) FROM announcements") === 1);
+$draft = $ann(['title' => 'A draft', 'status' => 'draft']);
+check('a draft is not public', $draft[0] === 200 && !in_array('A draft', $titles($pubAnn()), true));
+$nomOnly = $ann(['title' => 'Nominees: rehearsal at 5pm', 'audience' => 'nominees']);
+check('a nominees-only message is not public', $nomOnly[0] === 200 && !in_array('Nominees: rehearsal at 5pm', $titles($pubAnn()), true));
+$future = $ann(['title' => 'Scheduled for later', 'publishAt' => date('c', time() + 7200)]);
+check('a scheduled announcement stays hidden until its time', $future[0] === 200 && !in_array('Scheduled for later', $titles($pubAnn()), true));
+$db->exec("UPDATE announcements SET publish_at = NOW() - INTERVAL 1 MINUTE WHERE id = {$future[1]['id']}"); App\Cache::flush();
+check('and appears when the time comes', in_array('Scheduled for later', $titles($pubAnn()), true));
+$exp = $ann(['title' => 'Ends soon', 'expiresAt' => date('c', time() + 7200)]);
+check('an announcement is visible before its end time', in_array('Ends soon', $titles($pubAnn()), true));
+$db->exec("UPDATE announcements SET expires_at = NOW() - INTERVAL 1 MINUTE WHERE id = {$exp[1]['id']}"); App\Cache::flush();
+check('and disappears after it', !in_array('Ends soon', $titles($pubAnn()), true));
+$pin = $ann(['title' => 'Pinned: read me first', 'pinned' => true]);
+check('pinned announcements come first', $pubAnn()[0]['title'] === 'Pinned: read me first');
+check('the public list never exposes who wrote it or its audience settings', array_diff(array_keys($pubAnn()[0]), ['id', 'title', 'body', 'pinned', 'at']) === []);
+check('a script in a message is kept as plain text data (the pages escape it when showing it)', $ann(['title' => 'XSS test here', 'body' => '<script>alert(1)</script>'])[0] === 200 && in_array('<script>alert(1)</script>', array_column($pubAnn(), 'body'), true));
+
+// ---- nominees
+check('only signed-in nominees can read the nominee feed', (new Client('nominee'))->get('/nominee/announcements')[0] === 401);
+$nl = $na->get('/nominee/announcements');
+check('a nominee sees public and nominees-only messages', $nl[0] === 200 && in_array('Nominees: rehearsal at 5pm', $titles($nl[1]['announcements']), true) && in_array('Voting opens Monday', $titles($nl[1]['announcements']), true));
+check('but not drafts', !in_array('A draft', $titles($nl[1]['announcements']), true));
+check('the admin list shows everything, with which are live', (function () use ($sa, $ed, $titles) {
+    $l = $sa->get("/admin/announcements?edition=$ed")[1]['announcements'] ?? [];
+    $live = array_column($l, 'live', 'title');
+    return count($l) >= 7 && $live['A draft'] === false && $live['Voting opens Monday'] === true && $live['Ends soon'] === false;
+})());
+
+// ---- edit and delete
+check('an admin can edit one', $sa->patch("/admin/announcements/$id1", ['edition' => $ed, 'title' => 'Voting opens Tuesday', 'body' => 'Moved by a day.', 'audience' => 'public', 'status' => 'published', 'pinned' => false])[0] === 200 && in_array('Voting opens Tuesday', $titles($pubAnn()), true) && !in_array('Voting opens Monday', $titles($pubAnn()), true));
+check('and unpublish it by making it a draft', $sa->patch("/admin/announcements/$id1", ['edition' => $ed, 'title' => 'Voting opens Tuesday', 'body' => 'Moved by a day.', 'status' => 'draft'])[0] === 200 && !in_array('Voting opens Tuesday', $titles($pubAnn()), true));
+check('and delete it', $sa->delete("/admin/announcements/$id1", ['edition' => $ed])[0] === 200 && (int) $sqlv("SELECT COUNT(*) FROM announcements WHERE id = $id1") === 0);
+check('editing or deleting something that is gone is a clean 404', $sa->patch("/admin/announcements/$id1", ['edition' => $ed, 'title' => 'Ghost title', 'body' => 'x'])[0] === 404 && $sa->delete("/admin/announcements/$id1", ['edition' => $ed])[0] === 404);
+check('gate staff cannot edit or delete', $gate->patch("/admin/announcements/{$pin[1]['id']}", ['edition' => $ed, 'title' => 'Hacked title', 'body' => 'x'])[0] === 403 && $gate->delete("/admin/announcements/{$pin[1]['id']}", ['edition' => $ed])[0] === 403);
+check('every change is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action IN ('Added an announcement', 'Edited an announcement', 'Deleted an announcement')") >= 6);
+$db->exec("DELETE FROM announcements"); App\Cache::flush();
+
+// ================================================================== Q. FACE OF THE PERIOD AND WINNERS SHOWCASE (Round 2, phase 15)
+group('Q. Face of the period and the winners showcase');
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = {$entry['na']}");
+$db->exec("UPDATE nominee_entries SET status = 'rejected' WHERE id = {$entry['nb']}");
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = $eid"); App\Cache::flush();
+$face = fn (array $o = []) => $sa->post('/admin/spotlight', array_merge(['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'November 2026', 'headline' => 'Face of the month', 'note' => 'Brightens every room.', 'featured' => true], $o));
+$pubFace = fn () => (new Client())->get('/spotlight')[1];
+check('staff without spotlight permissions cannot list or add', $gate->get("/admin/spotlight?edition=$ed")[0] === 403 && $gate->post('/admin/spotlight', ['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'X period'])[0] === 403);
+check('nobody is featured to begin with', $pubFace() === ['featured' => null, 'history' => []]);
+check('a nominee who is not approved cannot be featured', $face(['nomineeId' => (string) $entry['nb']])[0] === 422);
+check('nor someone from another edition', $face(['nomineeId' => (string) $sqlv("SELECT id FROM nominee_entries WHERE edition_id = 1 AND status = 'approved' LIMIT 1")])[0] === 422);
+check('a period name is required, within 60 characters', $face(['period' => ' '])[0] === 422 && $face(['period' => str_repeat('p', 61)])[0] === 422);
+check('the note and headline are length-limited', $face(['note' => str_repeat('n', 501)])[0] === 422 && $face(['headline' => str_repeat('h', 121)])[0] === 422);
+check('nothing was saved by the refusals', (int) $sqlv("SELECT COUNT(*) FROM face_of_period") === 0);
+[$c, $r] = $face();
+check('an admin can feature an approved nominee', $c === 200, json_encode($r));
+$f = $pubFace();
+check('the public site shows them: name, category, period, note, photo', ($f['featured']['name'] ?? '') !== '' && $f['featured']['period'] === 'November 2026' && $f['featured']['note'] === 'Brightens every room.' && $f['featured']['category'] === $catName && array_key_exists('photo', $f['featured']), json_encode($f));
+check('it carries no counts, rankings or private details', array_intersect($walk($f), array_merge($banned, ['email', 'phone'])) === [] && !preg_match('/@test\.dev|HSWF\/\d\d/', json_encode($f)));
+check('the same period cannot be added twice', $face()[0] === 422);
+$id2 = (int) $sqlv("SELECT id FROM face_of_period ORDER BY id DESC LIMIT 1");
+check('a second face for a new period can be featured, and replaces the first on the home page', $face(['period' => 'December 2026', 'nomineeId' => (string) $eid, 'headline' => 'Face of December'])[0] === 200 && $pubFace()['featured']['period'] === 'December 2026' && count($pubFace()['history']) === 1 && $pubFace()['history'][0]['period'] === 'November 2026');
+check('only one is ever featured at a time', (int) $sqlv("SELECT COUNT(*) FROM face_of_period WHERE featured = 1") === 1);
+check('an admin can bring the earlier one back as the featured face', $sa->post("/admin/spotlight/$id2/feature")[0] === 200 && $pubFace()['featured']['period'] === 'November 2026' && (int) $sqlv("SELECT COUNT(*) FROM face_of_period WHERE featured = 1") === 1);
+check('an entry can be edited', $sa->patch("/admin/spotlight/$id2", ['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'November 2026', 'headline' => 'Our November star', 'note' => '', 'featured' => true])[0] === 200 && $pubFace()['featured']['headline'] === 'Our November star' && $pubFace()['featured']['note'] === '');
+check('the admin list shows all of them', count($sa->get("/admin/spotlight?edition=$ed")[1]['faces'] ?? []) === 2);
+$db->exec("UPDATE nominee_entries SET status = 'rejected' WHERE id = {$entry['na']}"); App\Cache::flush();
+check('if the nominee stops being approved, they leave the public site', ($pubFace()['featured']['period'] ?? null) !== 'November 2026');
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = {$entry['na']}"); App\Cache::flush();
+check('gate staff cannot edit, feature or delete', $gate->patch("/admin/spotlight/$id2", ['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'Hacked'])[0] === 403 && $gate->post("/admin/spotlight/$id2/feature")[0] === 403 && $gate->delete("/admin/spotlight/$id2", ['edition' => $ed])[0] === 403);
+check('an admin can remove one', $sa->delete("/admin/spotlight/$id2", ['edition' => $ed])[0] === 200 && (int) $sqlv("SELECT COUNT(*) FROM face_of_period WHERE id = $id2") === 0);
+check('removing something already gone is a clean 404', $sa->delete("/admin/spotlight/$id2", ['edition' => $ed])[0] === 404);
+check('the changes are in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action LIKE '%Face of the period%'") >= 4);
+$db->exec("DELETE FROM face_of_period"); App\Cache::flush();
+
+// ---- the winners showcase
+$db->exec("UPDATE nominee_entries SET status = 'approved', bio = " . $db->quote(str_repeat('A long and lovely story. ', 20)) . " WHERE id = {$entry['na']}");
+$db->exec("DELETE FROM winners WHERE edition_id = 2");
+$db->prepare("INSERT INTO winners (edition_id, category_id, nominee_entry_id) VALUES (2, 2, ?)")->execute([$entry['na']]);
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NULL, voting_open_at = NOW() - INTERVAL 30 DAY, voting_close_at = NOW() - INTERVAL 2 DAY, results_publish_at = NOW() - INTERVAL 1 DAY WHERE id = 2"); App\Cache::flush();
+$show = fn () => array_column((new Client())->get('/showcase')[1] ?? [], null, 'occasionId');
+check('winners that are not published are not in the showcase', !isset($show()[$ed]));
+$db->exec("UPDATE editions SET results_published_at = NOW() - INTERVAL 1 HOUR WHERE id = 2"); App\Cache::flush();
+$sc = $show();
+check('published winners appear, grouped by edition', isset($sc[$ed]) && count($sc[$ed]['winners']) === 1 && $sc[$ed]['edition'] !== '');
+check('with name, department, category, photo and a short intro', ($w = $sc[$ed]['winners'][0])['categoryId'] === '2' && $w['name'] !== '' && $w['category'] === $catName && array_key_exists('photo', $w) && mb_strlen($w['intro']) <= 200 && str_ends_with($w['intro'], '…'));
+check('and nothing else: no counts, rankings, contact details', array_keys($w) === ['categoryId', 'category', 'nomineeId', 'name', 'department', 'photo', 'thumb', 'intro'] && array_intersect($walk($sc), $banned) === []);
+check('earlier, completed editions are part of the hall of fame', isset($sc['oga-9']) && count($sc['oga-9']['winners']) >= 1);
+$sa->post('/admin/results/retract', ['edition' => $ed, 'reason' => 'Showcase test is over']);
+$db->exec("UPDATE editions SET results_published_at = NULL WHERE id = 2"); App\Cache::flush();
+check('retracting the results removes them from the showcase at once', !isset($show()[$ed]));
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NOW() - INTERVAL 1 HOUR WHERE id = 2");
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting-closed' WHERE id = 2"); App\Cache::flush();
+check('a state forced to “voting closed” hides them even though they are published', !isset($show()[$ed]));
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NULL WHERE id = 2"); App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

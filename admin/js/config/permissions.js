@@ -35,6 +35,11 @@ export const PERMISSIONS = [
   P("Results", "results.save", "Save winners"),
   P("Results", "results.publish", "Publish or retract results"),
 
+  P("Content", "announcements.view", "View announcements", "read"),
+  P("Content", "announcements.manage", "Manage announcements"),
+  P("Content", "spotlight.view", "View Face of the period", "read"),
+  P("Content", "spotlight.manage", "Manage Face of the period"),
+
   P("Finance", "finance.view", "See payment amounts and revenue", "read"),
   P("Finance", "finance.export", "Export financial data", "read"),
   P("Finance", "finance.reconcile", "Mark payments as paid"),
@@ -139,6 +144,10 @@ export const ROLE_TEMPLATES = [
     "messages.manage",
     "occasions.view",
     "occasions.manage",
+    "announcements.view", 
+    "announcements.manage", 
+    "spotlight.view", 
+    "spotlight.manage",
   ]),
   R(
     "role-publicity",
@@ -152,6 +161,10 @@ export const ROLE_TEMPLATES = [
       "messages.view",
       "occasions.view",
       "occasions.manage",
+      "announcements.view", 
+      "announcements.manage", 
+      "spotlight.view", 
+      "spotlight.manage",
     ],
   ),
   R("role-treasurer", "Treasurer", "Financial records, payments and exports.", [

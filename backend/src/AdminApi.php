@@ -242,6 +242,31 @@ final class AdminApi
             TicketAdminApi::scanSummary();
         }
 
+        // ---- Announcements and Face of the period ----
+        if ($method === 'GET' && $path === '/admin/announcements') {
+            AnnouncementApi::list();
+        }
+        if ($method === 'POST' && $path === '/admin/announcements') {
+            AnnouncementApi::create();
+        }
+        if (preg_match('#^/admin/announcements/(\\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && AnnouncementApi::update((int) $m[1]);
+            $method === 'DELETE' && AnnouncementApi::delete((int) $m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/spotlight') {
+            SpotlightApi::list();
+        }
+        if ($method === 'POST' && $path === '/admin/spotlight') {
+            SpotlightApi::create();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/spotlight/(\\d+)/feature$#', $path, $m)) {
+            SpotlightApi::feature((int) $m[1]);
+        }
+        if (preg_match('#^/admin/spotlight/(\\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && SpotlightApi::update((int) $m[1]);
+            $method === 'DELETE' && SpotlightApi::delete((int) $m[1]);
+        }
+        
         // ---- Dashboard, messages, activity log ----
         if ($method === 'GET' && $path === '/admin/dashboard') {
             DashboardApi::stats();

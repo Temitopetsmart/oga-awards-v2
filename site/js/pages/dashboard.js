@@ -40,6 +40,7 @@ import {
   resubmitNomineeEntry,
   getAccessPass,
   claimAccessPass,
+  getNomineeAnnouncements,
 } from "../../../shared/js/services/auth.service.js";
 import { pageHero, pageBody, notice } from "../sections/page-sections.js";
 
@@ -420,6 +421,7 @@ export default async function dashboard(ctx, { params }) {
               </div>`
             : ""}
           ${!readOnly && me.occasionId === ctx.occasion.id
+          <div id="updatesCard" class="mb-4"></div>
             ? html`<div id="passCard" class="mb-4"></div>`
             : ""}
           ${ctx.occasion.flier?.enabled && me.occasionId === ctx.occasion.id
@@ -795,6 +797,28 @@ export function init(root, ctx, { params }) {
       notify.failure(error);
     }
   });
+
+  // ---- announcements for nominees ----
+  const updatesBox = root.querySelector("#updatesCard");
+  if (updatesBox) {
+    getNomineeAnnouncements()
+      .then((list) => {
+        if (!list.length) return;
+        updatesBox.innerHTML = toHTML(html`<div class="oga-card">
+          <h2 class="h5 mt-0"><i class="fa-solid fa-bullhorn me-2"></i>Updates</h2>
+          ${list.slice(0, 5).map(
+            (a) => html`<div class="mb-3">
+              <strong>${a.pinned ? "📌 " : ""}${a.title}</strong>
+              <time class="small text-secondary ms-2"
+                >${a.at ? new Date(a.at).toLocaleDateString() : ""}</time
+              >
+              <p class="mb-0 small" style="white-space:pre-line">${a.body}</p>
+            </div>`,
+          )}
+        </div>`);
+      })
+      .catch(() => {});
+  }
 
   // ---- Access Pass (free event entry) ----
   const passBox = root.querySelector("#passCard");

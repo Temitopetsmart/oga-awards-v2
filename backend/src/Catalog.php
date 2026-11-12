@@ -201,6 +201,40 @@ final class Catalog
         return $out;
     }
 
+    /**
+     * The winners showcase (hall of fame): every edition whose winners are public, with who won and a short intro.
+     * Same visibility rule as winners(): published, or the edition is completed/archived. Never counts or rankings.
+     */
+    public static function showcase(): array
+    {
+        $rows = self::db()->query(
+            'SELECT w.category_id, w.nominee_entry_id, e.slug, e.name AS edition_name, e.edition_label, e.year, e.status,
+                    e.state_mode, e.force_state, e.nominations_open_at, e.nominations_close_at, e.voting_open_at, e.voting_close_at, e.results_publish_at,
+                    (e.results_published_at IS NOT NULL AND e.results_published_at <= NOW()) AS published,
+                    c.name AS category_name, n.name, n.department, n.photo_path, n.bio
+               FROM winners w
+               JOIN editions e ON e.id = w.edition_id
+               JOIN categories c ON c.id = w.category_id
+               JOIN nominee_entries n ON n.id = w.nominee_entry_id
+              WHERE e.status IN (\'active\', \'completed\', \'archived\')
+              ORDER BY e.year DESC, c.sort_order, c.id'
+        )->fetchAll();
+        $out = [];
+        foreach ($rows as $w) {
+            if (!(in_array($w['status'], ['completed', 'archived'], true) || ((int) $w['published'] === 1 && EditionState::of($w) === 'results'))) {
+                continue;
+            }
+            $bio = trim((string) ($w['bio'] ?? ''));
+            $out[$w['slug']] ??= ['occasionId' => $w['slug'], 'name' => $w['edition_name'], 'edition' => $w['edition_label'], 'year' => (int) $w['year'], 'winners' => []];
+            $out[$w['slug']]['winners'][] = [
+                'categoryId' => (string) $w['category_id'], 'category' => $w['category_name'], 'nomineeId' => (string) $w['nominee_entry_id'],
+                'name' => $w['name'], 'department' => $w['department'], 'photo' => $w['photo_path'], 'thumb' => Photos::thumbOf($w['photo_path']),
+                'intro' => mb_strlen($bio) > 200 ? mb_substr($bio, 0, 197) . '…' : $bio,
+            ];
+        }
+        return array_values($out);
+    }
+
     public static function committee(): array
     {
         $file = self::staticFile('committee');

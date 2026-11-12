@@ -40,6 +40,7 @@ final class AccountApi
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\\d+)/resubmit$#', $path, $m)) self::resubmit((int) $m[1]);
         if ($method === 'GET' && $path === '/nominee/access-pass') self::accessPass(false);
         if ($method === 'POST' && $path === '/nominee/access-pass') self::accessPass(true);
+        if ($method === 'GET' && $path === '/nominee/announcements') { self::requireAccount(); Response::json(['ok' => true, 'announcements' => AnnouncementApi::visible(['public', 'nominees'])]); }
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
         if ($method === 'POST' && $path === '/nominee/password/change') self::changePassword();

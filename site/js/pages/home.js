@@ -8,6 +8,7 @@ import {
 } from "../../../shared/js/services/catalog.service.js";
 import { renderPreviewBar } from "../../../shared/js/components/preview-bar.js";
 import { homeViews } from "../views/home.views.js";
+import { mountHomeExtras } from "../sections/extras.js";
 
 const app = document.getElementById("app");
 let busy = false;
@@ -59,6 +60,7 @@ async function load() {
     document.title = `${ctx.occasion.name} ${ctx.occasion.edition} — ${ctx.stateInfo.label}`;
     document.body.dataset.state = ctx.state;
     mount(app, homeViews[ctx.state](ctx, data));
+    mountHomeExtras(app).catch(() => {}); // latest news and the Face of the period, if there are any
     renderPreviewBar(ctx.state);
   } catch (err) {
     console.error(err);

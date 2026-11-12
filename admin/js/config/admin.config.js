@@ -39,6 +39,19 @@ export const ADMIN = {
       href: "admin/results",
       perm: "results.view",
     },
+    { section: "Content" },
+    {
+      label: "Announcements",
+      icon: "fa-bullhorn",
+      href: "admin/announcements",
+      perm: "announcements.view",
+    },
+    {
+      label: "Face of the period",
+      icon: "fa-star",
+      href: "admin/spotlight",
+      perm: "spotlight.view",
+    },
     { section: "Events" },
     {
       label: "Tickets",
