@@ -267,6 +267,36 @@ final class AdminApi
             $method === 'DELETE' && SpotlightApi::delete((int) $m[1]);
         }
         
+        // ---- Anti-fraud ----
+        if ($method === 'GET' && $path === '/admin/fraud') {
+            FraudApi::overview();
+        }
+        if ($method === 'PUT' && $path === '/admin/fraud/rules') {
+            FraudApi::saveRules();
+        }
+        if ($method === 'POST' && $path === '/admin/fraud/review') {
+            FraudApi::review();
+        }
+        if ($method === 'POST' && $path === '/admin/fraud/blocks') {
+            FraudApi::addBlock();
+        }
+        if ($method === 'DELETE' && preg_match('#^/admin/fraud/blocks/(\\d+)$#', $path, $m)) {
+            FraudApi::removeBlock((int) $m[1]);
+        }
+
+        // ---- Content manager ----
+        if ($method === 'GET' && $path === '/admin/content') {
+            SiteContent::index();
+        }
+        if ($method === 'POST' && $path === '/admin/content/gallery/image') {
+            SiteContent::galleryImage();
+        }
+        if (preg_match('#^/admin/content/([a-z]+)$#', $path, $m)) {
+            $method === 'GET'    && SiteContent::read($m[1]);
+            $method === 'PUT'    && SiteContent::save($m[1]);
+            $method === 'DELETE' && SiteContent::reset($m[1]);
+        }
+
         // ---- Dashboard, messages, activity log ----
         if ($method === 'GET' && $path === '/admin/dashboard') {
             DashboardApi::stats();

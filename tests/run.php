@@ -1409,6 +1409,183 @@ $db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'voting-clos
 check('a state forced to “voting closed” hides them even though they are published', !isset($show()[$ed]));
 $db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, results_published_at = NULL WHERE id = 2"); App\Cache::flush();
 
+// ================================================================== R. CONTENT MANAGER (Round 2, phase 16)
+group('R. Content manager: FAQs, About, Terms and privacy, Gallery, Home wording');
+check('migration 017 made the content table and permissions', $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'site_content'") == 1
+    && $sqlv("SELECT COUNT(*) FROM permissions WHERE perm_key IN ('content.view', 'content.edit')") == 2);
+check('the editor and publicity roles got them by default', $sqlv("SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug IN ('editor', 'publicity') AND rp.perm_key = 'content.edit'") == 2);
+$orig = fn (string $f) => json_decode((string) file_get_contents(dirname(__DIR__) . "/data/$f.json"), true);
+$pub = fn (string $p) => (new Client())->get($p)[1];
+$put = fn (string $name, array $b) => $sa->put("/admin/content/$name", ['edition' => $ed] + $b);
+check('staff without content permissions cannot read or edit', $gate->get("/admin/content?edition=$ed")[0] === 403 && $gate->put("/admin/content/faqs", ['edition' => $ed, 'items' => []])[0] === 403 && $gate->delete("/admin/content/faqs", ['edition' => $ed])[0] === 403);
+check('anonymous callers are refused', (new Client())->get("/admin/content?edition=$ed")[0] === 401);
+$list = $sa->get("/admin/content?edition=$ed")[1]['pages'] ?? [];
+check('the admin sees the five editable pages, none customised yet', array_column($list, 'name') === ['faqs', 'about', 'legal', 'gallery', 'home'] && array_filter(array_column($list, 'customised')) === []);
+check('until edited, the public site serves the original files', $pub('/faqs') === $orig('faqs') && $pub('/about') === $orig('about') && $pub('/legal') === $orig('legal'));
+check('an unknown page is a clean 404', $sa->get("/admin/content/nothing?edition=$ed")[0] === 404 && $put('nothing', [])[0] === 404);
+
+// ---- FAQs
+$faqs = [['group' => 'Voting', 'q' => 'How do I vote?', 'a' => "Pick a nominee.\nPay securely."], ['group' => '', 'q' => 'Is it free to nominate?', 'a' => 'It depends on the edition.']];
+check('the admin can replace the FAQs', $put('faqs', ['items' => $faqs])[0] === 200);
+$f = $pub('/faqs');
+check('the public site shows the new ones straight away', count($f) === 2 && $f[0]['q'] === 'How do I vote?' && $f[0]['group'] === 'Voting' && str_contains($f[0]['a'], "\n"));
+check('an empty group becomes General, ids are made and unique', $f[1]['group'] === 'General' && $f[0]['id'] !== $f[1]['id'] && $f[0]['id'] !== '');
+check('the admin list says it is customised', in_array(true, array_column($sa->get("/admin/content?edition=$ed")[1]['pages'], 'customised'), true));
+check('a question needs text, an answer too', $put('faqs', ['items' => [['q' => '', 'a' => 'x']]])[0] === 422 && $put('faqs', ['items' => [['q' => 'Why?', 'a' => '']]])[0] === 422);
+check('long text and too many items are refused', $put('faqs', ['items' => [['q' => str_repeat('q', 201), 'a' => 'x']]])[0] === 422 && $put('faqs', ['items' => array_fill(0, 101, ['q' => 'Q?', 'a' => 'A'])])[0] === 422);
+check('control characters are refused', $put('faqs', ['items' => [['q' => "Bad\x07", 'a' => 'x']]])[0] === 422);
+check('a refused save changes nothing', count($pub('/faqs')) === 2);
+check('markup is kept as plain text (the pages escape it)', $put('faqs', ['items' => [['q' => '<b>Bold?</b>', 'a' => '<script>x</script>']]])[0] === 200 && $pub('/faqs')[0]['q'] === '<b>Bold?</b>');
+check('reset brings the original back', $sa->delete("/admin/content/faqs", ['edition' => $ed])[0] === 200 && $pub('/faqs') === $orig('faqs') && (int) $sqlv("SELECT COUNT(*) FROM site_content WHERE name = 'faqs'") === 0);
+
+// ---- About
+$about = ['kicker' => 'About us', 'title' => 'Who we are', 'lead' => 'A short intro.', 'story' => ['First paragraph.', 'Second paragraph.'], 'valuesTitle' => 'We value', 'values' => [['icon' => 'fa-heart', 'title' => 'Care', 'text' => 'We care.'], ['icon' => '', 'title' => 'Trust', 'text' => '']]];
+check('the admin can rewrite the About page', $put('about', $about)[0] === 200 && $pub('/about')['title'] === 'Who we are' && $pub('/about')['values'][0]['icon'] === 'fa-heart' && $pub('/about')['values'][1]['icon'] === 'fa-star');
+check('an icon must be a Font Awesome name', $put('about', ['values' => [['icon' => 'javascript:alert(1)', 'title' => 'Bad', 'text' => '']]] + $about)[0] === 422 && $put('about', ['values' => [['icon' => 'fa-x" onclick="y', 'title' => 'Bad', 'text' => '']]] + $about)[0] === 422);
+check('a title is required, and story and values are limited', $put('about', ['title' => ''] + $about)[0] === 422 && $put('about', ['story' => array_fill(0, 7, 'p')] + $about)[0] === 422 && $put('about', ['values' => array_fill(0, 9, ['title' => 'v'])] + $about)[0] === 422);
+
+// ---- Terms and privacy
+$legal = $pub('/legal');
+$newPrivacy = ['title' => 'Our privacy promise', 'updated' => '2026-11-01', 'draft' => false, 'sections' => [['heading' => 'What we keep', 'body' => 'Only what we need.']]];
+check('the admin can rewrite one page and the other stays as it was', $put('legal', ['privacy' => $newPrivacy])[0] === 200 && $pub('/legal')['privacy']['title'] === 'Our privacy promise' && $pub('/legal')['privacy']['draft'] === false && $pub('/legal')['terms'] === $legal['terms']);
+check('the date must be real', $put('legal', ['privacy' => ['updated' => '2026-13-40'] + $newPrivacy])[0] === 422 && $put('legal', ['privacy' => ['updated' => 'yesterday'] + $newPrivacy])[0] === 422);
+check('a page needs between 1 and 30 sections', $put('legal', ['terms' => ['sections' => []] + $newPrivacy])[0] === 422 && $put('legal', ['terms' => ['sections' => array_fill(0, 31, ['heading' => 'h', 'body' => 'b'])] + $newPrivacy])[0] === 422);
+check('a section needs a heading and text', $put('legal', ['terms' => ['sections' => [['heading' => '', 'body' => 'b']]] + $newPrivacy])[0] === 422);
+
+// ---- Gallery
+check('the gallery starts empty', $pub('/gallery') === []);
+$img = imagecreatetruecolor(300, 200); imagefill($img, 0, 0, imagecolorallocate($img, 20, 120, 220));
+$gTmp = sys_get_temp_dir() . '/gallery-pic.png'; imagepng($img, $gTmp);
+[$c, $r] = $sa->call('POST', "/admin/content/gallery/image?edition=$ed", ['image' => new CURLFile($gTmp, 'image/png', 'g.png')], [], true);
+check('a picture can be uploaded', $c === 200 && preg_match('#^uploads/gallery/[a-f0-9]{2}/[a-f0-9]+\.webp$#', $r['path'] ?? '') === 1, $c . json_encode($r));
+clearstatcache();
+check('and is saved on disk', is_file(dirname(App\Photos::root()) . '/' . ($r['path'] ?? 'x')));
+check('staff without content permissions cannot upload', $gate->call('POST', "/admin/content/gallery/image?edition=$ed", ['image' => new CURLFile($gTmp, 'image/png', 'g.png')], [], true)[0] === 403);
+check('a non-image is refused', $sa->call('POST', "/admin/content/gallery/image?edition=$ed", ['image' => new CURLFile(__FILE__, 'image/png', 'g.png')], [], true)[0] === 422);
+check('the gallery can be filled using that picture', $put('gallery', ['items' => [['title' => 'Opening night', 'caption' => 'The crowd arrives', 'edition' => 'OGA 9.0', 'icon' => '', 'src' => $r['path']], ['title' => 'No picture yet', 'src' => '']]])[0] === 200
+    && count($pub('/gallery')) === 2 && $pub('/gallery')[0]['src'] === $r['path'] && $pub('/gallery')[1]['icon'] === 'fa-image' && $pub('/gallery')[0]['id'] !== $pub('/gallery')[1]['id']);
+check('a picture address from anywhere else is refused', $put('gallery', ['items' => [['title' => 'Hotlink', 'src' => 'https://evil.example/x.png']]])[0] === 422 && $put('gallery', ['items' => [['title' => 'Traversal', 'src' => 'uploads/gallery/../../config.php']]])[0] === 422 && $put('gallery', ['items' => [['title' => 'Script', 'src' => 'javascript:alert(1)']]])[0] === 422);
+check('a gallery item needs a title', $put('gallery', ['items' => [['title' => '']]])[0] === 422);
+
+// ---- Home wording
+$origHome = $orig('content')['home'];
+check('the admin can change the home wording of one state', $put('home', ['states' => ['voting' => ['title' => 'Voting is open!', 'highlight' => 'cast yours.', 'lead' => 'Pick a favourite.']]])[0] === 200 && $pub('/content')['home']['voting']['title'] === 'Voting is open!');
+check('buttons, highlights and the other states are untouched', $pub('/content')['home']['voting']['ctas'] === $origHome['voting']['ctas'] && $pub('/content')['home']['voting']['highlights'] === $origHome['voting']['highlights'] && $pub('/content')['home']['results'] === $origHome['results']);
+check('an unknown state or a blank title is refused', $put('home', ['states' => ['party' => ['title' => 'x']]])[0] === 422 && $put('home', ['states' => ['voting' => ['title' => '']]])[0] === 422 && $put('home', ['states' => ['voting' => ['title' => str_repeat('t', 121)]]])[0] === 422);
+check('keys that are not plain text cannot be set this way', $put('home', ['states' => ['voting' => ['ctas' => [['label' => 'Hacked', 'href' => 'javascript:1']]]]])[0] === 200 && $pub('/content')['home']['voting']['ctas'] === $origHome['voting']['ctas']);
+
+// ---- housekeeping
+check('every edit and reset is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action IN ('Edited site content', 'Reset site content to the original', 'Uploaded a gallery picture')") >= 8);
+foreach (['about', 'legal', 'gallery', 'home'] as $n) { $sa->delete("/admin/content/$n", ['edition' => $ed]); }
+check('everything can be reset to the original files', $pub('/about') === $orig('about') && $pub('/legal') === $orig('legal') && $pub('/gallery') === $orig('gallery') && $pub('/content') === $orig('content'));
+
+// ================================================================== S. ANTI-FRAUD (Round 2, phase 17)
+group('S. Anti-fraud: signals, review, void, block, limits');
+check('migration 018 added the address, the rules, the blocks and the reviews', $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'vote_orders' AND column_name = 'ip_address'") == 1
+    && $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('vote_blocks', 'fraud_reviews')") == 2
+    && $sqlv("SELECT COUNT(*) FROM permissions WHERE perm_key IN ('fraud.view', 'fraud.manage')") == 2);
+check('the treasurer and auditor roles can view by default', $sqlv("SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug IN ('treasurer', 'auditor') AND rp.perm_key = 'fraud.view'") == 2);
+check('staff without fraud permissions are refused', $gate->get("/admin/fraud?edition=$ed")[0] === 403 && $gate->put('/admin/fraud/rules', ['edition' => $ed])[0] === 403 && $gate->post('/admin/fraud/review', ['edition' => $ed, 'key' => 'x', 'action' => 'dismiss'])[0] === 403 && $gate->post('/admin/fraud/blocks', ['edition' => $ed, 'kind' => 'ip', 'value' => '1.2.3.4'])[0] === 403);
+check('anonymous callers are refused', (new Client())->get("/admin/fraud?edition=$ed")[0] === 401);
+
+// a clean slate: this edition, two approved nominees in one category, no orders
+$db->exec("UPDATE edition_settings SET fraud_rules = NULL WHERE edition_id = 2");
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id IN ({$entry['na']}, {$entry['nb']})");
+$db->exec("DELETE FROM vote_orders WHERE edition_id = 2"); $db->exec("DELETE FROM vote_totals WHERE edition_id = 2");
+$ov = fn () => $sa->get("/admin/fraud?edition=$ed")[1];
+$o = $ov();
+check('the rules start at sensible defaults, with the address limit OFF (campuses share one address)', $o['rules'] === ['ipMaxOrdersPerHour' => 0, 'burstVotes' => 300, 'burstMinutes' => 10, 'ipClusterOrders' => 15, 'domainClusterEmails' => 20] && $o['signals'] === [] && $o['open'] === 0 && $o['blocks'] === []);
+$seq = 0;
+$order = function (int $nominee, int $votes, string $email, ?string $ip, string $paidAt) use ($db, &$seq) {
+    $seq++;
+    $db->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, ip_address, status, source, paid_at) VALUES (2, ?, ?, 2, ?, ?, 'Voter', ?, ?, 'paid', 'payment', ?)")
+        ->execute(["FRD-$seq", $nominee, $votes, $votes * 50, $email, $ip, $paidAt]);
+    return "FRD-$seq";
+};
+$now = date('Y-m-d H:i:s', time() - 7200);
+for ($i = 1; $i <= 16; $i++) { $order($entry['na'], 2, "u$i@mailbox$i.test", '203.0.113.9', date('Y-m-d H:i:s', time() - 86400 * 2 - $i * 3600)); }   // 16 orders from one address, spread out
+for ($i = 1; $i <= 22; $i++) { $order($entry['nb'], 3, "kid$i@throwaway.example", '198.51.100.' . $i, date('Y-m-d H:i:s', time() - 86400 * 3 - $i * 3600)); }   // 22 emails at one odd domain
+for ($i = 1; $i <= 4; $i++) { $order($entry['nb'], 100, "burst$i@gmail.com", null, date('Y-m-d H:i:s', strtotime('today 03:00') - 86400 * 5 + $i * 60)); }   // 400 votes in a few minutes
+check('ordinary voting makes no noise', (function () use ($order, $entry, $ov) { $order($entry['na'], 5, 'normal@gmail.com', '192.0.2.1', date('Y-m-d H:i:s', time() - 100000)); return true; })());
+App\VoteTotals::rebuild($db);
+$o = $ov();
+$kinds = array_count_values(array_column($o['signals'], 'kind'));
+check('three kinds of signal are found', ($kinds['ip_cluster'] ?? 0) === 1 && ($kinds['domain_cluster'] ?? 0) === 1 && ($kinds['burst'] ?? 0) >= 1, json_encode($kinds));
+$by = array_column($o['signals'], null, 'kind');
+check('the address cluster says which address, how many orders and which nominee', $by['ip_cluster']['orders'] === 16 && $by['ip_cluster']['votes'] === 32 && str_contains($by['ip_cluster']['detail'], '203.0.113.9') && $by['ip_cluster']['nomineeId'] === (string) $entry['na']);
+check('the domain cluster ignores big providers like gmail and names the odd one', str_contains($by['domain_cluster']['detail'], 'throwaway.example') && $by['domain_cluster']['orders'] === 22 && !str_contains(json_encode($o['signals']), 'domain:gmail.com'));
+check('the burst names the votes and the nominee', $by['burst']['votes'] >= 300 && $by['burst']['nomineeId'] === (string) $entry['nb']);
+check('signals are listed with the biggest first', $o['signals'][0]['votes'] >= $o['signals'][count($o['signals']) - 1]['votes']);
+check('looking at them changes nothing', (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE status = 'void'") === 0);
+
+// ---- rules
+$rules = ['ipMaxOrdersPerHour' => 0, 'burstVotes' => 300, 'burstMinutes' => 10, 'ipClusterOrders' => 15, 'domainClusterEmails' => 20];
+$setRules = fn (array $o = []) => $sa->put('/admin/fraud/rules', ['edition' => $ed] + $o + $rules);
+check('rules must be whole numbers within range', $setRules(['burstMinutes' => 0])[0] === 422 && $setRules(['burstMinutes' => 121])[0] === 422 && $setRules(['ipMaxOrdersPerHour' => -1])[0] === 422 && $setRules(['burstVotes' => 'many'])[0] === 422 && $setRules(['ipClusterOrders' => 1.5])[0] === 422);
+check('a rule that is refused changes nothing', $ov()['rules'] === $rules);
+check('raising the cluster limit above what happened removes that signal', $setRules(['ipClusterOrders' => 17])[0] === 200 && !isset(array_column($ov()['signals'], null, 'kind')['ip_cluster']));
+check('0 switches a rule off', $setRules(['ipClusterOrders' => 0, 'domainClusterEmails' => 0, 'burstVotes' => 0])[0] === 200 && $ov()['signals'] === []);
+$setRules();
+check('putting the numbers back brings them back', count($ov()['signals']) >= 3);
+check('the rule change is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Changed the fraud rules'") >= 3);
+
+// ---- review: dismiss
+$ipKey = $by['ip_cluster']['key']; $domKey = $by['domain_cluster']['key']; $burstKey = $by['burst']['key'];
+check('a review needs a valid action', $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => $ipKey, 'action' => 'ignore'])[0] === 422 && $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => '', 'action' => 'dismiss'])[0] === 422);
+check('a signal can be dismissed with a note', $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => $domKey, 'action' => 'dismiss', 'note' => 'A real class: checked with the lecturer'])[0] === 200);
+$dom = array_column($ov()['signals'], null, 'key')[$domKey];
+check('it stays in the list, marked as dismissed with the note, and no longer counts as open', $dom['status'] === 'dismissed' && str_contains($dom['note'], 'lecturer') && $ov()['open'] === count($ov()['signals']) - 1);
+check('nothing was voided by dismissing', (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE status = 'void'") === 0);
+check('the same signal cannot be reviewed twice', $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => $domKey, 'action' => 'dismiss'])[0] === 422);
+
+// ---- review: void
+$before = App\VoteTotals::perNominee(2)[(string) $entry['nb']] ?? 0;
+check('voiding needs a written reason', $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => $burstKey, 'action' => 'void', 'note' => 'no'])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE status = 'void'") === 0);
+check('a made-up key finds nothing to void', $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => 'burst:999999:1:10', 'action' => 'void', 'note' => 'Testing a bad key'])[0] === 422 && $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => 'nonsense', 'action' => 'void', 'note' => 'Testing a bad key'])[0] === 422);
+[$c, $r] = $sa->post('/admin/fraud/review', ['edition' => $ed, 'key' => $burstKey, 'action' => 'void', 'note' => 'Bulk votes from one script, confirmed with Flutterwave']);
+check('an admin can void every order behind a signal', $c === 200 && $r['orders'] >= 1 && $r['votes'] >= 300, json_encode($r));
+check('those orders are void, with the reason on each', (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE status = 'void' AND void_reason LIKE 'Fraud review: Bulk votes%'") === $r['orders']);
+check('and the nominee’s total went down by exactly those votes', (App\VoteTotals::perNominee(2)[(string) $entry['nb']] ?? 0) === $before - $r['votes']);
+check('the totals still agree with the orders', App\VoteTotals::drift($db) === []);
+check('the signal is recorded as acted on and no longer open (its orders are gone, so it drops out of the list)', (int) $sqlv("SELECT COUNT(*) FROM fraud_reviews WHERE signal_key = ? AND status = 'actioned'", [$burstKey]) === 1 && (array_column($ov()['signals'], null, 'key')[$burstKey]['status'] ?? 'actioned') === 'actioned');
+check('the action is in the activity log with the numbers', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Voided votes after a fraud review' AND details LIKE '%Bulk votes%'") === 1);
+check('orders that were not behind the signal are untouched', (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE status = 'paid' AND voter_email = 'normal@gmail.com'") === 1);
+check('voting needs the void permission as well as the fraud permission', $gate->post('/admin/fraud/review', ['edition' => $ed, 'key' => $ipKey, 'action' => 'void', 'note' => 'Should not work'])[0] === 403);
+
+// ---- blocks
+$blk = fn (array $o) => $sa->post('/admin/fraud/blocks', ['edition' => $ed] + $o);
+check('an address, an email or a domain can be blocked', $blk(['kind' => 'ip', 'value' => '203.0.113.9', 'reason' => 'Bulk buying'])[0] === 200 && $blk(['kind' => 'email', 'value' => 'Bad@Example.com'])[0] === 200 && $blk(['kind' => 'domain', 'value' => 'throwaway.example'])[0] === 200);
+check('values are checked', $blk(['kind' => 'ip', 'value' => 'not an ip'])[0] === 422 && $blk(['kind' => 'email', 'value' => 'nope'])[0] === 422 && $blk(['kind' => 'domain', 'value' => 'nodot'])[0] === 422 && $blk(['kind' => 'phone', 'value' => '1'])[0] === 422);
+check('the same block cannot be added twice', $blk(['kind' => 'ip', 'value' => '203.0.113.9'])[0] === 422);
+check('big providers cannot be blocked by domain', $blk(['kind' => 'domain', 'value' => 'gmail.com'])[0] === 422);
+$bl = $ov()['blocks'];
+check('the list shows them with who added them', count($bl) === 3 && $bl[2]['value'] === '203.0.113.9' && !empty($bl[0]['by']) && in_array('bad@example.com', array_column($bl, 'value'), true));
+$vote = fn (array $o = []) => (new Client())->post('/votes/orders', $o + ['name' => 'Some Voter', 'email' => 'someone@gmail.com', 'votes' => 1, 'nomineeId' => (string) $entry['na'], 'categoryId' => '2']);
+$db->exec("UPDATE editions SET status = 'active', state_mode = 'auto', force_state = NULL, voting_open_at = NOW() - INTERVAL 1 DAY, voting_close_at = NOW() + INTERVAL 1 DAY, results_publish_at = NOW() + INTERVAL 2 DAY, results_published_at = NULL WHERE id = 2"); App\Cache::flush();
+check('a blocked email cannot start a vote order', ($r = $vote(['email' => 'bad@example.com']))[0] === 403 && str_contains($r[1]['error'] ?? '', 'could not accept'), json_encode($r));
+check('nor an email at a blocked domain', $vote(['email' => 'anyone@throwaway.example'])[0] === 403);
+check('the refusal does not say which rule caught them', !str_contains(json_encode($r), 'blocked') && !str_contains(json_encode($r), 'domain'));
+check('and no order or payment was created for them', (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE voter_email IN ('bad@example.com', 'anyone@throwaway.example')") === 0);
+check('an ordinary voter is not turned away (the request goes on to the payment step)', in_array($vote()[0], [200, 502], true));
+check('and the address of the order is recorded', $sqlv("SELECT ip_address FROM vote_orders WHERE voter_email = 'someone@gmail.com' ORDER BY id DESC LIMIT 1") === '127.0.0.1');
+$bid = (int) $sqlv("SELECT id FROM vote_blocks WHERE kind = 'email'");
+check('staff without fraud permissions cannot remove a block', $gate->delete("/admin/fraud/blocks/$bid", ['edition' => $ed])[0] === 403);
+check('an admin can remove a block, and that voter is welcome again', $sa->delete("/admin/fraud/blocks/$bid", ['edition' => $ed])[0] === 200 && $vote(['email' => 'bad@example.com'])[0] !== 403);
+check('removing something gone is a clean 404', $sa->delete("/admin/fraud/blocks/$bid", ['edition' => $ed])[0] === 404);
+
+// ---- the per-address hourly limit
+$db->exec("DELETE FROM vote_blocks");
+check('with the limit off, many orders from one address are fine', $vote(['email' => 'a1@gmail.com'])[0] !== 429 && $vote(['email' => 'a2@gmail.com'])[0] !== 429 && $vote(['email' => 'a3@gmail.com'])[0] !== 429);
+$setRules(['ipMaxOrdersPerHour' => 2]);
+$db->exec("UPDATE vote_orders SET created_at = NOW() WHERE voter_email LIKE 'a_@gmail.com'");
+$db->exec("UPDATE vote_orders SET ip_address = '127.0.0.1' WHERE voter_email LIKE 'a_@gmail.com'");
+check('once the admin sets a limit, an address over it is told to wait', ($r = $vote(['email' => 'a4@gmail.com']))[0] === 429 || $r[0] === 403, json_encode($r));
+check('the message is friendly and has no numbers or rules in it', str_contains($r[1]['error'] ?? '', 'try again later') && !preg_match('/\d/', $r[1]['error'] ?? ''));
+$db->exec("UPDATE vote_orders SET created_at = NOW() - INTERVAL 3 HOUR WHERE voter_email LIKE 'a_@gmail.com'");
+check('orders older than an hour do not count', $vote(['email' => 'a5@gmail.com'])[0] !== 429);
+$setRules();
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, voting_open_at = NULL, voting_close_at = NULL, results_publish_at = NULL WHERE id = 2"); App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

@@ -7,9 +7,9 @@ namespace App;
 final class RoleDefaults
 {
     public const PERMISSIONS = [
-        'editor' => ['dashboard.view', 'nominees.view', 'nominees.create', 'nominees.edit', 'nominees.approve', 'categories.view', 'categories.manage', 'votes.view', 'results.view', 'committee.view', 'messages.view', 'messages.manage', 'occasions.view', 'occasions.manage', 'announcements.view', 'announcements.manage', 'spotlight.view', 'spotlight.manage'],
-        'publicity' => ['dashboard.view', 'nominees.view', 'categories.view', 'results.view', 'messages.view', 'occasions.view', 'occasions.manage', 'announcements.view', 'announcements.manage', 'spotlight.view', 'spotlight.manage'],
-        'treasurer' => ['dashboard.view', 'votes.view', 'votes.export', 'finance.view', 'finance.export', 'finance.reconcile', 'tickets.view', 'tickets.export', 'results.view'],
+        'editor' => ['dashboard.view', 'nominees.view', 'nominees.create', 'nominees.edit', 'nominees.approve', 'categories.view', 'categories.manage', 'votes.view', 'results.view', 'committee.view', 'messages.view', 'messages.manage', 'occasions.view', 'occasions.manage', 'announcements.view', 'announcements.manage', 'spotlight.view', 'spotlight.manage','content.view', 'content.edit'],
+        'publicity' => ['dashboard.view', 'nominees.view', 'categories.view', 'results.view', 'messages.view', 'occasions.view', 'occasions.manage', 'announcements.view', 'announcements.manage', 'spotlight.view', 'spotlight.manage','content.view', 'content.edit'],
+        'treasurer' => ['dashboard.view', 'votes.view', 'votes.export', 'finance.view', 'finance.export', 'finance.reconcile', 'tickets.view', 'tickets.export', 'results.view', 'fraud.view'],
         'secretary' => ['dashboard.view', 'committee.view', 'committee.manage', 'committee.review', 'messages.view', 'messages.manage'],
         'nominations' => ['dashboard.view', 'nominees.view', 'nominees.create', 'nominees.edit', 'nominees.approve', 'nominees.export', 'categories.view', 'categories.manage', 'messages.view'],
         'ticketing' => ['dashboard.view', 'tickets.view', 'tickets.manageTypes', 'tickets.override', 'tickets.export', 'scanner.use'],

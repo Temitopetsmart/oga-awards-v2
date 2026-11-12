@@ -39,6 +39,12 @@ export const ADMIN = {
       href: "admin/results",
       perm: "results.view",
     },
+    {
+      label: "Fraud checks",
+      icon: "fa-shield-halved",
+      href: "admin/fraud",
+      perm: "fraud.view",
+    },
     { section: "Content" },
     {
       label: "Announcements",
@@ -51,6 +57,12 @@ export const ADMIN = {
       icon: "fa-star",
       href: "admin/spotlight",
       perm: "spotlight.view",
+    },
+    {
+      label: "Site content",
+      icon: "fa-pen-to-square",
+      href: "admin/sitecontent",
+      perm: "content.view",
     },
     { section: "Events" },
     {

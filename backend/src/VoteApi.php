@@ -84,6 +84,10 @@ final class VoteApi
             self::fail("You can buy up to $max votes per payment.", 422, ['fields' => ['votes' => "You can buy up to $max votes per payment."]]);
         }
 
+        if (($turnedAway = FraudApi::turnAway((int) $ed['id'], Request::ip(), $email)) !== null) {
+            self::fail($turnedAway, 403);                                      // blocked by an admin, or over the per-address limit
+        }
+
         $amount = round($votes * (float) $ed['price_per_vote'], 2);          // the price is OURS; the browser never sends one
         $currency = $ed['currency'] ?: 'NGN';
         $reference = 'VOT-' . strtoupper(bin2hex(random_bytes(6)));
@@ -109,9 +113,9 @@ final class VoteApi
                 $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (?, 'vote', ?, ?, ?, ?, 'pending')")
                     ->execute([$ed['id'], $reference, $amount, $currency, $email]);
                 $paymentId = (int) $db->lastInsertId();
-                $db->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, status, source, payment_id)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'payment', ?)")
-                    ->execute([$ed['id'], $reference, $nominee['id'], $nominee['category_id'], $votes, $amount, $name, $email, $paymentId]);
+                $db->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, ip_address, status, source, payment_id)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'payment', ?)")
+                    ->execute([$ed['id'], $reference, $nominee['id'], $nominee['category_id'], $votes, $amount, $name, $email, Request::ip(), $paymentId]);
             });
         } catch (\DomainException $e) {
             self::fail($e->getMessage());            // e.g. the per-email limit was reached

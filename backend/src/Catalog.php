@@ -270,6 +270,9 @@ final class Catalog
         if (!in_array($name, ['about', 'content', 'faqs', 'gallery', 'legal', 'committee'], true)) {
             throw new \InvalidArgumentException('Unknown content file');
         }
+        if (($saved = SiteContent::stored($name)) !== null) {
+            return $saved['value'];                     // edited in the content manager
+        }
         $path = dirname(__DIR__, 2) . '/data/' . $name . '.json';
         return json_decode((string) file_get_contents($path), true);
     }
