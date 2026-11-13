@@ -1065,8 +1065,16 @@ $voteKeys = array_diff($banned, ['matricNo', 'accountId', 'matric_no']);   // th
 check('a nominee never sees counts or rankings, even for themselves', $c === 200 && array_intersect($walk($me), $voteKeys) === [], implode(',', array_intersect($walk($me), $voteKeys)));
 // ---- order references and lookups
 check('an unknown vote order reference reveals nothing', ($r = (new Client())->post('/votes/orders/VOT-NOPE00000000/confirm', []))[0] === 404 && !str_contains(json_encode($r[1]), 'votes"'));
-[$c, $r] = (new Client())->post('/tickets/lookup', ['code' => 'TKT-T1', 'email' => 'someone-else@x.test']);
-check('ticket lookup with the wrong email finds nothing', $c !== 200 || empty($r['tickets'] ?? []), $c . ' ' . json_encode($r));
+$clearLimits();
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => 'TKT-T1', 'email' => 't@x.test']);
+check('ticket lookup works with the right ticket code and email (so the next check is not vacuous)', $c === 200 && count($r['tickets'] ?? []) >= 1, $c . ' ' . json_encode($r));
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => 'TIK-T1', 'email' => 't@x.test']);
+check('ticket lookup works with the order reference and the right email', $c === 200 && count($r['tickets'] ?? []) === 2, $c . ' ' . json_encode($r));
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => 'TKT-T1', 'email' => 'someone-else@x.test']);
+check('ticket lookup with the wrong email finds nothing', $c === 422 && empty($r['tickets'] ?? []), $c . ' ' . json_encode($r));
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => 'TIK-T1', 'email' => 'someone-else@x.test']);
+check('and the order reference with the wrong email finds nothing either', $c === 422 && empty($r['tickets'] ?? []), $c . ' ' . json_encode($r));
+$clearLimits();
 // ---- staff without a results permission
 foreach (['/admin/results', '/admin/votes', '/admin/dashboard'] as $p) {
     $c = $gate->get("$p?edition=$ed")[0];
@@ -1731,6 +1739,52 @@ check('importing the same file again is refused', $imp(['payload' => $pack()])[0
 check('the active edition was not touched', $sqlv("SELECT status FROM editions WHERE id = 2") === 'active' && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2") > 0);
 [$c, $r] = $imp(['payload' => $pack(['edition' => ['slug' => 'oga-7', 'status' => 'archived'], 'nominees' => [['votes' => 0, 'winner' => false], ['winner' => false, 'votes' => 0], ['winner' => false, 'votes' => 0]]])]);
 check('an edition can be imported as archived, with no votes at all', $c === 200 && $sqlv("SELECT status FROM editions WHERE slug = 'oga-7'") === 'archived' && (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE edition_id = (SELECT id FROM editions WHERE slug = 'oga-7')") === 0);
+
+// ================================================================== V. EVERY ADMIN ROUTE IS GUARDED (read from the router itself)
+group('V. Every admin route in AdminApi.php refuses strangers and gate-only staff');
+$routerSrc = (string) file_get_contents($root . '/backend/src/AdminApi.php');
+$routes = [];
+preg_match_all('/\$path\s*===\s*\'(\/admin\/[^\']*)\'/', $routerSrc, $m1);
+foreach ($m1[1] as $p) { $routes[$p] = true; }
+preg_match_all('/preg_match\(\'#(\^\/admin\/.*?\$)#\',\s*\$path/', $routerSrc, $m2);
+foreach ($m2[1] as $rx) {
+    $rx = str_replace('\\\\', '\\', $rx);
+    $p = preg_replace('/\(\\\\d\+\)/', '1', $rx);
+    $p = preg_replace_callback('/\(\[([^\]]+)\]\+\)/', fn ($mm) => str_contains($mm[1], 'A-Z') ? 'VOT-T1' : (str_contains($mm[1], '_') ? 'welcome' : (str_contains($mm[1], '0-9') ? $ed : 'general')), $p);
+    $p = ltrim(rtrim($p, '$'), '^');
+    if (!str_contains($p, '(') && !str_contains($p, '\\')) { $routes[$p] = true; }
+}
+$openToAnyAdmin = ['/admin/csrf', '/admin/login', '/admin/logout', '/admin/me', '/admin/account/password', '/admin/account/sign-out-everywhere', '/admin/account/profile'];
+$routes = array_values(array_filter(array_keys($routes), fn ($p) => !in_array($p, $openToAnyAdmin, true) && !preg_match('#^/admin/people/\d+/password-reset$#', $p)));
+check('the router yields a believable number of admin routes (found ' . count($routes) . ')', count($routes) >= 70, (string) count($routes));
+$anonV = new Client();
+$leaksA = $leaksG = $leaksG2 = [];
+// These check the SHAPE of the request first, because their permission depends on the item inside it (A3 proves they answer 403 for a real request).
+$shapeFirst = ['POST /admin/nominees/status', 'POST /admin/votes/manual', 'POST /admin/activity', 'GET /admin/scan', 'POST /admin/scan'];
+$gateV = new Client(); $gateV->login('gate@test.dev', 'Test-Pass-12345');
+foreach ($routes as $p) {
+    foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $mth) {
+        $body = $mth === 'GET' ? null : ['edition' => $ed];
+        [$c] = $anonV->call($mth, "$p?edition=$ed", $body);
+        if (!in_array($c, [401, 404, 405], true)) { $leaksA[] = "$mth $p=$c"; }
+        [$c] = $gateV->call($mth, "$p?edition=$ed", $body);
+        if (!in_array($c, [403, 404, 405], true) && !in_array("$mth $p", $shapeFirst, true)) { $leaksG[] = "$mth $p=$c"; }
+        [$c] = $gateV->call($mth, "$p?edition=oga-9", $mth === 'GET' ? null : ['edition' => 'oga-9']);
+        if (!in_array($c, [403, 404, 405], true) && !in_array("$mth $p", $shapeFirst, true)) { $leaksG2[] = "$mth $p=$c"; }
+    }
+}
+check('a stranger gets 401/404/405 on every route and method', $leaksA === [], implode(', ', array_slice($leaksA, 0, 6)));
+check('a gate-only account gets 403/404/405 on every route it is not meant to use', $leaksG === [], implode(', ', array_slice($leaksG, 0, 8)));
+check('the same gate-only account gets nothing in an edition it is not assigned to', $leaksG2 === [], implode(', ', array_slice($leaksG2, 0, 8)));
+$noTok = new Client(); $noTok->login('admin@test.dev', 'Test-Pass-12345'); $noTok->csrf = null;
+$csrfHoles = [];
+foreach ($routes as $p) {
+    foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $mth) {
+        [$c] = $noTok->call($mth, "$p?edition=$ed", ['edition' => $ed]);
+        if (!in_array($c, [403, 419], true)) { $csrfHoles[] = "$mth $p=$c"; }
+    }
+}
+check('a super admin without the CSRF token is refused on every changing route', $csrfHoles === [], implode(', ', array_slice($csrfHoles, 0, 6)));
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

@@ -48,7 +48,14 @@ export async function adminApi(
   }
   if (data?.csrf) setCsrf(data.csrf);
   if (!res.ok)
-    throw userError(data?.error ?? "Something went wrong. Please try again.");
+    throw Object.assign(
+      userError(
+        data?.error ??
+          data?.errors?.[0] ??
+          "Something went wrong. Please try again.",
+      ),
+      { status: res.status, data },
+    );
   return data;
 }
 

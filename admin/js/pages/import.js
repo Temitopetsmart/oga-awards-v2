@@ -162,7 +162,10 @@ export function init(root, { edition }) {
     try {
       return await importEdition(edition.id, payload, dryRun);
     } catch (err) {
-      // the server answers 422 with the list of problems; the shared client turns that into an error message
+      if (Array.isArray(err.data?.errors)) {
+        show(err.data, false);
+        return null;
+      }
       out.innerHTML = toHTML(
         html`<div class="alert alert-danger">${err.message}</div>`,
       );
