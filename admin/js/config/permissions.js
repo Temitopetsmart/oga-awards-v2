@@ -35,6 +35,8 @@ export const PERMISSIONS = [
   P("Results", "results.save", "Save winners"),
   P("Results", "results.publish", "Publish or retract results"),
 
+  P("Administration", "import.run", "Import a past edition"),
+
   P("Content", "content.view", "View site content", "read"),
   P("Content", "content.edit", "Edit site content"),
   P("Votes", "fraud.view", "View fraud signals and blocks", "read"),

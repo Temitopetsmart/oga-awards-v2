@@ -9,6 +9,7 @@ import {
   loginAdmin,
   landingPage,
   restoreSession,
+  requestPasswordReset,
 } from "../services/admin-auth.service.js";
 
 export const title = "Sign in";
@@ -42,6 +43,26 @@ export default async function login() {
         <button class="btn btn-gold btn-lg w-100" type="submit">Sign in</button>
       </form>
 
+      <p class="text-center mt-3 mb-0">
+        <a href="#" id="forgotLink">Forgot your password?</a>
+      </p>
+      <form id="forgotForm" class="mt-3" novalidate hidden>
+        <p class="small">
+          Enter your admin email. If it is an admin account, we’ll send a link
+          to choose a new password.
+        </p>
+        ${field({
+          label: "Email",
+          name: "forgotEmail",
+          type: "email",
+          required: true,
+          autocomplete: "username",
+        })}
+        <button class="btn btn-ghost w-100" type="submit">
+          Send the reset link
+        </button>
+      </form>
+
       <p class="text-center mt-4 mb-0">
         <a href="${ROOT}">← Back to ${APP.brand.name}</a>
       </p>
@@ -50,6 +71,20 @@ export default async function login() {
 }
 
 export function init(root) {
+  const forgot = root.querySelector("#forgotForm");
+  root.querySelector("#forgotLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    forgot.hidden = !forgot.hidden;
+    if (!forgot.hidden) forgot.elements.forgotEmail.focus();
+  });
+  bindForm(forgot, {
+    schema: { forgotEmail: [rules.required(), rules.email()] },
+    async onSubmit(v) {
+      const r = await requestPasswordReset(v.forgotEmail.trim());
+      await notify.success("Check your email", r.message);
+      forgot.hidden = true;
+    },
+  });
   bindForm(root.querySelector("#loginForm"), {
     schema: {
       email: [rules.required(), rules.email()],

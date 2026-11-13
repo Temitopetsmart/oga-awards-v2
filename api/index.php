@@ -39,6 +39,14 @@ if ($method === 'GET' && $path === '/health') {
 if ($method === 'GET' && preg_match('#^/invite/([A-Za-z0-9]+)$#', $path, $m)) {
     App\InviteApi::info($m[1]);
 }
+
+if ($method === 'POST' && $path === '/admin-password/forgot') {
+    \App\AdminAccountApi::forgot();
+}
+if ($method === 'POST' && $path === '/admin-password/reset') {
+    \App\AdminAccountApi::reset();
+}
+
 if ($method === 'POST' && $path === '/invite/accept') {
     App\InviteApi::accept();
 }

@@ -73,6 +73,14 @@ final class MailTemplates
             'subject' => 'Your {{edition}} Access Pass is ready',
             'body' => "Your Nominee Access Pass for {{edition}} is ready.\n\nOpen your dashboard and show the QR code at the gate. Each code can be scanned once.\n\n[[Open my dashboard | {{link}}]]",
         ],
+        'admin_password_reset' => [
+            'label' => 'Admin password reset', 'group' => 'Team',
+            'description' => 'Sent when an admin asks to reset a forgotten password, or a Super admin sends a reset link.',
+            'placeholders' => ['link' => 'The reset link', 'minutes' => 'How long the link works'],
+            'required' => ['link'], 'needs' => ['token'],
+            'subject' => 'Reset your OGA Admin password',
+            'body' => "Someone asked to reset the password for this admin account. If it was you, use the link below.\n\n[[Choose a new password | {{link}}]]\n\nThe link works for {{minutes}} minutes and only once. If it was not you, ignore this email: your password has not changed.",
+        ],
         'admin_invitation' => [
             'label' => 'Team invitation', 'group' => 'Team',
             'description' => 'Sent when an admin invites someone to help run an edition.',
@@ -269,6 +277,9 @@ final class MailTemplates
             case 'nominee_entry_approved':
             case 'nominee_entry_rejected':
                 $v += ['category' => (string) ($p['categoryName'] ?? ''), 'note' => trim((string) ($p['note'] ?? '')), 'link' => self::url('dashboard')];
+                break;
+            case 'admin_password_reset':
+                $v += ['link' => self::url('admin-reset') . '?' . http_build_query(['token' => (string) ($p['token'] ?? '')]), 'minutes' => (string) ($p['expiresMinutes'] ?? 60)];
                 break;
             case 'admin_invitation':
                 $v += ['link' => self::url('accept-invite') . '?' . http_build_query(['token' => (string) ($p['token'] ?? '')]), 'expires_at' => (string) ($p['expiresAt'] ?? '')];

@@ -87,3 +87,7 @@ export function landingPage(person) {
   const access = buildAccess(person, active, null);
   return ADMIN.menu.find((m) => m.href && access.can(m.perm))?.href ?? null;
 }
+
+/** "Forgot your password?": always answers the same, so it never reveals which emails are admins. */
+export const requestPasswordReset = (email) =>
+  adminApi("/admin-password/forgot", { method: "POST", body: { email } });

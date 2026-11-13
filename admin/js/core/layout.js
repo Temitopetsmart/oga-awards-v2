@@ -19,7 +19,9 @@ const BADGES = {
  */
 export function renderShell(root, access, editions, current, { canPreview }) {
   const { person, edition } = access;
-  const items = ADMIN.menu.filter((m) => m.section || access.can(m.perm));
+  const items = ADMIN.menu.filter(
+    (m) => m.section || !m.perm || access.can(m.perm), // an item with no permission (My account) is for everyone signed in
+  );
   const menu = items.filter(
     (m, i) => !m.section || (items[i + 1] && !items[i + 1].section),
   ); // drop empty sections

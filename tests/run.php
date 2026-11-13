@@ -488,7 +488,7 @@ $sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
 
 [$c, $r] = $sa->get("/admin/email?edition=$ed");
 $keys = array_column($r['templates'] ?? [], 'key');
-check('admin sees all twelve email templates, none customised yet', $c === 200 && count($keys) === 12 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('admin sees all thirteen email templates, none customised yet', $c === 200 && count($keys) === 13 && !array_filter($r['templates'], fn ($t) => $t['custom']));
 check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
 check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
 check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);
@@ -1585,6 +1585,152 @@ $db->exec("UPDATE vote_orders SET created_at = NOW() - INTERVAL 3 HOUR WHERE vot
 check('orders older than an hour do not count', $vote(['email' => 'a5@gmail.com'])[0] !== 429);
 $setRules();
 $db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL, voting_open_at = NULL, voting_close_at = NULL, results_publish_at = NULL WHERE id = 2"); App\Cache::flush();
+
+// ================================================================== T. ADMIN ACCOUNT SECURITY (Round 2, phase 18)
+group('T. Admin account: change password, forgot password, sign out everywhere');
+check('migration 019 added the change stamp and the reset links table', $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'people' AND column_name = 'password_changed_at'") == 1
+    && $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'admin_tokens'") == 1);
+$hashOld = password_hash('Old-Pass-12345', PASSWORD_BCRYPT, ['cost' => 4]);
+$db->prepare("INSERT INTO people (name, email, password_hash, active, is_super_admin) VALUES ('Account Tester', 'acct@test.dev', ?, 1, 1)")->execute([$hashOld]);
+$acctId = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO people (name, email, password_hash, active, is_super_admin) VALUES ('Invited Only', 'invited@test.dev', NULL, 1, 0)")->execute();
+$invitedId = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO people (name, email, password_hash, active, is_super_admin) VALUES ('Gone Away', 'gone@test.dev', ?, 0, 0)")->execute([$hashOld]);
+$goneId = (int) $db->lastInsertId();
+$db->exec("DELETE FROM notification_outbox"); $db->exec("DELETE FROM login_attempts");
+$mailTo = fn (string $email) => (int) $sqlv("SELECT COUNT(*) FROM notification_outbox WHERE type = 'admin_password_reset' AND recipient = ?", [$email]);
+
+// ---- forgot password
+$anon = new Client();
+[$c1, $r1] = $anon->post('/admin-password/forgot', ['email' => 'acct@test.dev']);
+[$c2, $r2] = $anon->post('/admin-password/forgot', ['email' => 'nobody@test.dev']);
+check('asking for a reset gives the same answer for a real and an unknown email', $c1 === 200 && $c2 === 200 && $r1 === $r2, json_encode([$r1, $r2]));
+check('only the real admin got an email', $mailTo('acct@test.dev') === 1 && $mailTo('nobody@test.dev') === 0);
+$anon->post('/admin-password/forgot', ['email' => 'invited@test.dev']); $anon->post('/admin-password/forgot', ['email' => 'gone@test.dev']); $anon->post('/admin-password/forgot', ['email' => 'not an email']);
+check('no email for someone who has no password yet, an inactive person, or a bad address', $mailTo('invited@test.dev') === 0 && $mailTo('gone@test.dev') === 0 && (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE person_id IN ($invitedId, $goneId)") === 0);
+$row = $db->query("SELECT payload FROM notification_outbox WHERE type = 'admin_password_reset' AND recipient = 'acct@test.dev' ORDER BY id DESC LIMIT 1")->fetch();
+$tok = json_decode((string) $row['payload'], true)['token'] ?? '';
+check('the link secret is long and random', preg_match('/^[a-f0-9]{64}$/', $tok) === 1);
+check('only a hash of it is stored in the database', (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ?", [hash('sha256', $tok)]) === 1 && (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ?", [$tok]) === 0);
+$mail = App\MailTemplates::render('admin_password_reset', 'acct@test.dev', json_decode((string) $row['payload'], true));
+check('the email links to the reset page with that secret and says how long it works', is_array($mail) && str_contains(json_encode($mail), 'admin-reset') && str_contains(json_encode($mail), $tok) && str_contains(json_encode($mail), '60'), json_encode($mail));
+for ($i = 0; $i < 5; $i++) { $anon->post('/admin-password/forgot', ['email' => 'acct@test.dev']); }
+check('no more than 3 links are made for one person in an hour', (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE person_id = $acctId") === 3);
+check('and the answer still looks the same', $anon->post('/admin-password/forgot', ['email' => 'acct@test.dev'])[0] === 200);
+
+// ---- reset with the link
+$doReset = fn (string $t, string $pw) => (new Client())->post('/admin-password/reset', ['token' => $t, 'password' => $pw]);
+check('a wrong or empty link is refused, with no detail', ($r = $doReset('0000', 'New-Pass-12345'))[0] === 422 && $doReset('', 'New-Pass-12345')[0] === 422 && !str_contains(json_encode($r), 'acct'));
+check('a weak password is refused and the link is kept', $doReset($tok, 'short')[0] === 422 && $doReset($tok, str_repeat('x', 73))[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ? AND used_at IS NULL", [hash('sha256', $tok)]) === 1);
+$other = new Client(); $other->login('acct@test.dev', 'Old-Pass-12345');
+check('before the reset, the old password works', $other->get('/admin/me')[0] === 200 && $other->get('/admin/me')[1]['authenticated'] === true);
+check('a good link sets the new password', $doReset($tok, 'New-Pass-12345')[0] === 200);
+check('the new password signs in and the old one does not', (new Client())->login('acct@test.dev', 'New-Pass-12345')[0] === 200 && (new Client())->login('acct@test.dev', 'Old-Pass-12345')[0] !== 200);
+check('a sign-in from before the reset is ended', $other->get('/admin/me')[1]['authenticated'] === false);
+check('the link cannot be used twice', $doReset($tok, 'Another-Pass-123')[0] === 422);
+check('and every other link of that person was cancelled too', (int) $sqlv("SELECT COUNT(*) FROM admin_tokens WHERE person_id = $acctId AND used_at IS NULL") === 0);
+$db->exec("INSERT INTO admin_tokens (person_id, token_hash, expires_at) VALUES ($acctId, '" . hash('sha256', 'expired-secret') . "', NOW() - INTERVAL 1 MINUTE)");
+check('an expired link is refused', $doReset('expired-secret', 'New-Pass-12345')[0] === 422);
+$db->exec("INSERT INTO admin_tokens (person_id, token_hash, expires_at) VALUES ($goneId, '" . hash('sha256', 'gone-secret') . "', NOW() + INTERVAL 1 HOUR)");
+check('a link for a person who was made inactive is refused', $doReset('gone-secret', 'New-Pass-12345')[0] === 422);
+check('both events are in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Reset their admin password' AND person_id = $acctId") === 1);
+
+// ---- change password while signed in
+$me1 = new Client(); $me1->login('acct@test.dev', 'New-Pass-12345');
+$me2 = new Client(); $me2->login('acct@test.dev', 'New-Pass-12345');
+$chg = fn (Client $c, array $b) => $c->put('/admin/account/password', $b);
+check('only signed-in admins can change a password', (new Client())->put('/admin/account/password', ['current' => 'x', 'password' => 'Whatever-12345'])[0] === 401);
+[$c, $r] = $chg($me1, ['current' => 'Wrong-Pass-1234', 'password' => 'Newer-Pass-12345']);
+check('a wrong current password is refused, naming the field', $c === 422 && isset($r['fields']['current']), json_encode($r));
+check('a weak new password is refused', $chg($me1, ['current' => 'New-Pass-12345', 'password' => 'short'])[0] === 422 && $chg($me1, ['current' => 'New-Pass-12345', 'password' => str_repeat('z', 73)])[0] === 422);
+check('the same password again is refused', $chg($me1, ['current' => 'New-Pass-12345', 'password' => 'New-Pass-12345'])[0] === 422);
+$db->exec("DELETE FROM login_attempts");
+for ($i = 0; $i < 5; $i++) { $chg($me1, ['current' => 'Wrong-Pass-1234', 'password' => 'Newer-Pass-12345']); }
+check('after five wrong tries the answer is "wait", even for the right password', $chg($me1, ['current' => 'New-Pass-12345', 'password' => 'Newer-Pass-12345'])[0] === 429);
+$db->exec("DELETE FROM login_attempts");
+check('the password can be changed with the right current one', $chg($me1, ['current' => 'New-Pass-12345', 'password' => 'Newer-Pass-12345'])[0] === 200);
+check('this sign-in carries on', $me1->get('/admin/me')[0] === 200 && $me1->put('/admin/account/profile', ['name' => 'Account Tester'])[0] === 200);
+check('another sign-in of the same person is ended', $me2->put('/admin/account/profile', ['name' => 'Account Tester'])[0] === 401);
+check('the new password works and the previous one does not', (new Client())->login('acct@test.dev', 'Newer-Pass-12345')[0] === 200 && (new Client())->login('acct@test.dev', 'New-Pass-12345')[0] !== 200);
+
+// ---- sign out everywhere
+$d1 = new Client(); $d1->login('acct@test.dev', 'Newer-Pass-12345'); $d2 = new Client(); $d2->login('acct@test.dev', 'Newer-Pass-12345');
+check('“sign out everywhere” needs a sign-in', (new Client())->post('/admin/account/sign-out-everywhere')[0] === 401);
+check('it ends every other sign-in and keeps this one', $d1->post('/admin/account/sign-out-everywhere')[0] === 200 && $d1->put('/admin/account/profile', ['name' => 'Account Tester'])[0] === 200 && $d2->put('/admin/account/profile', ['name' => 'Account Tester'])[0] === 401);
+check('and the next sign-in works as normal', (new Client())->login('acct@test.dev', 'Newer-Pass-12345')[0] === 200);
+check('an admin who was never signed in somewhere else is unaffected', $sa->get('/admin/me')[0] === 200);
+
+// ---- display name
+check('an admin can change their own display name', $d1->put('/admin/account/profile', ['name' => 'Tester Renamed'])[0] === 200 && $sqlv("SELECT name FROM people WHERE id = $acctId") === 'Tester Renamed');
+check('a name that is empty, long or has markup is refused', $d1->put('/admin/account/profile', ['name' => ' '])[0] === 422 && $d1->put('/admin/account/profile', ['name' => str_repeat('n', 151)])[0] === 422 && $d1->put('/admin/account/profile', ['name' => '<b>x</b>'])[0] === 422);
+check('the email cannot be changed this way', $d1->put('/admin/account/profile', ['name' => 'Tester Renamed', 'email' => 'hijack@test.dev'])[0] === 200 && $sqlv("SELECT email FROM people WHERE id = $acctId") === 'acct@test.dev');
+
+// ---- a Super admin sends a reset link
+$db->exec("DELETE FROM notification_outbox"); $db->exec("DELETE FROM admin_tokens");
+check('someone who is not a Super admin cannot send one', $gate->post("/admin/people/$acctId/password-reset")[0] === 403);
+check('a Super admin can', $sa->post("/admin/people/$acctId/password-reset")[0] === 200 && $mailTo('acct@test.dev') === 1);
+check('and again, with no hourly limit for them', $sa->post("/admin/people/$acctId/password-reset")[0] === 200 && $sa->post("/admin/people/$acctId/password-reset")[0] === 200 && $sa->post("/admin/people/$acctId/password-reset")[0] === 200 && $mailTo('acct@test.dev') === 4);
+check('someone who has never set a password gets pointed to an invitation instead', $sa->post("/admin/people/$invitedId/password-reset")[0] === 422 && $sa->post("/admin/people/$goneId/password-reset")[0] === 422);
+check('an unknown person is a clean 404', $sa->post("/admin/people/999999/password-reset")[0] === 404);
+check('it is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Sent a password reset link'") >= 4);
+check('every account change is in the activity log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action IN ('Changed their admin password', 'Signed out of every device', 'Changed their display name') AND person_id = $acctId") >= 3);
+
+// ================================================================== U. IMPORT A PAST EDITION (Round 2, phase 19)
+group('U. Import a past edition (OGA 9.0 style)');
+check('migration 020 added the import permission', $sqlv("SELECT COUNT(*) FROM permissions WHERE perm_key = 'import.run'") == 1);
+$pack = fn (array $o = []) => array_replace_recursive([
+    'edition' => ['slug' => 'oga-8', 'name' => 'OGITECH Student Awards', 'label' => '8.0', 'year' => 2024, 'ceremony' => '2024-12-07T18:00:00+01:00', 'tagline' => 'Eighth edition'],
+    'categories' => [['name' => 'Face of OGITECH', 'description' => 'The most photogenic'], ['name' => 'Best Developer']],
+    'nominees' => [
+        ['name' => 'Ada Obi', 'department' => 'Software', 'level' => 'HND II', 'category' => 'Face of OGITECH', 'bio' => 'Loves design.', 'votes' => 1200, 'winner' => true, 'email' => 'ada@secret.test', 'phone' => '0803'],
+        ['name' => 'Bola Ade', 'department' => 'Law', 'level' => 'ND I', 'category' => 'face of ogitech', 'votes' => 900],
+        ['name' => 'Chidi Eze', 'department' => 'Computer Science', 'category' => 'Best Developer', 'votes' => 50, 'winner' => true],
+    ],
+], $o);
+$imp = fn (array $b) => $sa->post('/admin/import/edition', ['edition' => $ed] + $b);
+check('staff without the import permission are refused', $gate->post('/admin/import/edition', ['edition' => $ed, 'payload' => $pack(), 'dryRun' => true])[0] === 403);
+check('anonymous callers are refused', (new Client())->post('/admin/import/edition', ['payload' => $pack()])[0] === 401);
+[$c, $r] = $imp(['payload' => $pack(), 'dryRun' => true]);
+check('a clean file passes the check and reports what it would create', $c === 200 && $r['ok'] === true && $r['summary'] === ['edition' => 'OGITECH Student Awards 8.0', 'categories' => 2, 'nominees' => 3, 'winners' => 2, 'votes' => 2150], json_encode($r));
+check('the check writes nothing', (int) $sqlv("SELECT COUNT(*) FROM editions WHERE slug = 'oga-8'") === 0);
+check('it says what is ignored and not imported', str_contains(json_encode($r['notes']), '2 extra fields') && str_contains(json_encode($r['notes']), 'No emails'));
+
+// ---- problems are all reported at once
+$badPack = $pack(['edition' => ['slug' => 'Bad Slug!', 'year' => 1800, 'status' => 'draft'], 'nominees' => [['name' => '', 'category' => 'Face of OGITECH'], ['name' => 'Dee', 'category' => 'Nowhere'], ['name' => 'Ada Obi', 'category' => 'Face of OGITECH', 'votes' => -5]]]);
+[$c, $r] = $imp(['payload' => $badPack, 'dryRun' => true]);
+check('every problem is listed, not just the first', $c === 422 && $r['ok'] === false && count($r['errors']) >= 5 && $r['summary'] === null, json_encode($r['errors']));
+check('and each says which item it is about', str_contains(json_encode($r['errors']), 'slug') && str_contains(json_encode($r['errors']), 'Nominee 1') && str_contains(json_encode($r['errors']), 'Nominee 2') && str_contains(json_encode($r['errors']), 'Nominee 3'));
+check('a real import with problems writes nothing', $imp(['payload' => $badPack])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM editions WHERE slug IN ('Bad Slug!', 'oga-8')") === 0);
+$err = fn (array $o) => $imp(['payload' => $pack($o), 'dryRun' => true]);
+check('an existing edition cannot be overwritten', str_contains(json_encode($err(['edition' => ['slug' => $ed]])[1]['errors']), 'already exists'));
+check('two winners in one category are refused', $err(['nominees' => [1 => ['winner' => true]]])[0] === 422);
+check('a nominee listed twice in a category is refused', $err(['nominees' => [1 => ['name' => 'Ada Obi']]])[0] === 422);
+check('a duplicate category is refused', $err(['categories' => [1 => ['name' => 'FACE OF OGITECH']]])[0] === 422);
+check('votes must be whole numbers', $err(['nominees' => [0 => ['votes' => 'lots']]])[0] === 422 && $err(['nominees' => [0 => ['votes' => 1.5]]])[0] === 422);
+check('texts are length-limited', $err(['nominees' => [0 => ['bio' => str_repeat('b', 601)]]])[0] === 422 && $err(['edition' => ['name' => str_repeat('n', 101)]])[0] === 422);
+check('an empty file is refused', $imp(['payload' => [], 'dryRun' => true])[0] === 422 && $imp(['payload' => ['edition' => ['slug' => 'oga-7']], 'dryRun' => true])[0] === 422);
+
+// ---- the real import
+[$c, $r] = $imp(['payload' => $pack()]);
+check('a clean file can be imported', $c === 200 && $r['ok'] === true && $r['slug'] === 'oga-8', json_encode($r));
+$eid8 = (int) $sqlv("SELECT id FROM editions WHERE slug = 'oga-8'");
+check('it becomes a completed edition with its own settings', $sqlv("SELECT status FROM editions WHERE id = $eid8") === 'completed' && (int) $sqlv("SELECT COUNT(*) FROM edition_settings WHERE edition_id = $eid8") === 1 && $sqlv("SELECT year FROM editions WHERE id = $eid8") == 2024);
+check('categories and nominees are all there, approved, in the right category (names matched ignoring case)', (int) $sqlv("SELECT COUNT(*) FROM categories WHERE edition_id = $eid8") === 2 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = $eid8 AND status = 'approved'") === 3
+    && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries n JOIN categories c ON c.id = n.category_id WHERE n.edition_id = $eid8 AND n.name = 'Bola Ade' AND c.name = 'Face of OGITECH'") === 1);
+check('no emails, phones or accounts came with them', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = $eid8 AND (account_id IS NOT NULL OR phone IS NOT NULL)") === 0 && !str_contains(json_encode($db->query("SELECT * FROM nominee_entries WHERE edition_id = $eid8")->fetchAll()), 'secret.test'));
+check('the final vote counts are kept', (App\VoteTotals::perNominee($eid8)[(string) $sqlv("SELECT id FROM nominee_entries WHERE edition_id = $eid8 AND name = 'Ada Obi'")] ?? 0) === 1200);
+check('the totals still agree with the orders, so the rebuild tool will not wipe them', App\VoteTotals::drift($db) === []);
+check('the winners are recorded', (int) $sqlv("SELECT COUNT(*) FROM winners WHERE edition_id = $eid8") === 2);
+$pubEds = array_column((new Client())->get('/editions')[1]['editions'] ?? [], null, 'id');
+check('the public site lists the edition as history', isset($pubEds['oga-8']) && $pubEds['oga-8']['status'] === 'completed');
+$w8 = array_filter((new Client())->get('/winners')[1] ?? [], fn ($x) => ($x['occasionId'] ?? '') === 'oga-8');
+check('its winners are public, as for any completed edition', count($w8) === 2);
+check('without ever exposing counts', !str_contains(json_encode((new Client())->get('/nominees')[1] ?? []), '1200'));
+check('it is in the activity log with the numbers', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Imported a past edition' AND details LIKE '%2150%'") === 1);
+check('importing the same file again is refused', $imp(['payload' => $pack()])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM editions WHERE slug = 'oga-8'") === 1);
+check('the active edition was not touched', $sqlv("SELECT status FROM editions WHERE id = 2") === 'active' && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2") > 0);
+[$c, $r] = $imp(['payload' => $pack(['edition' => ['slug' => 'oga-7', 'status' => 'archived'], 'nominees' => [['votes' => 0, 'winner' => false], ['winner' => false, 'votes' => 0], ['winner' => false, 'votes' => 0]]])]);
+check('an edition can be imported as archived, with no votes at all', $c === 200 && $sqlv("SELECT status FROM editions WHERE slug = 'oga-7'") === 'archived' && (int) $sqlv("SELECT COUNT(*) FROM vote_orders WHERE edition_id = (SELECT id FROM editions WHERE slug = 'oga-7')") === 0);
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

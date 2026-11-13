@@ -74,6 +74,19 @@ final class Session
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
     }
 
+    /** The sign-in version this session was made with (null if it has none yet). */
+    public static function version(): ?int
+    {
+        self::start();
+        return isset($_SESSION['ver']) ? (int) $_SESSION['ver'] : null;
+    }
+
+    public static function setVersion(int $v): void
+    {
+        self::start();
+        $_SESSION['ver'] = $v;
+    }
+
     public static function destroy(): void
     {
         if (session_status() !== PHP_SESSION_ACTIVE) {

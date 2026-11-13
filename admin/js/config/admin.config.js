@@ -135,5 +135,16 @@ export const ADMIN = {
       href: "admin/audit",
       perm: "audit.view",
     },
+    {
+      label: "Import a past edition",
+      icon: "fa-file-import",
+      href: "admin/import",
+      perm: "import.run",
+    },
+    {
+      label: "My account",
+      icon: "fa-user-gear",
+      href: "admin/account",
+    },
   ],
 };

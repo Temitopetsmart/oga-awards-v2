@@ -7,6 +7,7 @@ import { ROOT } from "../../../shared/js/config/app.config.js";
 import { DataTable } from "../components/data-table.js";
 import { statusBadge } from "../components/badges.js";
 import { openFormModal, openCustomModal } from "../components/modal.js";
+import { sendResetLink } from "../services/account.api.js";
 import {
   overrideMatrix,
   readOverrides,
@@ -592,6 +593,12 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
     actions: [
       { key: "edit", label: "Edit", icon: "fa-pen", perm: "team.manage" },
       {
+        key: "resetLink",
+        label: "Send a password reset link",
+        icon: "fa-envelope-circle-check",
+        when: (p) => access.isSuper && p.email && p.active && p.id !== admin.id,
+      },
+      {
         key: "super",
         label: "Make / remove super admin",
         icon: "fa-crown",
@@ -659,6 +666,22 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           refreshAccess();
         },
       }),
+    async resetLink(p) {
+      if (
+        !(await notify.confirm({
+          title: `Email ${p.name} a reset link?`,
+          text: `A link that works for an hour goes to ${p.email}. Their current password keeps working until they use it.`,
+          confirmText: "Send the link",
+        }))
+      )
+        return;
+      try {
+        await sendResetLink(p.id);
+        notify.toast("success", "Reset link sent");
+      } catch (err) {
+        await notify.warning("Couldn’t send it", err.message);
+      }
+    },
     async super(p) {
       const list = listPeople();
       const row = list.find((x) => x.id === p.id);

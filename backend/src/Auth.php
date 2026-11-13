@@ -27,12 +27,21 @@ final class Auth
             return null;
         }
         $st = Database::pdo()->prepare(
-            'SELECT id, name, email, active, is_super_admin, photo_path FROM people WHERE id = ? AND active = 1'
+            'SELECT id, name, email, active, is_super_admin, photo_path, session_version FROM people WHERE id = ? AND active = 1'
         );
         $st->execute([$id]);
         $row = $st->fetch();
         if (!$row) {
             Session::destroy();             // deactivated or removed: sign them out right away
+            return null;
+        }
+
+        // A password change or "sign out everywhere" raises the person's version: sign-ins made before it stop working.
+        $ver = Session::version();
+        if ($ver === null) {
+            Session::setVersion((int) $row['session_version']);       // a sign-in that has not been used yet adopts the current version
+        } elseif ($ver !== (int) $row['session_version']) {
+            Session::destroy();
             return null;
         }
         return self::$cached = $row;
@@ -58,8 +67,7 @@ final class Auth
         }
 
         $st = $pdo->prepare(
-            'SELECT id, name, email, active, is_super_admin, photo_path, password_hash
-               FROM people WHERE email = ? AND active = 1 AND password_hash IS NOT NULL'
+            'SELECT id, name, email, active, is_super_admin, photo_path, password_hash, session_version FROM people WHERE email = ? AND active = 1 AND password_hash IS NOT NULL'
         );
         $st->execute([$email]);
         $row = $st->fetch();
@@ -86,6 +94,7 @@ final class Auth
 
         unset($row['password_hash']);
         Session::signIn((int) $row['id']);
+        Session::setVersion((int) $row['session_version']);
         self::$cached = $row;
         self::$loaded = true;
         Audit::log((int) $row['id'], 'Signed in');

@@ -32,6 +32,26 @@ final class AdminApi
             Response::error('Please sign in.', 401);
         }
 
+        // ---- My account (every signed-in admin) ----
+        if ($method === 'PUT' && $path === '/admin/account/password') {
+            AdminAccountApi::changePassword(Auth::person());
+        }
+        if ($method === 'POST' && $path === '/admin/account/sign-out-everywhere') {
+            AdminAccountApi::signOutEverywhere(Auth::person());
+        }
+        if ($method === 'PUT' && $path === '/admin/account/profile') {
+            AdminAccountApi::updateProfile(Auth::person());
+        }
+        if ($method === 'POST' && preg_match('#^/admin/people/(\\d+)/password-reset$#', $path, $m)) {
+            AdminAccountApi::adminSendsReset(Auth::person(), (int) $m[1]);
+        }
+
+        // ---- Import a past edition ----
+        if ($method === 'POST' && $path === '/admin/import/edition') {
+            $actor = Access::require('import.run', (string) (Request::json()['edition'] ?? ''));
+            ImportApi::run($actor);
+        }
+
         // ---- team, access and roles ----
         if ($method === 'POST' && $path === '/admin/people') {
             TeamApi::addPerson();
