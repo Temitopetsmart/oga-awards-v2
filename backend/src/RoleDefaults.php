@@ -12,8 +12,9 @@ final class RoleDefaults
         'treasurer' => ['dashboard.view', 'votes.view', 'votes.export', 'finance.view', 'finance.export', 'finance.reconcile', 'tickets.view', 'tickets.export', 'results.view', 'fraud.view'],
         'secretary' => ['dashboard.view', 'committee.view', 'committee.manage', 'committee.review', 'messages.view', 'messages.manage'],
         'nominations' => ['dashboard.view', 'nominees.view', 'nominees.create', 'nominees.edit', 'nominees.approve', 'nominees.export', 'categories.view', 'categories.manage', 'messages.view'],
-        'ticketing' => ['dashboard.view', 'tickets.view', 'tickets.manageTypes', 'tickets.override', 'tickets.export', 'scanner.use'],
+        'ticketing' => ['dashboard.view', 'tickets.view', 'tickets.manageTypes', 'tickets.override', 'tickets.export', 'tickets.allocations', 'scanner.use'],
         'gate' => ['scanner.use'],
+        'seller' => ['dashboard.view', 'tickets.distribute'],
         'auditor' => ['dashboard.view', 'nominees.view', 'nominees.export', 'categories.view', 'votes.view', 'votes.export', 'results.view', 'finance.view', 'finance.export', 'tickets.view', 'tickets.export', 'committee.view', 'messages.view', 'occasions.view', 'settings.view', 'editions.view', 'team.view', 'audit.view', 'announcements.view', 'spotlight.view', 'content.view', 'fraud.view'],
     ];
 }

@@ -86,6 +86,9 @@ if ($method === 'POST' && $path === '/tickets/orders') {
 if ($method === 'POST' && preg_match('#^/tickets/orders/([A-Z0-9-]+)/confirm$#', $path, $m)) {
     App\TicketApi::confirm($m[1]);
 }
+if ($method === 'POST' && $path === '/tickets/holder') {
+    App\TicketApi::setHolder();
+}
 if ($method === 'POST' && $path === '/tickets/lookup') {
     App\TicketApi::lookup();
 }

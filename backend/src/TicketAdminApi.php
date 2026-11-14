@@ -31,6 +31,7 @@ final class TicketAdminApi
             'reference' => $r['reference'], 'name' => $r['buyer_name'], 'email' => $r['buyer_email'], 'phone' => $r['buyer_phone'],
             'typeName' => $r['type_name'], 'qty' => (int) $r['qty'], 'amount' => $money ? (float) $r['amount'] : 0,
             'status' => $r['status'], 'createdAt' => (new \DateTimeImmutable($r['created_at']))->format('c'),
+            'channel' => $r['channel'] ?? 'online', 'settlement' => $r['settlement'] ?? null, 'label' => $r['batch_label'] ?? null,
         ];
     }
 
@@ -51,12 +52,27 @@ final class TicketAdminApi
         $t = $pdo->prepare('SELECT COUNT(*) AS issued, SUM(checked_in_at IS NOT NULL) AS used FROM tickets WHERE edition_id = ?');
         $t->execute([$editionId]);
         $t = $t->fetch();
-        $o = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) AS qty, COALESCE(SUM(amount), 0) AS amount FROM ticket_orders WHERE edition_id = ? AND status = 'paid' AND account_id IS NULL");
+        $o = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) AS qty FROM ticket_orders WHERE edition_id = ? AND status = 'paid' AND account_id IS NULL AND (channel = 'online' OR settlement = 'paid')");
         $o->execute([$editionId]);
         $o = $o->fetch();
+        $s = $pdo->prepare("SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE k.edition_id = ? AND o.channel <> 'online' AND k.status = 'issued'");
+        $s->execute([$editionId]);
+        $owed = array_sum(array_map(fn ($l) => $l['balance'], TicketSalesApi::ledger($editionId)));
         $p = $pdo->prepare('SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE k.edition_id = ? AND o.account_id IS NOT NULL');
         $p->execute([$editionId]);
-        return ['issued' => (int) $t['issued'], 'used' => (int) $t['used'], 'paidQty' => (int) $o['qty'], 'revenue' => $money ? (float) $o['amount'] : 0.0, 'accessPasses' => (int) $p->fetchColumn()];
+        return ['issued' => (int) $t['issued'], 'used' => (int) $t['used'], 'paidQty' => (int) $o['qty'], 'revenue' => $money ? self::revenue($editionId) : 0.0,
+            'accessPasses' => (int) $p->fetchColumn(), 'sellerTickets' => (int) $s->fetchColumn(), 'outstanding' => $money ? round($owed, 2) : 0.0];
+    }
+
+    /** Money actually received for tickets: online sales, sellers who paid up front, and cash sellers have handed in. Tickets given out "pay later" count only as the cash comes in. */
+    public static function revenue(int $editionId): float
+    {
+        $pdo = Database::pdo();
+        $a = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM ticket_orders WHERE edition_id = ? AND status = 'paid' AND account_id IS NULL AND (channel = 'online' OR settlement = 'paid')");
+        $a->execute([$editionId]);
+        $b = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM ticket_remittances WHERE edition_id = ?');
+        $b->execute([$editionId]);
+        return round((float) $a->fetchColumn() + (float) $b->fetchColumn(), 2);
     }
 
     /**
@@ -178,6 +194,7 @@ final class TicketAdminApi
             'id' => (string) $t['id'], 'occasionId' => $slug, 'name' => $t['name'], 'description' => $t['description'],
             'price' => (float) $t['price'], 'seats' => (int) $t['seats'], 'maxPerOrder' => (int) $t['max_per_order'],
             'perks' => json_decode((string) ($t['perks'] ?? '[]'), true) ?: [], 'active' => (bool) $t['active'],
+            'look' => TicketLook::normalise($t['look'] ?? null, $t['name']), 'allowHolderNames' => (bool) $t['allow_holder_names'],
         ], $st->fetchAll())]);
     }
 
@@ -205,7 +222,13 @@ final class TicketAdminApi
                 $perks[] = $p;
             }
         }
-        return [$name, $desc ?: null, $price, $seats, $max, json_encode($perks, JSON_UNESCAPED_UNICODE), !empty($in['active']) ? 1 : 0];
+        try {
+            $look = TicketLook::clean((array) ($in['look'] ?? []), $name);
+        } catch (\InvalidArgumentException $e) {
+            self::fail($e->getMessage());
+        }
+        $names = array_key_exists('allowHolderNames', $in) ? (!empty($in['allowHolderNames']) ? 1 : 0) : 1;
+        return [$name, $desc ?: null, $price, $seats, $max, json_encode($perks, JSON_UNESCAPED_UNICODE), !empty($in['active']) ? 1 : 0, $look, $names];
     }
 
     public static function createType(): never
@@ -214,10 +237,9 @@ final class TicketAdminApi
         $slug = Request::str($in, 'edition', 60);
         $actor = Access::require('tickets.manageTypes', $slug);
         $ed = self::edition($slug);
-        [$name, $desc, $price, $seats, $max, $perks, $active] = self::typeFields($in);
-        self::pdo()->prepare('INSERT INTO ticket_types (edition_id, name, description, price, seats, max_per_order, perks, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(s.sort_order), 0) + 1 FROM ticket_types s WHERE s.edition_id = ?))')
-            ->execute([$ed['id'], $name, $desc, $price, $seats, $max, $perks, $active, $ed['id']]);
-        $id = (string) self::pdo()->lastInsertId();
+        [$name, $desc, $price, $seats, $max, $perks, $active, $look, $names] = self::typeFields($in);
+        self::pdo()->prepare('INSERT INTO ticket_types (edition_id, name, description, price, seats, max_per_order, perks, active, look, allow_holder_names, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(s.sort_order), 0) + 1 FROM ticket_types s WHERE s.edition_id = ?))')
+            ->execute([$ed['id'], $name, $desc, $price, $seats, $max, $perks, $active, $look, $names, $ed['id']]);        $id = (string) self::pdo()->lastInsertId();
         Cache::flush();
         Audit::log((int) $actor['id'], 'Added ticket type', $name, (int) $ed['id']);
         Response::json(['ok' => true, 'typeId' => $id]);
@@ -237,9 +259,9 @@ final class TicketAdminApi
     public static function updateType(int $id): never
     {
         $t = self::ownType($id);
-        [$name, $desc, $price, $seats, $max, $perks, $active] = self::typeFields(Request::json());
-        self::pdo()->prepare('UPDATE ticket_types SET name = ?, description = ?, price = ?, seats = ?, max_per_order = ?, perks = ?, active = ? WHERE id = ?')
-            ->execute([$name, $desc, $price, $seats, $max, $perks, $active, $id]);
+        [$name, $desc, $price, $seats, $max, $perks, $active, $look, $names] = self::typeFields(Request::json());
+        self::pdo()->prepare('UPDATE ticket_types SET name = ?, description = ?, price = ?, seats = ?, max_per_order = ?, perks = ?, active = ?, look = ?, allow_holder_names = ? WHERE id = ?')
+            ->execute([$name, $desc, $price, $seats, $max, $perks, $active, $look, $names, $id]);
         Cache::flush();                                   // existing orders keep what they were sold; new orders use the new rules
         Audit::log((int) $t['actor']['id'], 'Edited ticket type', $name, (int) $t['edition_id']);
         Response::json(['ok' => true]);
@@ -286,7 +308,7 @@ final class TicketAdminApi
             $log($result === 'bad' ? 'invalid' : $result, $k ? (int) $k['id'] : null);
             $out = ['ok' => true, 'result' => $result, 'detail' => $detail];
             if ($k) {
-                $out['ticket'] = ['code' => $k['ticket_code'], 'holder' => $k['holder_name'], 'typeName' => $k['type_name'], 'seat' => (int) $k['seat_no'],
+                $out['ticket'] = ['code' => $k['ticket_code'], 'holder' => $k['holder_name'], 'typeName' => $k['type_name'],  'look' => TicketLook::normalise($k['type_look'] ?? null, (string) $k['type_name']),'seat' => (int) $k['seat_no'],
                     'seats' => (int) $k['seats'], 'groupCode' => $k['group_code'], 'tableLabel' => $k['table_label'],
                     'usedAt' => $k['checked_in_at'] ? (new \DateTimeImmutable($k['checked_in_at']))->format('c') : null, 'usedBy' => $k['checked_by'] ?? null];
                 $out['group'] = self::groupInfo((int) $k['group_id']);
@@ -311,7 +333,7 @@ final class TicketAdminApi
         $won = $flip->rowCount() === 1;
 
         $st = $pdo->prepare(
-            'SELECT k.*, o.account_id, ty.name AS type_name, ty.kind AS type_kind, g.group_code, g.seats, g.table_label, p.name AS checked_by
+            'SELECT k.*, o.account_id, o.channel, ty.name AS type_name, ty.look AS type_look, ty.kind AS type_kind, g.group_code, g.seats, g.table_label, p.name AS checked_by
             FROM tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id
             JOIN ticket_groups g ON g.id = k.group_id LEFT JOIN people p ON p.id = k.checked_in_by
             WHERE k.ticket_code = ?'

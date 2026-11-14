@@ -1786,6 +1786,242 @@ foreach ($routes as $p) {
 }
 check('a super admin without the CSRF token is refused on every changing route', $csrfHoles === [], implode(', ', array_slice($csrfHoles, 0, 6)));
 
+// ================================================================== W. PHASE 1: MAINTENANCE, EMAIL NOTIFICATIONS, INVITATION SECURITY
+group('W. Phase 1: maintenance mode, email notifications, invitation security');
+
+// ---- Email templates
+foreach ([
+    'ticket_order_confirmed' => [
+        'applicantName' => 'Test Buyer',
+        'ticketType' => 'VIP',
+        'qty' => 1,
+        'reference' => 'TIK-TEST-W',
+    ],
+    'vote_receipt' => [
+        'applicantName' => 'Test Voter',
+        'nominee' => 'Nominee na',
+        'categoryName' => 'Face of OGITECH',
+        'votes' => 10,
+        'amount' => '₦500',
+        'reference' => 'VOT-TEST-W',
+    ],
+    'contact_message_received' => [
+        'senderName' => 'Test Sender',
+        'senderEmail' => 'sender@test.dev',
+        'subject' => 'Test subject',
+        'message' => 'This is a test contact message.',
+    ],
+] as $type => $payload) {
+    $mail = App\MailTemplates::render($type, 'recipient@test.dev', $payload);
+    check(
+        "email template renders: $type",
+        is_array($mail)
+            && !empty($mail['subject'])
+            && !empty($mail['html'])
+            && !empty($mail['text'])
+    );
+}
+
+// ---- Contact message notification
+$sa->put('/admin/settings/contact', [
+    'edition' => $ed,
+    'value' => [
+        'email' => 'organisers@test.dev',
+        'phone' => '',
+    ],
+]);
+
+$clearLimits();
+
+$contactW = [
+    'name' => 'Phase W Tester',
+    'email' => 'phasew@test.dev',
+    'subject' => 'Phase W notification test',
+    'message' => 'Testing the contact notification email queue.',
+    'editionId' => $ed,
+];
+
+[$c] = (new Client())->post('/contact', $contactW);
+
+$contactMail = $q(
+    "SELECT id, recipient, payload
+       FROM notification_outbox
+      WHERE type = 'contact_message_received'
+      ORDER BY id DESC LIMIT 1"
+)->fetch();
+
+check('valid contact message is accepted', $c === 200, (string) $c);
+
+check(
+    'contact message queues an email to the configured contact address',
+    $contactMail
+        && $contactMail['recipient'] === 'organisers@test.dev'
+        && str_contains($contactMail['payload'], 'Phase W notification test')
+);
+
+// ---- Ticket confirmation notification
+$ticketRef = 'TIK-W-' . strtoupper(bin2hex(random_bytes(4)));
+
+$q(
+    "INSERT INTO ticket_orders
+        (edition_id, reference, ticket_type_id, qty, amount, buyer_name, buyer_email, buyer_phone, status)
+     VALUES (?, ?, 1, 1, 3000, 'Phase W Buyer', 'ticketw@test.dev', '08010000000', 'pending')",
+    [2, $ticketRef]
+);
+
+$ticketOrderId = (int) $db->lastInsertId();
+
+$issued = App\Tickets::issue($db, $ticketOrderId);
+
+$ticketMail = $q(
+    "SELECT recipient, payload
+       FROM notification_outbox
+      WHERE type = 'ticket_order_confirmed'
+      ORDER BY id DESC LIMIT 1"
+)->fetch();
+
+check('ticket order issues its tickets', $issued > 0, (string) $issued);
+
+check(
+    'ticket issuance queues the buyer confirmation email',
+    $ticketMail
+        && $ticketMail['recipient'] === 'ticketw@test.dev'
+        && str_contains($ticketMail['payload'], $ticketRef)
+);
+
+check(
+    'issuing the same ticket order again does not issue duplicate tickets',
+    App\Tickets::issue($db, $ticketOrderId) === 0
+);
+
+// ---- Auditor read permissions
+$auditorId = (int) $q(
+    "SELECT id FROM roles WHERE slug = 'auditor' LIMIT 1"
+)->fetchColumn();
+
+$auditorPermissions = $q(
+    'SELECT perm_key FROM role_permissions WHERE role_id = ?',
+    [$auditorId]
+)->fetchAll(PDO::FETCH_COLUMN);
+
+$auditorDefaults = App\RoleDefaults::PERMISSIONS['auditor'] ?? [];
+
+foreach ([
+    'announcements.view',
+    'spotlight.view',
+    'content.view',
+    'fraud.view',
+] as $permission) {
+    check(
+        "Auditor has $permission",
+        in_array($permission, $auditorPermissions, true)
+            && in_array($permission, $auditorDefaults, true)
+    );
+}
+
+// ---- Maintenance mode
+check(
+    'maintenance is initially disabled',
+    App\Maintenance::state()['enabled'] === false
+);
+
+check(
+    'gate staff cannot enable maintenance mode',
+    $gate->put('/admin/settings/maintenance', [
+        'edition' => $ed,
+        'value' => ['enabled' => true, 'message' => 'Test maintenance'],
+    ])[0] === 403
+);
+
+[$c] = $sa->put('/admin/settings/maintenance', [
+    'edition' => $ed,
+    'value' => [
+        'enabled' => true,
+        'message' => 'We will be back shortly.',
+    ],
+]);
+
+check('super admin can enable maintenance mode', $c === 200, (string) $c);
+
+$maintenance = App\Maintenance::state();
+
+check(
+    'maintenance state and custom message are saved',
+    $maintenance['enabled'] === true
+        && $maintenance['message'] === 'We will be back shortly.'
+);
+
+[$c, $settings] = (new Client())->get('/settings');
+
+check(
+    'public settings expose the maintenance state',
+    $c === 200
+        && ($settings['maintenance']['enabled'] ?? false) === true
+        && ($settings['maintenance']['message'] ?? '') === 'We will be back shortly.'
+);
+
+// Public write operations must be blocked.
+[$c, $blocked] = (new Client())->post('/contact', $contactW);
+
+check(
+    'contact form is blocked during maintenance',
+    $c === 503 && ($blocked['maintenance'] ?? false) === true,
+    (string) $c
+);
+
+[$c, $blocked] = (new Client())->post('/votes/orders', []);
+
+check(
+    'new vote orders are blocked during maintenance',
+    $c === 503 && ($blocked['maintenance'] ?? false) === true,
+    (string) $c
+);
+
+[$c, $blocked] = (new Client())->post('/tickets/orders', []);
+
+check(
+    'new ticket orders are blocked during maintenance',
+    $c === 503 && ($blocked['maintenance'] ?? false) === true,
+    (string) $c
+);
+
+// Read-only public pages must remain available.
+foreach (['/editions', '/categories', '/nominees', '/settings'] as $path) {
+    check(
+        "public GET $path remains available during maintenance",
+        (new Client())->get($path)[0] === 200
+    );
+}
+
+// Admin and payment completion routes must remain available.
+check(
+    'admin settings remain accessible during maintenance',
+    $sa->get("/admin/settings?edition=$ed")[0] === 200
+);
+
+check(
+    'health endpoint remains available during maintenance',
+    (new Client())->get('/health')[0] === 200
+);
+
+// Turn maintenance off so later tests or local work are not affected.
+[$c] = $sa->put('/admin/settings/maintenance', [
+    'edition' => $ed,
+    'value' => ['enabled' => false, 'message' => ''],
+]);
+
+check(
+    'super admin can disable maintenance mode',
+    $c === 200 && App\Maintenance::state()['enabled'] === false,
+    (string) $c
+);
+
+// Restore the contact setting.
+$sa->put('/admin/settings/contact', [
+    'edition' => $ed,
+    'value' => ['email' => '', 'phone' => ''],
+]);
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

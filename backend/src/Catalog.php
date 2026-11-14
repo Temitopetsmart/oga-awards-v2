@@ -173,6 +173,7 @@ final class Catalog
             'description' => $t['description'],
             'perks'       => self::jsonCol($t['perks'], []),
             'maxPerOrder' => (int) $t['max_per_order'],
+            'look'        => TicketLook::normalise($t['look'] ?? null, (string) $t['name']),
             'active'      => true,
         ], $rows);
     }

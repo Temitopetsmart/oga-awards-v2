@@ -46,7 +46,7 @@ final class DashboardApi
         if (Access::can($actor, 'tickets.view', $ed)) {
             $out['ticketsSold'] = self::one("SELECT COUNT(*) FROM tickets WHERE edition_id = ? AND status = 'issued'", [$ed]);
             if (Access::can($actor, 'finance.view', $ed)) {
-                $out['ticketRevenue'] = (float) self::one("SELECT COALESCE(SUM(amount), 0) FROM ticket_orders WHERE edition_id = ? AND status = 'paid'", [$ed]);
+                $out['ticketRevenue'] = TicketAdminApi::revenue((int) $ed);
             }
         }
         if (Access::can($actor, 'committee.view', $ed)) {

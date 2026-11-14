@@ -262,6 +262,44 @@ final class AdminApi
             TicketAdminApi::scanSummary();
         }
 
+        // ---- ticket sales: sellers, allocations, cash received, free bulk batches ----
+        if ($method === 'GET' && $path === '/admin/sales/me') {
+            TicketSalesApi::me();
+        }
+        if ($method === 'POST' && $path === '/admin/sales/generate') {
+            TicketSalesApi::generate();
+        }
+        if ($method === 'POST' && preg_match('#^/admin/sales/orders/([A-Z0-9-]+)/confirm$#', $path, $m)) {
+            TicketSalesApi::confirm($m[1]);
+        }
+        if ($method === 'GET' && preg_match('#^/admin/sales/orders/([A-Z0-9-]+)$#', $path, $m)) {
+            TicketSalesApi::showOrder($m[1]);
+        }
+        if ($method === 'PATCH' && preg_match('#^/admin/sales/tickets/([A-Z0-9-]+)/holder$#', $path, $m)) {
+            TicketSalesApi::setHolder($m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/sales/groups/([A-Z0-9-]+)/return$#', $path, $m)) {
+            TicketSalesApi::returnUnit($m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/sales/overview') {
+            TicketSalesApi::overview();
+        }
+        if ($method === 'PUT' && $path === '/admin/sales/allocations') {
+            TicketSalesApi::saveAllocation();
+        }
+        if ($method === 'DELETE' && preg_match('#^/admin/sales/allocations/(\\d+)$#', $path, $m)) {
+            TicketSalesApi::deleteAllocation((int) $m[1]);
+        }
+        if ($method === 'POST' && $path === '/admin/sales/remittances') {
+            TicketSalesApi::addRemittance();
+        }
+        if ($method === 'DELETE' && preg_match('#^/admin/sales/remittances/(\\d+)$#', $path, $m)) {
+            TicketSalesApi::deleteRemittance((int) $m[1]);
+        }
+        if ($method === 'POST' && $path === '/admin/sales/bulk') {
+            TicketSalesApi::bulk();
+        }
+
         // ---- Announcements and Face of the period ----
         if ($method === 'GET' && $path === '/admin/announcements') {
             AnnouncementApi::list();

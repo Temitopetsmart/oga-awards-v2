@@ -139,7 +139,7 @@ final class TicketApi
         $email = mb_strtolower(Request::str($in, 'email', 190));
         $st = self::pdo()->prepare(
             "SELECT t.ticket_code, t.holder_name, t.seat_no, t.checked_in_at, t.status, t.edition_id, e.slug AS edition_slug,
-                    o.reference AS order_reference, ty.name AS type_name, g.group_code, g.seats, g.table_label
+                    o.reference AS order_reference, ty.name AS type_name, ty.look AS type_look, ty.allow_holder_names, e.name AS edition_name, e.edition_label, g.group_code, g.seats, g.table_label
                FROM tickets t
                JOIN ticket_orders o ON o.id = t.order_id
                JOIN ticket_types ty ON ty.id = o.ticket_type_id
@@ -165,6 +165,37 @@ final class TicketApi
             'seats'          => (int) $r['seats'],
             'groupCode'      => $r['group_code'],
             'tableLabel'     => $r['table_label'],
+            'look'           => TicketLook::normalise($r['type_look'] ?? null, (string) $r['type_name']),
+            'event'          => ['name' => $r['edition_name'], 'edition' => $r['edition_label']],
+            'canRename'      => (bool) $r['allow_holder_names'] && $r['checked_in_at'] === null,
         ], $rows)]);
+    }
+    
+    /** The buyer puts a name on one seat (so each person gets their own ticket). Only before the ticket is used. */
+    public static function setHolder(): never
+    {
+        self::throttle('ticket-holder', 60, 15);
+        self::record('ticket-holder', true);
+        $in = Request::json();
+        $code = strtoupper(Request::str($in, 'code', 40));
+        $email = mb_strtolower(Request::str($in, 'email', 190));
+        $name = Request::str($in, 'name', 80);
+        if (mb_strlen($name) < 2) {
+            self::fail('Enter the name of the person who will use this ticket.', 422, ['fields' => ['name' => 'Enter a name.']]);
+        }
+        $st = self::pdo()->prepare("SELECT k.id, k.checked_in_at, ty.allow_holder_names FROM tickets k JOIN ticket_orders o ON o.id = k.order_id JOIN ticket_types ty ON ty.id = o.ticket_type_id WHERE k.ticket_code = ? AND o.buyer_email = ? AND k.status = 'issued'");
+        $st->execute([$code, $email]);
+        $k = $st->fetch();
+        if (!$k) {
+            self::fail('We could not find that ticket for that email.', 404);
+        }
+        if ($k['checked_in_at'] !== null) {
+            self::fail('This ticket has already been used, so its name can no longer change.');
+        }
+        if (!(int) $k['allow_holder_names']) {
+            self::fail('The organisers do not allow names to be changed on this ticket.', 403);
+        }
+        self::pdo()->prepare('UPDATE tickets SET holder_name = ? WHERE id = ?')->execute([$name, $k['id']]);
+        Response::json(['ok' => true, 'holder' => $name]);
     }
 }
