@@ -188,6 +188,7 @@ export const ROLE_TEMPLATES = [
     "tickets.view",
     "tickets.export",
     "results.view",
+    "fraud.view",
   ]),
   R(
     "role-secretary",

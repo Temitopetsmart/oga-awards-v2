@@ -51,6 +51,10 @@ final class MessagesApi
 
         self::pdo()->prepare('INSERT INTO contact_messages (edition_id, name, email, subject, message) VALUES (?, ?, ?, ?, ?)')
             ->execute([$edId, $name, $email, $subject, $message]);
+        $to = mb_strtolower((string) (SettingsApi::value('contact')['email'] ?? ''));
+        if (filter_var($to, FILTER_VALIDATE_EMAIL)) {                  // the organisers' contact address, set in Admin, Settings
+            Outbox::queueAndSend('contact_message_received', $to, ['senderName' => $name, 'senderEmail' => $email, 'subject' => $subject, 'message' => $message], $edId ? (int) $edId : null);
+        }
         Response::json(['ok' => true]);
     }
 

@@ -47,6 +47,16 @@ export const resetRoleToDefault = (id) =>
   write(`/admin/roles/${id}/reset`, "POST");
 export const deleteRole = (id) => write(`/admin/roles/${id}`, "DELETE");
 
+/** The invitations of the edition being viewed (newest first). */
+export async function listInvitations() {
+  const r = await adminApi(
+    `/admin/invitations?edition=${encodeURIComponent(viewing())}`,
+  );
+  return r.invitations;
+}
+export const revokeInvitation = (id) =>
+  write(`/admin/invitations/${id}/revoke`, "POST");
+
 /** Creates an invitation. The returned token is shown once — only its hash is stored on the server. */
 export async function createInvitation({
   email,

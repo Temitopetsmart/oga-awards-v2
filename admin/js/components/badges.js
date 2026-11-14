@@ -20,6 +20,8 @@ const MAP = {
   draft: ["warning", "Draft"],
   completed: ["muted", "Completed"],
   archived: ["muted", "Archived"],
+  revoked: ["danger", "Revoked"],
+  expired: ["muted", "Expired"],
 };
 
 /** <span class="oga-status ..."> for a status key. Unknown keys render as a neutral badge. */

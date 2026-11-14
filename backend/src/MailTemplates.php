@@ -33,6 +33,30 @@ final class MailTemplates
     private const CODE_PLACEHOLDERS = ['code'];
 
     public const DEFAULTS = [
+        'ticket_order_confirmed' => [
+            'label' => 'Tickets ready', 'group' => 'Tickets and votes',
+            'description' => 'Sent to the buyer when a ticket order is confirmed (paid or free), with a link to view and download each ticket.',
+            'placeholders' => ['name' => 'The buyer\'s name', 'ticket_type' => 'The ticket type, for example VIP', 'quantity' => 'How many tickets or tables were bought', 'reference' => 'The order reference', 'link' => 'Link that opens the tickets'],
+            'required' => ['link'], 'needs' => [],
+            'subject' => 'Your {{edition}} tickets are ready',
+            'body' => "Hello {{name}},\n\nYour order {{reference}} is confirmed: {{quantity}} x {{ticket_type}}.\n\nOpen your tickets to view each one and download it as an image.\n\n[[Open my tickets | {{link}}]]\n\nKeep this email. You can always find your tickets again with your order reference and this email address.",
+        ],
+        'vote_receipt' => [
+            'label' => 'Vote receipt', 'group' => 'Tickets and votes',
+            'description' => 'Sent to a voter when their payment is confirmed. It never shows totals or rankings.',
+            'placeholders' => ['name' => 'The voter\'s name', 'nominee' => 'The nominee voted for', 'category' => 'The category', 'votes' => 'How many votes were bought', 'amount' => 'The amount paid', 'reference' => 'The order reference'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your {{edition}} votes were counted',
+            'body' => "Hello {{name}},\n\nThank you. Your {{votes}} votes for {{nominee}} in {{category}} have been counted.\n\nAmount paid: {{amount}}\nReference: {{reference}}",
+        ],
+        'contact_message_received' => [
+            'label' => 'New contact message', 'group' => 'Contact form',
+            'description' => 'Sent to the contact email address in Settings whenever someone uses the Contact page.',
+            'placeholders' => ['sender_name' => 'Who wrote', 'sender_email' => 'Their email address', 'subject' => 'The subject they gave', 'message' => 'Their message'],
+            'required' => [], 'needs' => [],
+            'subject' => 'New message: {{subject}}',
+            'body' => "{{sender_name}} ({{sender_email}}) sent a message through the Contact page.\n\nSubject: {{subject}}\n\n{{message}}\n\nReply to them at {{sender_email}}. Every message is also kept in Admin, Messages.",
+        ],
         'nominee_verify_email' => [
             'label' => 'Verify email address', 'group' => 'Nominee account',
             'description' => 'Sent after someone registers as a nominee, with the code that verifies their email.',
@@ -141,7 +165,9 @@ final class MailTemplates
         'code' => 'K7Q2-M9XD-4TRA', 'expires_minutes' => '30', 'link' => 'https://example.com/open-this-link', 'expires_at' => '30 Dec 2027, 5:00 PM',
         'name' => 'Ada Okafor', 'message' => 'This is the message the committee wrote for this stage.', 'date' => 'Saturday, 12 December', 'time' => '10:00 AM',
         'venue' => 'Main Hall, OGITECH', 'instructions' => 'Please arrive 15 minutes early and bring your student ID.', 'onboarding' => 'Welcome aboard. Your first meeting is on Monday.',
-        'whatsapp_link' => 'https://chat.whatsapp.com/sample', 'position' => 'Media Lead', 'unit' => 'Media & Publicity',
+        'whatsapp_link' => 'https://chat.whatsapp.com/sample', 'position' => 'Media Lead', 
+        'ticket_type' => 'VIP table for 4', 'quantity' => '1', 'reference' => 'TIK-AB12CD34', 'nominee' => 'Ada Okafor', 'category' => 'Face of OGITECH', 'votes' => '10', 'amount' => '₦1,000',
+        'sender_name' => 'Chika Eze', 'sender_email' => 'chika@example.com', 'subject' => 'Question about tickets',
     ];
 
     private static ?array $stored = null;
@@ -270,6 +296,18 @@ final class MailTemplates
             case 'nominee_password_reset':
                 $token = (string) ($p['token'] ?? '');
                 $v += ['code' => $token, 'expires_minutes' => $mins, 'link' => self::url('forgot-password') . '?' . http_build_query(['email' => $recipient, 'token' => $token])];
+                break;
+            case 'ticket_order_confirmed':
+                $ref = (string) ($p['reference'] ?? '');
+                $v += ['ticket_type' => (string) ($p['ticketType'] ?? ''), 'quantity' => (string) ($p['qty'] ?? ''), 'reference' => $ref,
+                    'link' => self::url('ticket') . '?' . http_build_query(['ref' => $ref, 'email' => $recipient])];
+                break;
+            case 'vote_receipt':
+                $v += ['nominee' => (string) ($p['nominee'] ?? ''), 'category' => (string) ($p['categoryName'] ?? ''), 'votes' => (string) ($p['votes'] ?? ''),
+                    'amount' => (string) ($p['amount'] ?? ''), 'reference' => (string) ($p['reference'] ?? '')];
+                break;
+            case 'contact_message_received':
+                $v += ['sender_name' => (string) ($p['senderName'] ?? ''), 'sender_email' => (string) ($p['senderEmail'] ?? ''), 'subject' => (string) ($p['subject'] ?? '')];
                 break;
             case 'nominee_access_pass':
                 $v += ['link' => self::url('dashboard')];

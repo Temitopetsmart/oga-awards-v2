@@ -111,8 +111,8 @@ final class InviteApi
     {
         $in = Request::json();
         $actor = Access::require('team.manage', Request::str($in, 'edition', 60));
-        $st = self::pdo()->prepare("UPDATE invitations SET status = 'revoked' WHERE id = ? AND status = 'pending'");
-        $st->execute([$id]);
+        $st = self::pdo()->prepare("UPDATE invitations SET status = 'revoked' WHERE id = ? AND edition_id = ? AND status = 'pending'");
+        $st->execute([$id, $actor['edition_id']]);                   // only this edition's own invitations
         if ($st->rowCount() === 0) {
             self::fail('That invitation is not pending.');
         }

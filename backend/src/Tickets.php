@@ -37,6 +37,13 @@ final class Tickets
                 $count++;
             }
         }
+        if ($o['buyer_email'] !== '' && $o['account_id'] === null) {        // nominee Access Passes have their own email
+            $ty = $db->prepare('SELECT name FROM ticket_types WHERE id = ?');
+            $ty->execute([$o['ticket_type_id']]);
+            Outbox::queueAndSend('ticket_order_confirmed', $o['buyer_email'], [
+                'applicantName' => $o['buyer_name'], 'ticketType' => (string) $ty->fetchColumn(), 'qty' => (int) $o['qty'], 'reference' => $o['reference'],
+            ], (int) $o['edition_id']);
+        }
         return $count;
     }
 

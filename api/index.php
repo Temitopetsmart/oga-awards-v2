@@ -22,18 +22,17 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET' && $path === '/health') {
     $pdo = Database::pdo();
-    $body = [
-        'ok'       => true,
-        'database' => 'connected',
-        'tables'   => (int) $pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn(),
-        'editions' => (int) $pdo->query('SELECT COUNT(*) FROM editions')->fetchColumn(),
-        'nominees' => (int) $pdo->query('SELECT COUNT(*) FROM nominee_entries')->fetchColumn(),
-        'time'     => date('c'),
-    ];
-    if ($body['editions'] === 0) {
-        $body['hint'] = 'Connected, but there is no edition yet. Run: C:/xampp/php/php.exe backend/tools/migrate.php';    }
+    $pdo->query('SELECT 1');                                     // proves the database answers
+    $body = ['ok' => true, 'database' => 'connected', 'time' => date('c')];
+    if (App\Env::bool('APP_DEBUG')) {
+        $body['tables']   = (int) $pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
+        $body['editions'] = (int) $pdo->query('SELECT COUNT(*) FROM editions')->fetchColumn();   // counts only while debugging locally
+    }
     Response::json($body);
 }
+
+// ---- Site mode: while maintenance is on, public changes are refused (admin, payment confirmations and the webhook stay open) ----
+App\Maintenance::guard($method, $path);
 
 // ---- Invitation links (public: the token is the secret) ----
 if ($method === 'GET' && preg_match('#^/invite/([A-Za-z0-9]+)$#', $path, $m)) {

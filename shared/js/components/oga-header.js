@@ -79,6 +79,12 @@ class OgaHeader extends HTMLElement {
                       </li>`,
                   )}
                 </ul>
+                <a
+                  class="btn btn-ghost btn-sm ms-lg-3 mt-3 mt-lg-0"
+                  href="${ROOT}login"
+                  ><i class="fa-solid fa-right-to-bracket me-1"></i>Nominee
+                  login</a
+                >
                 ${showCta
                   ? html`<a
                       class="btn btn-gold btn-sm ms-lg-3 mt-3 mt-lg-0"

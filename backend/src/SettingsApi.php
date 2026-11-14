@@ -10,7 +10,7 @@ namespace App;
  */
 final class SettingsApi
 {
-private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'brand', 'matric', 'progression'];
+private const SECTIONS = ['contact', 'social', 'communications', 'maintenance', 'brand', 'matric', 'progression'];
     /** Sections with their own storage (not a site_settings row). */
     private const SPECIAL = ['levels', 'departments', 'secrets'];
     
@@ -38,6 +38,7 @@ private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'bra
             'contact'     => $s['contact'] ?? new \stdClass(),
             'social'      => $s['social'] ?? [],
             'brand'       => $s['brand'] ?? new \stdClass(),
+            'maintenance' => ['enabled' => !empty($s['maintenance']['enabled']), 'message' => (string) ($s['maintenance']['message'] ?? '')],
             'levels'      => Options::names('level'),
             'levelRules'  => array_values(array_map(fn ($l) => ['name' => $l['name'], 'requiresMatric' => $l['requiresMatric']], array_filter(Options::all('level'), fn ($l) => $l['active']))),
             'departments' => Options::names('department'),
@@ -167,20 +168,8 @@ private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'bra
                     self::fail($e->getMessage());
                 }
 
-            case 'gateway':
-                $provider = (string) ($v['provider'] ?? '');
-                $env = (string) ($v['environment'] ?? '');
-                $key = Request::str($v, 'publicKey', 200);
-                if (!in_array($provider, ['flutterwave', 'paystack', 'none'], true)) {
-                    self::fail('Choose a supported provider.');
-                }
-                if (!in_array($env, ['test', 'live'], true)) {
-                    self::fail('Choose test or live mode.');
-                }
-                if ($key !== '' && (!preg_match('/^[A-Za-z0-9_-]+$/', $key) || preg_match('/SECK|(^|[_-])sk[_-]|secret/i', $key))) {
-                    self::fail('That looks like a secret key. Only the PUBLIC key goes here. Secret keys belong in the server’s config.php.');
-                }
-                return ['provider' => $provider, 'environment' => $env, 'publicKey' => $key];
+            case 'maintenance':
+                return ['enabled' => !empty($v['enabled']), 'message' => Request::str($v, 'message', 300)];
         }
         self::fail('Unknown settings section.', 404);
     }
@@ -251,9 +240,7 @@ private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'bra
             self::fail('Unknown settings section.', 404);
         }
         $actor = Access::require('settings.edit', Request::str($in, 'edition', 60));
-        if ($section === 'gateway' && (int) $actor['is_super_admin'] !== 1) {
-            self::fail('Only a Super admin can change payment gateway preferences.', 403);
-        }
+
         $inputValue = (array) ($in['value'] ?? []);
 
             $value = self::clean($section, $inputValue);
@@ -270,7 +257,7 @@ private const SECTIONS = ['contact', 'social', 'communications', 'gateway', 'bra
              ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)'
         )->execute([$section, json_encode($value, JSON_UNESCAPED_UNICODE), $actor['id']]);
         Cache::flush();
-        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'email delivery settings', 'gateway' => 'payment gateway preferences', 'brand' => 'site branding', 'matric' => 'matric number format', 'progression' => 'level progression'];
+        $names = ['contact' => 'contact details', 'social' => 'social links', 'communications' => 'email delivery settings', 'maintenance' => 'site mode (maintenance)', 'brand' => 'site branding', 'matric' => 'matric number format', 'progression' => 'level progression'];
         Audit::log((int) $actor['id'], 'Updated ' . $names[$section], null, $actor['edition_id']);
         Response::json(['ok' => true]);
     }

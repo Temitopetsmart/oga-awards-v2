@@ -66,6 +66,10 @@ export default async function settings({ edition: ed, can, access }) {
   const social = Object.fromEntries(
     (s.social ?? APP.social).map((x) => [x.label, x.href]),
   );
+  const comms = s.communications ?? {};
+  const emailReady = Boolean(
+    comms.smtpHost && comms.smtpPasswordConfigured && comms.fromEmail,
+  );
   const lock = editable ? "" : "disabled";
   const save = (label) =>
     editable
@@ -87,9 +91,19 @@ export default async function settings({ edition: ed, can, access }) {
           </div>`}
       ${card(
         "Email",
-        html`<p class="text-secondary">
-            Sender details, the SMTP connection, the wording of every email,
-            test sends and the outbox now live in one place.
+        html`<p class="mb-2">
+            ${emailReady
+              ? html`<span class="badge text-bg-success">Connected</span>`
+              : html`<span class="badge text-bg-warning">Not set up</span>`}
+            <span class="ms-2 text-secondary small"
+              >${emailReady
+                ? `Sending as ${comms.fromName || "the site"} <${comms.fromEmail}>`
+                : "No email is sent until the SMTP connection and sender are saved."}</span
+            >
+          </p>
+          <p class="text-secondary small">
+            The connection, sender details, the wording of every email, test
+            sends and the outbox are all managed on the Email page.
           </p>
           <a class="btn btn-gold" href="${ROOT}admin/email"
             >Open Email settings</a
@@ -348,224 +362,31 @@ export default async function settings({ edition: ed, can, access }) {
         "cardContact",
       )}
       ${card(
-        "Committee recruitment communications",
-        html`
-          <p class="text-secondary">
-            Configure the intended email provider, sender details, WhatsApp
-            onboarding link and the messages used throughout committee
-            recruitment. Real delivery will be connected by the backend.
+        "Site mode",
+        html`<p class="text-secondary">
+            Switch maintenance on to close the public site while you work.
+            Visitors see a “We’ll be right back” page and nobody can vote, buy
+            tickets, register or send messages. The admin area keeps working and
+            payments already in progress still complete.
           </p>
-
-          <form id="recruitmentCommsForm" novalidate>
-            <h3 class="h6 mt-3">Email delivery</h3>
-            <div class="row">
+          <form id="maintenanceForm" novalidate>
+            <fieldset ${lock}>
+              ${sw(
+                "maintenanceOn",
+                "Maintenance mode is on",
+                Boolean(s.maintenance?.enabled),
+              )}
               ${field({
-                label: "Email delivery method",
-                name: "emailMode",
-                options: [
-                  { value: "smtp", label: "SMTP / PHPMailer" },
-                  { value: "domain", label: "Hosting provider email" },
-                  { value: "api", label: "Email provider API" },
-                ],
-                value: s.communications?.emailMode ?? "smtp",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "SMTP host",
-                name: "smtpHost",
-                value: s.communications?.smtpHost ?? "",
-                placeholder: "mail.example.com",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "SMTP port",
-                name: "smtpPort",
-                type: "number",
-                value: s.communications?.smtpPort ?? "587",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "SMTP username",
-                name: "smtpUsername",
-                value: s.communications?.smtpUsername ?? "",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "SMTP encryption",
-                name: "smtpEncryption",
-                options: [
-                  { value: "tls", label: "TLS (usually port 587)" },
-                  { value: "ssl", label: "SSL (usually port 465)" },
-                  { value: "none", label: "None" },
-                ],
-                value: s.communications?.smtpEncryption ?? "tls",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "SMTP password",
-                name: "smtpPassword",
-                type: "password",
-                value: "",
-                autocomplete: "new-password",
-                placeholder: "Enter a new SMTP password",
-                help: s.communications?.smtpPasswordConfigured
-                  ? "A password is already saved. Leave blank to keep the existing password."
-                  : "Enter your SMTP password to enable authenticated delivery.",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "Sender name",
-                name: "fromName",
-                value: s.communications?.fromName ?? "OGA Awards",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "Sender email",
-                name: "fromEmail",
-                type: "email",
-                value: s.communications?.fromEmail ?? "",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "Reply-to email",
-                name: "replyTo",
-                type: "email",
-                value: s.communications?.replyTo ?? "",
-                col: "col-md-6",
-              })}
-            </div>
-
-            <div class="alert alert-info">
-              SMTP credentials are stored securely on the server. The password
-              is encrypted before it is saved and is never sent back to this
-              page. Leave the password field blank to keep the current password.
-            </div>
-
-            <h3 class="h6 mt-4">WhatsApp and onboarding</h3>
-            <div class="row">
-              ${field({
-                label: "Committee WhatsApp group invite URL",
-                name: "whatsappGroupUrl",
-                type: "url",
-                value: s.communications?.whatsappGroupUrl ?? "",
-                placeholder: "https://chat.whatsapp.com/...",
+                label: "Message shown to visitors (optional)",
+                name: "maintenanceMessage",
+                value: s.maintenance?.message ?? "",
                 col: "col-12",
-                help: "Applicants receive this only in the approved/onboarding message.",
+                placeholder: "We’ll be back at 6 PM.",
               })}
-            </div>
-
-            <h3 class="h6 mt-4">Email message templates</h3>
-            <p class="text-secondary small">
-              Supported placeholders: {{name}}, {{edition}}, {{screening_date}},
-              {{screening_time}}, {{screening_venue}}, {{message}} and
-              {{whatsapp_link}}.
-            </p>
-
-            <div class="row">
-              ${field({
-                label: "Application received",
-                name: "templateReceived",
-                type: "textarea",
-                rows: 3,
-                value:
-                  s.communications?.templateReceived ??
-                  "Hello {{name}}, your committee application for {{edition}} has been received. We will contact you about the next stage.",
-                col: "col-12",
-              })}
-              ${field({
-                label: "Shortlisted for screening",
-                name: "templateShortlisted",
-                type: "textarea",
-                rows: 4,
-                value:
-                  s.communications?.templateShortlisted ??
-                  "Hello {{name}}, you have been shortlisted for {{edition}} screening. Date: {{screening_date}}. Time: {{screening_time}}. Venue: {{screening_venue}}. {{message}}",
-                col: "col-12",
-              })}
-              ${field({
-                label: "Approved",
-                name: "templateApproved",
-                type: "textarea",
-                rows: 4,
-                value:
-                  s.communications?.templateApproved ??
-                  "Congratulations {{name}}! Your application for {{edition}} has been approved. {{message}} Join the committee group: {{whatsapp_link}}",
-                col: "col-12",
-              })}
-              ${field({
-                label: "Not selected / reserve",
-                name: "templateUnsuccessful",
-                type: "textarea",
-                rows: 4,
-                value:
-                  s.communications?.templateUnsuccessful ??
-                  "Hello {{name}}, thank you for participating in the {{edition}} committee recruitment process. {{message}}",
-                col: "col-12",
-              })}
-              ${field({
-                label: "Reconsideration",
-                name: "templateReconsideration",
-                type: "textarea",
-                rows: 3,
-                value:
-                  s.communications?.templateReconsideration ??
-                  "Hello {{name}}, a committee position may have become available for {{edition}}. We would like to know if you are still interested. {{message}}",
-                col: "col-12",
-              })}
-            </div>
-
-            ${save("Save recruitment communications")}
-          </form>
-        `,
-        "cardRecruitmentComms",
-      )}
-      ${card(
-        "Payment gateway configuration",
-        html`
-          <p class="text-secondary">
-            Select the payment provider and configure its non-secret settings.
-            Secret keys must be stored on the backend before live payments can
-            be enabled.
-          </p>
-          <form id="gatewaySettingsForm" novalidate>
-            <div class="row">
-              ${field({
-                label: "Payment provider",
-                name: "gatewayProvider",
-                options: [
-                  { value: "flutterwave", label: "Flutterwave" },
-                  { value: "paystack", label: "Paystack" },
-                  { value: "none", label: "Not configured" },
-                ],
-                value: s.gateway?.provider ?? "none",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "Environment",
-                name: "gatewayEnvironment",
-                options: [
-                  { value: "test", label: "Test mode" },
-                  { value: "live", label: "Live mode" },
-                ],
-                value: s.gateway?.environment ?? "test",
-                col: "col-md-6",
-              })}
-              ${field({
-                label: "Public key",
-                name: "gatewayPublicKey",
-                value: s.gateway?.publicKey ?? "",
-                col: "col-12",
-              })}
-            </div>
-            <div class="alert alert-info">
-              Secret keys and the webhook secret hash are entered in the
-              “Payment secrets” card further down this page. They are encrypted
-              and never shown again.
-            </div>
-            ${save("Save gateway preferences")}
-          </form>
-        `,
-        "cardGatewaySettings",
+            </fieldset>
+            ${save("Save site mode")}
+          </form>`,
+        "cardMaintenance",
       )}
       ${hubCards(s, { editable, isSuper: Boolean(access?.isSuper) })}
     </div>
@@ -748,28 +569,28 @@ export async function init(root, { admin, edition: ed, can, access }) {
       },
     });
 
-    bindForm(root.querySelector("#gatewaySettingsForm"), {
-      schema: {
-        gatewayProvider: [
-          rules.custom((v) =>
-            ["flutterwave", "paystack", "none"].includes(v)
-              ? null
-              : "Choose a supported provider.",
-          ),
-        ],
-        gatewayEnvironment: [
-          rules.custom((v) =>
-            ["test", "live"].includes(v) ? null : "Choose test or live mode.",
-          ),
-        ],
-      },
-      async onSubmit(v) {
-        await saveSettings("gateway", {
-          provider: v.gatewayProvider,
-          environment: v.gatewayEnvironment,
-          publicKey: v.gatewayPublicKey.trim(),
+    bindForm(root.querySelector("#maintenanceForm"), {
+      schema: {},
+      async onSubmit(v, form) {
+        const on = form.elements.maintenanceOn.checked;
+        if (
+          on &&
+          !(await notify.confirm({
+            title: "Close the public site?",
+            text: "Everyone will see the maintenance page until you switch this off.",
+            confirmText: "Close the site",
+            danger: true,
+          }))
+        )
+          return;
+        await saveSettings("maintenance", {
+          enabled: on,
+          message: (v.maintenanceMessage ?? "").trim(),
         });
-        notify.toast("success", "Gateway preferences saved.");
+        notify.toast(
+          "success",
+          on ? "Maintenance mode is ON" : "The site is open",
+        );
       },
     });
   }

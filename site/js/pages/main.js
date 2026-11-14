@@ -2,6 +2,7 @@ import "../../../shared/js/components/index.js";
 import { html, mount } from "../../../shared/js/core/dom.js";
 import { getHomeContext } from "../../../shared/js/services/event.service.js";
 import { renderPreviewBar } from "../../../shared/js/components/preview-bar.js";
+import { APP } from "../../../shared/js/config/app.config.js";
 
 /**
  * Generic page runner. Each HTML page sets <body data-page="name">, and this loads
@@ -9,7 +10,11 @@ import { renderPreviewBar } from "../../../shared/js/components/preview-bar.js";
  *   title (string, optional) · default(ctx, { params }) -> html (or null) · init(root, ctx, { params }) (optional)
  */
 const app = document.getElementById("app");
-const page = document.body.dataset.page;
+// While an admin has maintenance switched on, every public page shows the maintenance page.
+const page =
+  APP.maintenance?.enabled && document.body.dataset.page !== "maintenance"
+    ? "maintenance"
+    : document.body.dataset.page;
 
 const skeleton = html` <div
   class="container py-5"

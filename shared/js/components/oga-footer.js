@@ -28,9 +28,7 @@ class OgaFooter extends HTMLElement {
         <div class="container">
           <div class="row gy-5 gx-lg-5">
             <div class="col-lg-5">
-              <a class="oga-footer__brand" href="${ROOT}"
-                >${APP.brand.name}</a
-              >
+              <a class="oga-footer__brand" href="${ROOT}">${APP.brand.name}</a>
               <p class="mt-3 mb-4">
                 ${APP.brand.org} — celebrating excellence, leadership and impact
                 across campus.
@@ -74,6 +72,14 @@ class OgaFooter extends HTMLElement {
                       ><a href="tel:${phone}">${phone}</a>
                     </li>`
                   : ""}
+                <li>
+                  <i class="fa-solid fa-paper-plane"></i
+                  ><a href="${ROOT}contact">Send us a message</a>
+                </li>
+                <li>
+                  <i class="fa-solid fa-right-to-bracket"></i
+                  ><a href="${ROOT}login">Nominee login</a>
+                </li>
               </ul>
             </div>
           </div>

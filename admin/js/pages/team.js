@@ -35,6 +35,8 @@ import {
   deletePerson,
   upsertAssignment,
   createInvitation,
+  listInvitations,
+  revokeInvitation,
 } from "../services/team.api.js";
 import { logPreview } from "../services/audit.api.js";
 
@@ -77,6 +79,17 @@ export default async function team({ can, edition, readOnly }) {
             People
           </button>
         </li>
+        <li class="nav-item">
+          <button
+            class="nav-link"
+            data-bs-toggle="tab"
+            data-bs-target="#tab-invites"
+            type="button"
+            role="tab"
+          >
+            Invitations
+          </button>
+        </li>
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tab-access" role="tabpanel">
@@ -111,6 +124,14 @@ export default async function team({ can, edition, readOnly }) {
               </div>`
             : ""}
           <div id="peopleTable"></div>
+        </div>
+
+        <div class="tab-pane fade" id="tab-invites" role="tabpanel">
+          <p class="mb-0 p-3 pb-0 text-secondary small">
+            Invitations sent for ${editionLabel(edition)}. A pending link works
+            until it expires or is revoked here.
+          </p>
+          <div id="inviteTable"></div>
         </div>
       </div>
     </div>`;
@@ -504,6 +525,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           expiresInDays: Number(values.expiresInDays),
         });
 
+        loadInvites();
         const link = new URL(`${ROOT}accept-invite`, window.location.href);
         link.searchParams.set("token", invitation.token);
 
@@ -623,6 +645,72 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
     onAction: (key, p) => peopleHandlers[key](p),
   });
   const refreshPeople = () => peopleTable.setRows(peopleRows());
+
+  /* ------------------------------------------------ Invitations (this edition) */
+  const loadInvites = async () => {
+    try {
+      inviteTable.setRows(await listInvitations());
+    } catch (err) {
+      notify.toast("error", err.userMessage ?? err.message);
+    }
+  };
+  const inviteTable = new DataTable(root.querySelector("#inviteTable"), {
+    can,
+    rows: [],
+    searchKeys: ["email"],
+    columns: [
+      {
+        key: "email",
+        label: "Invited",
+        sort: true,
+        render: (i) =>
+          html`<strong>${i.email}</strong
+            ><small class="d-block text-secondary">by ${i.invitedBy}</small>`,
+      },
+      {
+        key: "status",
+        label: "Status",
+        sort: true,
+        render: (i) => statusBadge(i.status),
+      },
+      {
+        key: "expiresAt",
+        label: "Expires",
+        sort: true,
+        render: (i) => new Date(i.expiresAt).toLocaleString(),
+      },
+    ],
+    actions: [
+      {
+        key: "revoke",
+        label: "Revoke",
+        icon: "fa-ban",
+        perm: "team.manage",
+        when: (i) => i.status === "pending",
+      },
+    ],
+    empty: "No invitations yet.",
+    onAction: async (key, i) => {
+      if (key !== "revoke") return;
+      const ok = await notify.confirm({
+        title: "Revoke this invitation?",
+        text: `${i.email} will no longer be able to use the link.`,
+        confirmText: "Revoke",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await revokeInvitation(i.id);
+        notify.toast("success", "Invitation revoked");
+        await loadInvites();
+      } catch (err) {
+        notify.toast("error", err.userMessage ?? err.message);
+      }
+    },
+  });
+  root
+    .querySelector('[data-bs-target="#tab-invites"]')
+    ?.addEventListener("shown.bs.tab", loadInvites);
   const activeSupers = (list) =>
     list.filter((p) => p.superAdmin && p.active).length;
   const personFields = [

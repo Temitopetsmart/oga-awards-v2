@@ -103,6 +103,7 @@ final class PaymentService
             case 'vote':
                 $db->prepare("UPDATE vote_orders SET status = 'paid', paid_at = NOW() WHERE payment_id = ? AND status = 'pending'")->execute([$p['id']]);
                 VoteTotals::creditPayment($db, (int) $p['id']);
+                self::emailVoteReceipts($db, (int) $p['id']);
                 break;
             case 'nominee_fee':
                 Registrations::complete($db, $p);
@@ -110,6 +111,25 @@ final class PaymentService
             case 'ticket':
                 Tickets::issueForPayment($db, $p);
                 break;        }
+    }
+
+    /** One receipt per paid vote order. Queued inside the lock, so a rolled-back payment never sends one. Shows no totals. */
+    private static function emailVoteReceipts(\PDO $db, int $paymentId): void
+    {
+        $st = $db->prepare(
+            "SELECT o.reference, o.votes, o.amount, o.voter_name, o.voter_email, o.edition_id, n.name AS nominee, c.name AS category
+               FROM vote_orders o
+               JOIN nominee_entries n ON n.id = o.nominee_entry_id
+               JOIN categories c ON c.id = o.category_id
+              WHERE o.payment_id = ? AND o.status = 'paid' AND o.voter_email <> ''"
+        );
+        $st->execute([$paymentId]);
+        foreach ($st->fetchAll() as $r) {
+            Outbox::queueAndSend('vote_receipt', $r['voter_email'], [
+                'applicantName' => $r['voter_name'], 'nominee' => $r['nominee'], 'categoryName' => $r['category'],
+                'votes' => (int) $r['votes'], 'amount' => '₦' . number_format((float) $r['amount']), 'reference' => $r['reference'],
+            ], (int) $r['edition_id']);
+        }
     }
 
     private static function markFailed(array $p, string $why, ?array $payload = null): void

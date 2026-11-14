@@ -14,6 +14,6 @@ final class RoleDefaults
         'nominations' => ['dashboard.view', 'nominees.view', 'nominees.create', 'nominees.edit', 'nominees.approve', 'nominees.export', 'categories.view', 'categories.manage', 'messages.view'],
         'ticketing' => ['dashboard.view', 'tickets.view', 'tickets.manageTypes', 'tickets.override', 'tickets.export', 'scanner.use'],
         'gate' => ['scanner.use'],
-        'auditor' => ['dashboard.view', 'nominees.view', 'nominees.export', 'categories.view', 'votes.view', 'votes.export', 'results.view', 'finance.view', 'finance.export', 'tickets.view', 'tickets.export', 'committee.view', 'messages.view', 'occasions.view', 'settings.view', 'editions.view', 'team.view', 'audit.view'],
+        'auditor' => ['dashboard.view', 'nominees.view', 'nominees.export', 'categories.view', 'votes.view', 'votes.export', 'results.view', 'finance.view', 'finance.export', 'tickets.view', 'tickets.export', 'committee.view', 'messages.view', 'occasions.view', 'settings.view', 'editions.view', 'team.view', 'audit.view', 'announcements.view', 'spotlight.view', 'content.view', 'fraud.view'],
     ];
 }

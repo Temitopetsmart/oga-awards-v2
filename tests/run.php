@@ -488,7 +488,7 @@ $sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
 
 [$c, $r] = $sa->get("/admin/email?edition=$ed");
 $keys = array_column($r['templates'] ?? [], 'key');
-check('admin sees all thirteen email templates, none customised yet', $c === 200 && count($keys) === 13 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('admin sees all sixteen email templates, none customised yet', $c === 200 && count($keys) === 16 && !array_filter($r['templates'], fn ($t) => $t['custom']));
 check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
 check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
 check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);

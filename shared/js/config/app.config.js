@@ -23,7 +23,7 @@ export const APP = {
   },
 
   /** Lets ?preview=voting force a home-page state. Set to false in production. */
-  allowPreview: true,
+  allowPreview: false,
 
   /** Business rules (the backend must enforce these too). */
   voting: {
@@ -34,7 +34,10 @@ export const APP = {
     maxCategoriesPerNominee: 3,
   },
 
-  contact: { email: "info@example.com", phone: "" }, // TODO: real contact details
+  contact: { email: "", phone: "" }, // the real details come from Admin, Settings, Contact
+
+  /** Site mode. Filled from Admin, Settings, Site mode. */
+  maintenance: { enabled: false, message: "" },
 
   /** Filled from Admin → Settings when the page loads (see the fetch at the bottom of this file). */
   levels: [],
@@ -69,6 +72,7 @@ export const APP = {
     { label: "Gallery", href: "gallery" },
     { label: "Committee", href: "committee" },
     { label: "FAQ", href: "faq" },
+    { label: "Contact", href: "contact" },
   ],
 };
 
@@ -117,6 +121,7 @@ try {
     APP.social = site.social;
   if (site?.brand?.name) APP.brand.name = site.brand.name;
   if (site?.brand?.org) APP.brand.org = site.brand.org;
+  if (site?.maintenance) APP.maintenance = site.maintenance;
   if (site?.brand?.tagline) APP.brand.tagline = site.brand.tagline;
   if (Array.isArray(site?.levels)) APP.levels = site.levels;
   if (Array.isArray(site?.levelRules)) APP.levelRules = site.levelRules;
