@@ -55,6 +55,17 @@ export const PERMISSIONS = [
   P("Tickets", "tickets.manageTypes", "Manage ticket types"),
   P("Tickets", "tickets.override", "Override ticket check-in"),
   P("Tickets", "tickets.export", "Export ticket orders", "read"),
+  P(
+    "Tickets",
+    "tickets.distribute",
+    "Sell or hand out tickets from my own allocation",
+  ),
+  P(
+    "Tickets",
+    "tickets.allocations",
+    "Set ticket allocations and record cash received",
+  ),
+  P("Tickets", "tickets.bulk", "Generate free bulk tickets"),
 
   P("Gate scanner", "scanner.use", "Scan tickets at the gate"),
 
@@ -187,6 +198,7 @@ export const ROLE_TEMPLATES = [
     "finance.reconcile",
     "tickets.view",
     "tickets.export",
+    "tickets.allocations",
     "results.view",
     "fraud.view",
   ]),
@@ -220,11 +232,18 @@ export const ROLE_TEMPLATES = [
     "tickets.manageTypes",
     "tickets.override",
     "tickets.export",
+    "tickets.allocations",
     "scanner.use",
   ]),
   R("role-gate", "Gate staff", "Scans tickets at the gate — nothing else.", [
     "scanner.use",
   ]),
+  R(
+    "role-seller",
+    "Ticket seller",
+    "Sells or hands out tickets from their own allocation.",
+    ["dashboard.view", "tickets.distribute"],
+  ),
   R(
     "role-auditor",
     "Auditor",

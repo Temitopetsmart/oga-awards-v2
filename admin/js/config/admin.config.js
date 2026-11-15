@@ -72,6 +72,18 @@ export const ADMIN = {
       perm: "tickets.view",
     },
     {
+      label: "My ticket sales",
+      icon: "fa-people-carry-box",
+      href: "admin/sales",
+      perm: "tickets.distribute",
+    },
+    {
+      label: "Ticket distribution",
+      icon: "fa-share-nodes",
+      href: "admin/distribution",
+      perm: "tickets.allocations",
+    },
+    {
       label: "Gate scanner",
       icon: "fa-qrcode",
       href: "admin/scanner",

@@ -35,7 +35,13 @@ async function post(path, body) {
 
 /** Starts an order. Returns { reference, amount, qty, email, paymentLink } — or { free: true } for ₦0 tickets. */
 export async function createTicketOrder({ type, qty, name, email, phone }) {
-  const order = await post("/tickets/orders", { typeId: type.id, qty, name, email, phone });
+  const order = await post("/tickets/orders", {
+    typeId: type.id,
+    qty,
+    name,
+    email,
+    phone,
+  });
   store.set(PENDING, { reference: order.reference, email: order.email });
   return order;
 }
@@ -48,11 +54,15 @@ export const pendingOrder = (reference) => {
 
 /** Asks the server to check the payment. Resolves only when the tickets really exist. */
 export async function issueTickets(reference) {
-  const r = await post(`/tickets/orders/${encodeURIComponent(reference)}/confirm`, {});
+  const r = await post(
+    `/tickets/orders/${encodeURIComponent(reference)}/confirm`,
+    {},
+  );
   if (r.status !== "paid")
     throw userError(
       r.status === "failed"
-        ? (r.note ?? "The payment did not go through. You have not been charged.")
+        ? (r.note ??
+            "The payment did not go through. You have not been charged.")
         : "We haven’t received confirmation of your payment yet. If you were charged, your tickets will be ready within a few minutes — keep your reference: " +
             reference,
     );
@@ -61,6 +71,19 @@ export async function issueTickets(reference) {
 
 /** By order reference OR ticket code, plus the buyer's email. */
 export async function findTickets({ ref, email }) {
-  const r = await post("/tickets/lookup", { ref: ref.trim(), email: email.trim() });
+  const r = await post("/tickets/lookup", {
+    ref: ref.trim(),
+    email: email.trim(),
+  });
   return r.tickets;
+}
+
+/** The buyer puts a name on one seat, so each person gets their own ticket. */
+export async function setTicketHolder({ code, email, name }) {
+  const r = await post("/tickets/holder", {
+    code,
+    email: email.trim(),
+    name: name.trim(),
+  });
+  return r.holder;
 }

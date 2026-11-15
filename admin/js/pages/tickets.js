@@ -7,7 +7,15 @@ import { DataTable } from "../components/data-table.js";
 import { fetchAllPages } from "../services/paging.js";
 import { statusBadge } from "../components/badges.js";
 import { statCard } from "../components/stat-card.js";
-import { openFormModal, openInfoModal } from "../components/modal.js";
+import {
+  openFormModal,
+  openInfoModal,
+  openCustomModal,
+} from "../components/modal.js";
+import {
+  drawTicket,
+  readableOn,
+} from "../../../shared/js/services/ticket-art.js";
 import {
   fetchTicketsPage,
   fetchTicketTypes,
@@ -125,6 +133,20 @@ export async function init(root, { admin, edition, can }) {
               icon: "fa-naira-sign",
               label: "Revenue",
               value: money(s.revenue),
+              sub:
+                s.outstanding > 0
+                  ? `${money(s.outstanding)} still to collect from sellers`
+                  : "",
+            }),
+          ]
+        : []),
+      ...(s.sellerTickets > 0
+        ? [
+            statCard({
+              icon: "fa-people-carry-box",
+              label: "Sellers & bulk",
+              value: number(s.sellerTickets),
+              sub: "tickets handed out",
             }),
           ]
         : []),
@@ -349,7 +371,13 @@ export async function init(root, { admin, edition, can }) {
         label: "Ticket",
         sort: true,
         render: (t) =>
-          html`<strong>${t.name}</strong
+          html`<span
+              class="badge me-2"
+              style="background: ${t.look.secondary}; color: ${readableOn(
+                t.look.secondary,
+              )}"
+              >${t.look.label}</span
+            ><strong>${t.name}</strong
             ><small class="d-block text-secondary"
               >${t.description ?? ""}</small
             >`,
@@ -387,86 +415,308 @@ export async function init(root, { admin, edition, can }) {
     onAction: (key, t) => typeHandlers[key](t),
   });
 
-  const fields = [
-    { name: "name", label: "Name", required: true },
-    { name: "description", label: "Description" },
-    {
-      name: "price",
-      label: "Price (₦)",
-      type: "number",
-      required: true,
-      attrs: 'min="0"',
+  /* ------------------------------------------------ ticket type editor (wording, price, and the look) */
+  const PRESETS = {
+    Regular: {
+      label: "REGULAR",
+      primary: "#16324f",
+      secondary: "#9fb3c8",
+      text: "#ffffff",
+      pattern: "none",
     },
-    {
-      name: "maxPerOrder",
-      label: "Max tickets per order",
-      type: "number",
-      required: true,
-      attrs: 'min="1" max="50"',
+    VIP: {
+      label: "VIP",
+      primary: "#4a0d12",
+      secondary: "#ffd24a",
+      text: "#ffffff",
+      pattern: "stripes",
     },
-    {
-      name: "seats",
-      label: "Seats per ticket",
-      type: "number",
-      required: true,
-      attrs: 'min="1" max="50"',
-      help: "1 = one seat. Use 4 for a table of 4: the buyer gets 4 separate tickets (one per seat), all linked to one group.",
+    Platinum: {
+      label: "PLATINUM",
+      primary: "#1c1c24",
+      secondary: "#e5e4ea",
+      text: "#f5f5f7",
+      pattern: "diagonal",
     },
-    {
-      name: "perks",
-      label: "Perks",
-      type: "textarea",
-      rows: 4,
-      help: "One perk per line.",
+    Gold: {
+      label: "GOLD",
+      primary: "#3b2a05",
+      secondary: "#f0c040",
+      text: "#ffffff",
+      pattern: "dots",
     },
-    { type: "switch", name: "active", label: "On sale" },
-  ];
-  const whole = (min, max) =>
-    rules.custom((v) =>
-      Number.isInteger(Number(v)) && Number(v) >= min && Number(v) <= max
-        ? null
-        : `Enter a whole number from ${min} to ${max}.`,
-    );
-  const schema = {
-    name: [rules.required(), rules.max(60)],
-    price: [rules.required(), whole(0, 10000000)],
-    maxPerOrder: [rules.required(), whole(1, 50)],
-    seats: [rules.required(), whole(1, 50)],
+    Table: {
+      label: "TABLE",
+      primary: "#0b3b2e",
+      secondary: "#7ee0b5",
+      text: "#ffffff",
+      pattern: "rings",
+    },
   };
-  const clean = (v) => ({
-    name: v.name.trim(),
-    description: v.description.trim(),
-    price: Number(v.price),
-    maxPerOrder: Number(v.maxPerOrder),
-    seats: Number(v.seats),
-    perks: v.perks
-      .split("\n")
-      .map((p) => p.trim())
-      .filter(Boolean),
-    active: v.active,
-  });
+  const PATTERNS = {
+    none: "Plain",
+    stripes: "Stripes",
+    dots: "Dots",
+    diagonal: "Diagonal lines",
+    rings: "Rings",
+  };
+  const input = (id, label, value = "", extra = "") =>
+    html`<div class="mb-3">
+      <label class="form-label" for="${id}">${label}</label>
+      <input
+        class="form-control"
+        id="${id}"
+        name="${id}"
+        value="${value}"
+        ${extra}
+      />
+    </div>`;
+
+  function openTypeEditor(t = null) {
+    const L = t?.look ?? PRESETS.Regular;
+    openCustomModal({
+      title: t ? `Edit ${t.name}` : "Add ticket type",
+      submitLabel: t ? "Save ticket type" : "Add ticket type",
+      size: "modal-xl",
+      body: html`<div class="row g-4">
+        <div class="col-lg-5">
+          <h3 class="h6 text-uppercase text-secondary">Ticket</h3>
+          ${input("name", "Name", t?.name ?? "", "required")}
+          ${input("description", "Description", t?.description ?? "")}
+          <div class="row">
+            <div class="col-6">
+              ${input(
+                "price",
+                "Price (₦)",
+                t?.price ?? 0,
+                'type="number" min="0"',
+              )}
+            </div>
+            <div class="col-6">
+              ${input(
+                "maxPerOrder",
+                "Max per order",
+                t?.maxPerOrder ?? 10,
+                'type="number" min="1" max="50"',
+              )}
+            </div>
+          </div>
+          ${input(
+            "seats",
+            "Seats per ticket",
+            t?.seats ?? 1,
+            'type="number" min="1" max="50"',
+          )}
+          <small class="d-block text-secondary mb-3 mt-n2"
+            >4 = a table of 4: the buyer gets 4 separate tickets, one image per
+            seat.</small
+          >
+          <div class="mb-3">
+            <label class="form-label" for="perks">Perks (one per line)</label>
+            <textarea class="form-control" id="perks" name="perks" rows="3">
+${(t?.perks ?? []).join("\n")}</textarea
+            >
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              id="active"
+              name="active"
+              ${t?.active === false ? "" : "checked"}
+            />
+            <label class="form-check-label" for="active">On sale</label>
+          </div>
+          <div class="form-check form-switch">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              id="allowHolderNames"
+              name="allowHolderNames"
+              ${t?.allowHolderNames === false ? "" : "checked"}
+            />
+            <label class="form-check-label" for="allowHolderNames"
+              >Buyers may put a name on each seat</label
+            >
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <h3 class="h6 text-uppercase text-secondary">How the ticket looks</h3>
+          <p class="small text-secondary">
+            The big word and the colours let your team tell a VIP from a Regular
+            ticket at a glance, on the buyer’s phone and at the gate.
+          </p>
+          <div class="d-flex flex-wrap gap-2 mb-3" id="presetRow">
+            ${Object.keys(PRESETS).map(
+              (k) =>
+                html`<button
+                  class="btn btn-sm btn-outline-secondary"
+                  type="button"
+                  data-preset="${k}"
+                >
+                  ${k}
+                </button>`,
+            )}
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              ${input(
+                "lookLabel",
+                "Word on the ticket",
+                L.label ?? "",
+                'maxlength="16"',
+              )}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lookPattern">Pattern</label>
+              <select class="form-select" id="lookPattern" name="lookPattern">
+                ${Object.entries(PATTERNS).map(
+                  ([v, n]) =>
+                    html`<option
+                      value="${v}"
+                      ${(L.pattern ?? "none") === v ? "selected" : ""}
+                    >
+                      ${n}
+                    </option>`,
+                )}
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-4">
+              ${input(
+                "lookPrimary",
+                "Main colour",
+                L.primary ?? "#16324f",
+                'type="color" style="height:2.6rem"',
+              )}
+            </div>
+            <div class="col-4">
+              ${input(
+                "lookSecondary",
+                "Accent colour",
+                L.secondary ?? "#9fb3c8",
+                'type="color" style="height:2.6rem"',
+              )}
+            </div>
+            <div class="col-4">
+              ${input(
+                "lookText",
+                "Text colour",
+                L.text ?? "#ffffff",
+                'type="color" style="height:2.6rem"',
+              )}
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="lookDetails"
+              >Lines under the event name (up to 3: date, venue, gate
+              time)</label
+            >
+            <textarea
+              class="form-control"
+              id="lookDetails"
+              name="lookDetails"
+              rows="3"
+            >
+${(L.details ?? []).join("\n")}</textarea
+            >
+          </div>
+          <div class="small text-secondary mb-1">Preview</div>
+          <canvas
+            id="lookPreview"
+            style="width:100%;height:auto;border-radius:.9rem"
+            aria-label="Preview of the ticket"
+          ></canvas>
+        </div>
+      </div>`,
+      onOpen(form) {
+        const el = (n) => form.elements[n];
+        const look = () => ({
+          label: el("lookLabel").value.trim(),
+          primary: el("lookPrimary").value,
+          secondary: el("lookSecondary").value,
+          text: el("lookText").value,
+          pattern: el("lookPattern").value,
+          details: el("lookDetails")
+            .value.split("\n")
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .slice(0, 3),
+        });
+        let busy = false;
+        const paint = async () => {
+          if (busy) return;
+          busy = true;
+          const l = look();
+          await drawTicket(
+            form.querySelector("#lookPreview"),
+            {
+              code: "TKT-PREVIEW00000",
+              holder: "Guest name",
+              typeName: el("name").value || "Ticket",
+              seat: 1,
+              seats: Number(el("seats").value) || 1,
+              groupCode: "GRP-PREVIEW",
+              look: {
+                ...l,
+                label: l.label || (el("name").value || "").toUpperCase(),
+              },
+              event: { name: "Your event name", edition: "Edition" },
+            },
+            { scale: 0.6 },
+          );
+          busy = false;
+        };
+        form.addEventListener("input", paint);
+        form.querySelector("#presetRow").addEventListener("click", (e) => {
+          const p = PRESETS[e.target.dataset.preset];
+          if (!p) return;
+          el("lookLabel").value = p.label;
+          el("lookPrimary").value = p.primary;
+          el("lookSecondary").value = p.secondary;
+          el("lookText").value = p.text;
+          el("lookPattern").value = p.pattern;
+          paint();
+        });
+        paint();
+        form.__look = look;
+      },
+      async onSubmit(form) {
+        const v = (n) => form.elements[n];
+        const body = {
+          name: v("name").value.trim(),
+          description: v("description").value.trim(),
+          price: Number(v("price").value),
+          maxPerOrder: Number(v("maxPerOrder").value),
+          seats: Number(v("seats").value),
+          perks: v("perks")
+            .value.split("\n")
+            .map((p) => p.trim())
+            .filter(Boolean),
+          active: v("active").checked,
+          allowHolderNames: v("allowHolderNames").checked,
+          look: form.__look(),
+        };
+        if (t) await updateTicketType(t.id, body);
+        else await createTicketType(body);
+        notify.toast(
+          "success",
+          t ? "Ticket type updated" : "Ticket type added",
+        );
+        await refreshTypes();
+      },
+    });
+  }
   const refreshTypes = async () => {
     typeList = await fetchTicketTypes();
     typesTable.setRows(await typeRows());
   };
 
   const typeHandlers = {
-    edit: (t) =>
-      openFormModal({
-        title: `Edit ${t.name}`,
-        fields,
-        schema,
-        values: {
-          ...t,
-          perks: (t.perks ?? []).join("\n"),
-          active: t.active !== false,
-        },
-        async onSubmit(v) {
-          await updateTicketType(t.id, clean(v));
-          notify.toast("success", "Ticket type updated");
-          await refreshTypes();
-        },
-      }),
+    edit: (t) => openTypeEditor(t),
     async delete(t) {
       if (
         !(await notify.confirm({
@@ -487,20 +737,9 @@ export async function init(root, { admin, edition, can }) {
       await refreshTypes();
     },
   };
-  root.querySelector("#addType")?.addEventListener("click", () =>
-    openFormModal({
-      title: "Add ticket type",
-      fields,
-      schema,
-      submitLabel: "Add ticket type",
-      values: { maxPerOrder: 10, seats: 1, active: true },
-      async onSubmit(v) {
-        await createTicketType(clean(v));
-        notify.toast("success", "Ticket type added");
-        await refreshTypes();
-      },
-    }),
-  );
+  root
+    .querySelector("#addType")
+    ?.addEventListener("click", () => openTypeEditor());
 
   const refresh = async () => {
     wantStats = true;

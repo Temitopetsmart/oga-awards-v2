@@ -544,3 +544,29 @@
 .oga-section {
   overflow: visible;
 }
+
+/* Tickets: one image per seat, and the tier chip on the shop cards */
+.oga-ticketcard__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 520;
+  border-radius: 1.1rem;
+  box-shadow: var(--oga-shadow-md);
+}
+.oga-tier-chip {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+@media print {
+  .oga-ticketcard {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+}

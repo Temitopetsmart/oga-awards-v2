@@ -14,6 +14,7 @@ import {
   findTickets,
 } from "../../../shared/js/services/ticket.service.js";
 import { checkout } from "../../../shared/js/services/payment.service.js";
+import { readableOn } from "../../../shared/js/services/ticket-art.js";
 import { pageHero, pageBody, notice } from "../sections/page-sections.js";
 
 export const title = "Tickets";
@@ -57,7 +58,20 @@ export default async function tickets(ctx) {
         ${types.map(
           (t) =>
             html` <div class="col-md-6 col-lg-4">
-              <article class="oga-card" data-type-card="${t.id}">
+              <article
+                class="oga-card"
+                data-type-card="${t.id}"
+                style="border-top: 6px solid ${t.look?.secondary ??
+                "var(--oga-gold-500)"}"
+              >
+                <span
+                  class="oga-tier-chip"
+                  style="background: ${t.look?.secondary ??
+                  "#c9a227"}; color: ${readableOn(
+                    t.look?.secondary ?? "#c9a227",
+                  )}"
+                  >${t.look?.label ?? t.name}</span
+                >
                 <h3 class="mt-0">${t.name}</h3>
                 <div class="oga-price">${money(t.price)}</div>
                 <p>${t.description}</p>

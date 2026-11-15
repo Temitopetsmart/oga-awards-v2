@@ -125,6 +125,7 @@ export function openCustomModal({
   submitLabel = "Save",
   size = "modal-lg",
   onSubmit,
+  onOpen,
 }) {
   const { el, modal } = build(
     title,
@@ -148,4 +149,5 @@ export function openCustomModal({
     },
   });
   modal.show();
+  onOpen?.(form, el);
 }

@@ -1,5 +1,6 @@
 import { html, mount } from "../../../shared/js/core/dom.js";
 import { formatDate } from "../../../shared/js/core/format.js";
+import { readableOn } from "../../../shared/js/services/ticket-art.js";
 import { scanTicket, fetchScanSummary } from "../services/ticket.admin.api.js";
 export const title = "Gate scanner";
 export const perm = "scanner.use";
@@ -91,6 +92,17 @@ export function init(root, { admin, edition }) {
       html`<div class="oga-scan ${r.cls}" role="status" aria-live="assertive">
         <i class="fa-solid ${r.icon}" aria-hidden="true"></i>
         <h2>${r.head}</h2>
+        ${t?.look
+          ? html`<div class="mt-2">
+              <span
+                class="badge fs-3 px-4 py-2"
+                style="background: ${t.look.secondary}; color: ${readableOn(
+                  t.look.secondary,
+                )}; border: 4px solid ${t.look.primary}"
+                >${t.look.label}</span
+              >
+            </div>`
+          : ""}
         <p class="mb-0 mt-2">${detail || r.sub || ""}</p>
         ${t?.tableLabel
           ? html`<p class="fs-4 mb-0 mt-3"><strong>${t.tableLabel}</strong></p>`
