@@ -76,26 +76,26 @@ final class MailTemplates
         'nominee_entry_approved' => [
             'label' => 'Nominee entry approved', 'group' => 'Nominee account',
             'description' => 'Sent when an admin approves a nominee’s entry for a category.',
-            'placeholders' => ['category' => 'The category name', 'link' => 'Link to the nominee dashboard'],
+            'placeholders' => ['category' => 'The category name', 'link' => 'Link to the Nominee Portal'],
             'required' => [], 'needs' => [],
             'subject' => 'Your {{edition}} entry is approved',
-            'body' => "Good news: your entry in {{category}} has been approved for {{edition}}.\n\nShare your profile and ask your friends to vote.\n\n[[Open my dashboard | {{link}}]]",
+            'body' => "Good news: your entry in {{category}} has been approved for {{edition}}.\n\nShare your profile and ask your friends to vote.\n\n[[Open my portal | {{link}}]]",
         ],
         'nominee_entry_rejected' => [
             'label' => 'Nominee entry needs changes', 'group' => 'Nominee account',
             'description' => 'Sent when an admin rejects a nominee’s entry. The reviewer’s note is included.',
-            'placeholders' => ['category' => 'The category name', 'note' => 'The reviewer’s note (may be empty)', 'link' => 'Link to the nominee dashboard'],
+            'placeholders' => ['category' => 'The category name', 'note' => 'The reviewer’s note (may be empty)', 'link' => 'Link to the Nominee Portal'],
             'required' => [], 'needs' => [],
             'subject' => 'Your {{edition}} entry needs changes',
-            'body' => "Your entry in {{category}} was not approved yet.\n\nReviewer’s note: {{note}}\n\nYou can update your details and send it for review again from your dashboard.\n\n[[Open my dashboard | {{link}}]]",
+            'body' => "Your entry in {{category}} was not approved yet.\n\nReviewer’s note: {{note}}\n\nYou can update your details and send it for review again from your Nominee Portal.\n\n[[Open my portal | {{link}}]]",
         ],
         'nominee_access_pass' => [
             'label' => 'Nominee Access Pass ready', 'group' => 'Nominee account',
             'description' => 'Sent when a nominee claims their free Access Pass for the event.',
-            'placeholders' => ['link' => 'Link to the nominee dashboard where the pass is shown'],
+            'placeholders' => ['link' => 'Link to the Nominee Portal page where the pass is shown'],
             'required' => [], 'needs' => [],
             'subject' => 'Your {{edition}} Access Pass is ready',
-            'body' => "Your Nominee Access Pass for {{edition}} is ready.\n\nOpen your dashboard and show the QR code at the gate. Each code can be scanned once.\n\n[[Open my dashboard | {{link}}]]",
+            'body' => "Your Nominee Access Pass for {{edition}} is ready.\n\nOpen your Nominee Portal, go to Access Pass, and show a QR code at the gate. Each code can be scanned once.\n\n[[Open my portal | {{link}}]]",
         ],
         'admin_password_reset' => [
             'label' => 'Admin password reset', 'group' => 'Team',
@@ -310,11 +310,11 @@ final class MailTemplates
                 $v += ['sender_name' => (string) ($p['senderName'] ?? ''), 'sender_email' => (string) ($p['senderEmail'] ?? ''), 'subject' => (string) ($p['subject'] ?? '')];
                 break;
             case 'nominee_access_pass':
-                $v += ['link' => self::url('dashboard')];
+                $v += ['link' => self::url('portal/pass')];
                 break;
             case 'nominee_entry_approved':
             case 'nominee_entry_rejected':
-                $v += ['category' => (string) ($p['categoryName'] ?? ''), 'note' => trim((string) ($p['note'] ?? '')), 'link' => self::url('dashboard')];
+                $v += ['category' => (string) ($p['categoryName'] ?? ''), 'note' => trim((string) ($p['note'] ?? '')), 'link' => self::url('portal/entries')];
                 break;
             case 'admin_password_reset':
                 $v += ['link' => self::url('admin-reset') . '?' . http_build_query(['token' => (string) ($p['token'] ?? '')]), 'minutes' => (string) ($p['expiresMinutes'] ?? 60)];

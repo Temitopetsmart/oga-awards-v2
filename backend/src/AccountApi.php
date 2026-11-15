@@ -479,7 +479,7 @@ final class AccountApi
             self::startPaidRegistration($ed, $accountId, $a['email'], null, [
                 'name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $level,
                 'bio' => $prev['bio'], 'categoryIds' => $catIds,
-            ], 'dashboard');
+            ], 'portal/entries');
         }
 
         $max = Entries::maxPerNominee((int) $ed['id']);
@@ -591,6 +591,15 @@ final class AccountApi
         $ed = AccessPass::activeEdition();
         $cfg = $ed ? AccessPass::settings((int) $ed['id']) : ['enabled' => false, 'guests' => 0];
         $out = ['ok' => true, 'enabled' => $cfg['enabled'], 'guests' => $cfg['guests'], 'eligible' => false, 'claimed' => false, 'tickets' => [], 'edition' => $ed['slug'] ?? null];
+        if ($ed) {                                                   // what the pass looks like (set by the admin, like any ticket type) and which event it is for
+            $ty = $pdo->prepare("SELECT name, look FROM ticket_types WHERE edition_id = ? AND kind = 'access_pass' ORDER BY id LIMIT 1");
+            $ty->execute([$ed['id']]);
+            $t = $ty->fetch();
+            $tn = (string) ($t['name'] ?? 'Access Pass');
+            $out['typeName'] = $tn;
+            $out['look'] = TicketLook::normalise($t['look'] ?? null, $tn);
+            $out['event'] = ['name' => $ed['name'], 'edition' => (string) ($ed['edition_label'] ?? '')];
+        }
         $tickets = $ed ? AccessPass::tickets($pdo, (int) $a['id'], (int) $ed['id']) : [];   // a claimed pass stays visible even if the admin later switches the feature off
         if ($ed && $cfg['enabled']) {
             $out['eligible'] = AccessPass::eligible($pdo, (int) $a['id'], (int) $ed['id']);

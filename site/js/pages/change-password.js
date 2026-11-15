@@ -54,7 +54,7 @@ export default function changePassword() {
             Update password
           </button>
           <p class="text-center mt-3 mb-0">
-            <a href="dashboard">Back to dashboard</a>
+            <a href="portal/account">Back to my portal</a>
           </p>
         </form>
       `,
@@ -87,7 +87,7 @@ export function init(root) {
         "Your password has been changed successfully.",
       );
 
-      go("dashboard");
+      go("portal/");
     },
   });
 }

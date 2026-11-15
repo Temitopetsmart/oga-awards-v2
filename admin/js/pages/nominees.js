@@ -284,9 +284,9 @@ export async function init(root, { admin, can }) {
         </dl>`,
       }),
     viewAs: (n) => {
-      logAudit(admin, "Previewed nominee dashboard", n.name);
+      logAudit(admin, "Previewed nominee portal", n.name);
       window.open(
-        `${ROOT}dashboard?viewAs=${encodeURIComponent(n.id)}`,
+        `${ROOT}portal/?viewAs=${encodeURIComponent(n.id)}`,
         "_blank",
         "noopener",
       );

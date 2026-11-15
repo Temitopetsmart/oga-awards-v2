@@ -1180,7 +1180,7 @@ check('the nominee sees the status and the note', ($mine['status'] ?? '') === 'r
 $row = $db->query("SELECT type, recipient, payload FROM notification_outbox ORDER BY id DESC LIMIT 1")->fetch();
 check('a "needs changes" email was queued to the nominee with the note', $row && $row['type'] === 'nominee_entry_rejected' && $row['recipient'] === 'na@test.dev' && str_contains((string) $row['payload'], 'clear face photo'), json_encode($row));
 $mail = App\MailTemplates::render('nominee_entry_rejected', 'na@test.dev', json_decode((string) $row['payload'], true));
-check('the email shows the note and links to the dashboard', is_array($mail) && str_contains(json_encode($mail), 'clear face photo') && str_contains(json_encode($mail), 'dashboard'), json_encode($mail));
+check('the email shows the note and links to the Nominee Portal entries page', is_array($mail) && str_contains(json_encode($mail), 'clear face photo') && str_contains(json_encode($mail), 'portal\\/entries'), json_encode($mail));
 check('a note is only a note: nothing about it is public', !str_contains((new Client())->get('/nominees')[2], 'face photo'));
 $pn2 = new Client('nominee'); $pn2->login('nb@test.dev', 'Test-Pass-12345');
 check('one nominee cannot send another nominee’s entry for review', $pn2->post("/nominee/entries/{$entry['na']}/resubmit")[0] === 404);
@@ -2021,6 +2021,180 @@ $sa->put('/admin/settings/contact', [
     'edition' => $ed,
     'value' => ['email' => '', 'phone' => ''],
 ]);
+
+
+// ================================================================== X. Ticket tiers, seat names, sellers, bulk batches, ledger
+group('X. Ticket looks, seat names, sellers (allocations, ledger, remittances) and free bulk batches');
+$clearLimits();
+$xHash = password_hash('Test-Pass-12345', PASSWORD_DEFAULT);
+$mkPerson = function (string $name, string $email, string $role) use ($db, $xHash): int {
+    $db->prepare('INSERT INTO people (name,email,password_hash,active) VALUES (?,?,?,1)')->execute([$name, $email, $xHash]);
+    $pid = (int) $db->lastInsertId();
+    $db->prepare('INSERT INTO edition_assignments (person_id,edition_id) VALUES (?,2)')->execute([$pid]);
+    $db->prepare('INSERT INTO assignment_roles (assignment_id, role_id) SELECT ?, id FROM roles WHERE slug = ?')->execute([(int) $db->lastInsertId(), $role]);
+    return $pid;
+};
+$sellerId = $mkPerson('Sola Seller', 'seller@test.dev', 'seller');
+$seller2Id = $mkPerson('Tunde Seller', 'seller2@test.dev', 'seller');
+$treasId = $mkPerson('Tina Treasurer', 'treas@test.dev', 'treasurer');
+$sel = new Client(); [$c, $r] = $sel->login('seller@test.dev', 'Test-Pass-12345');
+check('a seller can sign in', $c === 200, $c . ' ' . json_encode($r));
+$sel2 = new Client(); $sel2->login('seller2@test.dev', 'Test-Pass-12345');
+$treas = new Client(); $treas->login('treas@test.dev', 'Test-Pass-12345');
+
+// ---- looks
+$typeBody = fn (array $t, array $over = []) => array_merge(['edition' => $ed, 'name' => $t['name'], 'description' => (string) $t['description'], 'price' => $t['price'], 'seats' => $t['seats'], 'maxPerOrder' => $t['maxPerOrder'], 'perks' => $t['perks'], 'active' => true], $over);
+$types = $sa->get("/admin/ticket-types?edition=$ed")[1]['types'] ?? [];
+$vip = current(array_filter($types, fn ($t) => $t['name'] === 'VIP'));
+check('a ticket type without a look shows a safe default tier word', ($vip['look']['label'] ?? '') === 'VIP' && ($vip['look']['pattern'] ?? '') === 'none' && preg_match('/^#[0-9a-f]{6}$/', $vip['look']['primary'] ?? ''));
+$gold = ['label' => 'VIP', 'primary' => '#4a0d12', 'secondary' => '#ffd24a', 'text' => '#ffffff', 'pattern' => 'stripes', 'details' => ['Sat 6 Dec, 5 PM', 'Main Hall']];
+check('an admin can set the look of a ticket type', $sa->patch('/admin/ticket-types/' . $vip['id'], $typeBody($vip, ['look' => $gold]))[0] === 200);
+$vip = current(array_filter($sa->get("/admin/ticket-types?edition=$ed")[1]['types'], fn ($t) => $t['name'] === 'VIP'));
+check('the look is saved exactly', $vip['look']['primary'] === '#4a0d12' && $vip['look']['pattern'] === 'stripes' && $vip['look']['details'] === ['Sat 6 Dec, 5 PM', 'Main Hall']);
+$bad = fn (array $look) => $sa->patch('/admin/ticket-types/' . $vip['id'], $typeBody($vip, ['look' => $look]))[0];
+check('a colour that is not a colour is refused', $bad(array_merge($gold, ['primary' => 'red'])) === 422 && $bad(array_merge($gold, ['secondary' => '#12']) ) === 422);
+check('a pattern that is not offered is refused', $bad(array_merge($gold, ['pattern' => 'flames'])) === 422);
+check('text that cannot be read on the main colour is refused', $bad(array_merge($gold, ['primary' => '#fafafa', 'text' => '#ffffff'])) === 422);
+check('the look is public, so the shop and the ticket page can use it', (function () use ($vip) { $r = (new Client())->get('/ticket-types')[1]; $t = current(array_filter($r['ticketTypes'] ?? $r['types'] ?? $r, fn ($x) => ($x['id'] ?? '') === $vip['id'])); return ($t['look']['label'] ?? '') === 'VIP'; })());
+check('gate staff cannot change a look', $gate->patch('/admin/ticket-types/' . $vip['id'], $typeBody($vip, ['look' => $gold]))[0] === 403);
+
+// ---- a buyer names each seat
+$buyerRef = 'TIK-X-' . strtoupper(bin2hex(random_bytes(4)));
+
+$db->prepare("
+    UPDATE ticket_types
+    SET allow_holder_names = 1
+    WHERE id = 1 AND edition_id = 2
+")->execute();
+
+$db->prepare("
+    INSERT INTO ticket_orders
+        (edition_id, reference, ticket_type_id, qty, amount,
+         buyer_name, buyer_email, buyer_phone, status)
+    VALUES (2, ?, 1, 1, 3000, 'Wale Buyer', 'wale@test.dev', '', 'pending')
+")->execute([$buyerRef]);
+
+$buyerOrderId = (int) $db->lastInsertId();
+App\Tickets::issue($db, $buyerOrderId);
+
+[$c, $r] = (new Client())->post('/tickets/lookup', ['ref' => $buyerRef, 'email' => 'wale@test.dev']);
+$tk = $r['tickets'][0] ?? [];
+check('the ticket page gets the look, the event and whether seats can be named', $c === 200 && isset($tk['look']['primary'], $tk['event']['name']) && $tk['canRename'] === true, json_encode($tk));
+$code = $tk['code'] ?? 'TKT-000000000000';
+$rename = fn (array $b) => (new Client())->post('/tickets/holder', $b);
+check('a buyer can name the person who will use a seat', $rename(['code' => $code, 'email' => 'wale@test.dev', 'name' => 'Grace Ade'])[0] === 200 && (new Client())->post('/tickets/lookup', ['ref' => $buyerRef, 'email' => 'wale@test.dev'])[1]['tickets'][0]['holder'] === 'Grace Ade');
+check('someone with the wrong email cannot rename it', $rename(['code' => $code, 'email' => 'other@test.dev', 'name' => 'Mallory'])[0] === 404);
+check('a name must be given', $rename(['code' => $code, 'email' => 'wale@test.dev', 'name' => 'G'])[0] === 422);
+$db->prepare('UPDATE ticket_types SET allow_holder_names = 0 WHERE id = (SELECT ticket_type_id FROM ticket_orders WHERE reference = ?)')->execute([$buyerRef]);
+check('when the organisers switch renaming off, it is refused', $rename(['code' => $code, 'email' => 'wale@test.dev', 'name' => 'Hacker'])[0] === 403 && (new Client())->post('/tickets/lookup', ['ref' => $buyerRef, 'email' => 'wale@test.dev'])[1]['tickets'][0]['canRename'] === false);
+$db->prepare('UPDATE ticket_types SET allow_holder_names = 1 WHERE id = (SELECT ticket_type_id FROM ticket_orders WHERE reference = ?)')->execute([$buyerRef]);
+$db->prepare('UPDATE tickets SET checked_in_at = NOW() WHERE ticket_code = ?')->execute([$code]);
+check('a ticket that has been used can no longer be renamed', $rename(['code' => $code, 'email' => 'wale@test.dev', 'name' => 'Late Name'])[0] === 422);
+
+// ---- sellers: nothing until an admin sets an allocation
+[$c, $r] = $sel->get("/admin/sales/me?edition=$ed");
+check('a seller with no allocation sees an empty page', $c === 200 && $r['allocations'] === [] && $r['ledger']['balance'] == 0, json_encode($r));
+check('and cannot take tickets', $sel->post('/admin/sales/generate', ['edition' => $ed, 'typeId' => 1, 'qty' => 1])[0] === 403);
+check('a seller cannot see or set allocations, or record money', $sel->get("/admin/sales/overview?edition=$ed")[0] === 403 && $sel->put('/admin/sales/allocations', ['edition' => $ed, 'personId' => $sellerId, 'typeId' => 1, 'settlement' => 'free', 'quota' => 99])[0] === 403 && $sel->post('/admin/sales/remittances', ['edition' => $ed, 'personId' => $sellerId, 'amount' => 100])[0] === 403 && $sel->post('/admin/sales/bulk', ['edition' => $ed, 'typeId' => 1, 'qty' => 5, 'label' => 'Mine'])[0] === 403);
+$alloc = fn (array $b) => $sa->put('/admin/sales/allocations', array_merge(['edition' => $ed], $b));
+check('an allocation needs a valid settlement, price, quota, person and ticket', $alloc(['personId' => $sellerId, 'typeId' => 1, 'settlement' => 'maybe', 'quota' => 5])[0] === 422 && $alloc(['personId' => $sellerId, 'typeId' => 1, 'settlement' => 'owe_later', 'quota' => 5])[0] === 422 && $alloc(['personId' => $sellerId, 'typeId' => 1, 'settlement' => 'free', 'quota' => 0])[0] === 422 && $alloc(['personId' => 999999, 'typeId' => 1, 'settlement' => 'free', 'quota' => 1])[0] === 422 && $alloc(['personId' => $sellerId, 'typeId' => 999999, 'settlement' => 'free', 'quota' => 1])[0] === 422);
+check('the treasurer can set allocations', $treas->put('/admin/sales/allocations', ['edition' => $ed, 'personId' => $sellerId, 'typeId' => 1, 'settlement' => 'owe_later', 'unitPrice' => 1000, 'quota' => 5])[0] === 200);
+check('gate staff cannot', $gate->put('/admin/sales/allocations', ['edition' => $ed, 'personId' => $sellerId, 'typeId' => 1, 'settlement' => 'free', 'quota' => 5])[0] === 403);
+
+$rev0 = App\TicketAdminApi::revenue(2);
+// pay-later: tickets now, owed later, at the admin's price (the browser's price is ignored)
+[$c, $r] = $sel->post('/admin/sales/generate', ['edition' => $ed, 'typeId' => 1, 'qty' => 2, 'label' => 'Hostel A', 'unitPrice' => 1]);
+$ref1 = $r['reference'] ?? '';
+check('a seller takes 2 tickets pay-later and they are issued at once', $c === 200 && $ref1 !== '' && (int) $q("SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE o.reference = ? AND k.status = 'issued'", [$ref1])->fetchColumn() === 2, json_encode($r));
+[, $me] = $sel->get("/admin/sales/me?edition=$ed");
+$a1 = $me['allocations'][0] ?? [];
+check('their page shows quota, taken and remaining', ($a1['quota'] ?? 0) === 5 && $a1['taken'] === 2 && $a1['remaining'] === 3 && $a1['settlement'] === 'owe_later');
+check('what they owe uses the admin\'s price, not the browser\'s', (float) $me['ledger']['owed'] === 2000.0 && (float) $me['ledger']['balance'] === 2000.0, json_encode($me['ledger']));
+check('the tickets come with the seat holder, the label and the look for the image', count($me['orders'][0]['tickets'] ?? []) === 2 && $me['orders'][0]['tickets'][0]['holder'] === 'Sola Seller' && $me['orders'][0]['label'] === 'Hostel A' && isset($me['orders'][0]['look']['primary']) && isset($me['event']['name']));
+check('taking more than the remaining quota is refused', $sel->post('/admin/sales/generate', ['edition' => $ed, 'typeId' => 1, 'qty' => 4])[0] === 422);
+check('tickets handed out pay-later are not counted as money received', App\TicketAdminApi::revenue(2) === $rev0);
+// holders
+$tkCode = $me['orders'][0]['tickets'][0]['code'];
+check('a seller can put the buyer\'s name on a ticket', $sel->patch("/admin/sales/tickets/$tkCode/holder", ['edition' => $ed, 'name' => 'Femi Buyer'])[0] === 200 && $q('SELECT holder_name FROM tickets WHERE ticket_code = ?', [$tkCode])->fetchColumn() === 'Femi Buyer');
+check('another seller cannot touch it', $sel2->patch("/admin/sales/tickets/$tkCode/holder", ['edition' => $ed, 'name' => 'Thief'])[0] === 403);
+check('another seller cannot read the batch, a manager can', $sel2->get("/admin/sales/orders/$ref1?edition=$ed")[0] === 403 && $treas->get("/admin/sales/orders/$ref1?edition=$ed")[0] === 200 && $sel->get("/admin/sales/orders/$ref1?edition=$ed")[0] === 200);
+// returns
+$grp = $q('SELECT g.group_code FROM ticket_groups g JOIN ticket_orders o ON o.id = g.order_id WHERE o.reference = ? ORDER BY g.id LIMIT 1', [$ref1])->fetchColumn();
+check('an unsold ticket can be returned', $sel->post("/admin/sales/groups/$grp/return", ['edition' => $ed])[0] === 200);
+[, $me] = $sel->get("/admin/sales/me?edition=$ed");
+check('returning it lowers what they owe and frees the quota', (float) $me['ledger']['owed'] === 1000.0 && $me['allocations'][0]['taken'] === 1 && $me['allocations'][0]['remaining'] === 4, json_encode([$me['ledger'], $me['allocations'][0]]));
+check('returning the same ticket twice is refused', $sel->post("/admin/sales/groups/$grp/return", ['edition' => $ed])[0] === 422);
+$used = $q("SELECT g.group_code, k.ticket_code FROM ticket_groups g JOIN tickets k ON k.group_id = g.id JOIN ticket_orders o ON o.id = g.order_id WHERE o.reference = ? AND k.status = 'issued' LIMIT 1", [$ref1])->fetch();
+$db->prepare('UPDATE tickets SET checked_in_at = NOW() WHERE ticket_code = ?')->execute([$used['ticket_code']]);
+check('a ticket someone already used cannot be returned', $sel->post("/admin/sales/groups/{$used['group_code']}/return", ['edition' => $ed])[0] === 422);
+check('another seller cannot return it', $sel2->post("/admin/sales/groups/{$used['group_code']}/return", ['edition' => $ed])[0] === 403);
+
+// a table of four is ONE unit: four separate tickets, one group
+$alloc(['personId' => $sellerId, 'typeId' => 3, 'settlement' => 'free', 'quota' => 2]);
+[$c, $r] = $sel->post('/admin/sales/generate', ['edition' => $ed, 'typeId' => 3, 'qty' => 1]);
+$ref3 = $r['reference'] ?? '';
+check('a free table of four becomes four separate tickets in one group, owing nothing', $c === 200 && (int) $q('SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE o.reference = ?', [$ref3])->fetchColumn() === 4 && (int) $q('SELECT COUNT(*) FROM ticket_groups g JOIN ticket_orders o ON o.id = g.order_id WHERE o.reference = ?', [$ref3])->fetchColumn() === 1);
+[, $me] = $sel->get("/admin/sales/me?edition=$ed");
+$tab = current(array_filter($me['allocations'], fn ($a) => $a['typeId'] === '3'));
+check('the quota counts tables, not seats', $tab['taken'] === 1 && $tab['remaining'] === 1 && (float) $me['ledger']['owed'] === 1000.0);
+check('lowering a quota below what is taken is refused', $alloc(['personId' => $sellerId, 'typeId' => 1, 'settlement' => 'owe_later', 'unitPrice' => 1000, 'quota' => 0])[0] === 422 && $alloc(['personId' => $sellerId, 'typeId' => 1, 'settlement' => 'owe_later', 'unitPrice' => 1000, 'quota' => 1])[0] === 200);
+
+// ---- cash handed in
+$rem = fn (array $b) => $treas->post('/admin/sales/remittances', array_merge(['edition' => $ed], $b));
+check('a recorded amount must be above zero', $rem(['personId' => $sellerId, 'amount' => 0])[0] === 422 && $rem(['personId' => $sellerId, 'amount' => 'x'])[0] === 422 && $rem(['personId' => $sellerId, 'amount' => 100, 'method' => 'bitcoin'])[0] === 422);
+[$c, $r] = $rem(['personId' => $sellerId, 'amount' => 400, 'method' => 'cash', 'note' => 'first part']);
+check('the treasurer records cash handed in and the balance drops', $c === 200 && (float) $r['ledger']['remitted'] === 400.0 && (float) $r['ledger']['balance'] === 600.0, json_encode($r));
+check('cash received counts as ticket revenue, the rest still owed does not', App\TicketAdminApi::revenue(2) === $rev0 + 400.0);
+$dash = $sa->get("/admin/dashboard?edition=$ed")[1];
+check('the dashboard and the ticket page agree on revenue', (float) ($dash['ticketRevenue'] ?? -1) === App\TicketAdminApi::revenue(2));
+[, $ov] = $sa->get("/admin/sales/overview?edition=$ed");
+$led = current(array_filter($ov['ledger'] ?? [], fn ($l) => (string) $l['personId'] === (string) $sellerId));
+check('the manager sees every seller\'s ledger and the money entries', ((float) ($led['balance'] ?? -1)) === 600.0 && count($ov['remittances'] ?? []) === 1 && count($ov['allocations'] ?? []) === 2 && ($ov['canManage'] ?? false) && ($ov['canBulk'] ?? false));
+[, $tstat] = $sa->get("/admin/tickets?edition=$ed&page=1&view=orders&stats=1");
+check('the ticket page shows what is still to collect and how many tickets sellers hold', (float) ($tstat['stats']['outstanding'] ?? -1) === 600.0 && ($tstat['stats']['sellerTickets'] ?? 0) >= 1, json_encode($tstat['stats'] ?? null));
+$remId = $ov['remittances'][0]['id'];
+check('a wrong entry can be removed, and it is gone from the totals', $treas->delete("/admin/sales/remittances/$remId", ['edition' => $ed])[0] === 200 && App\TicketAdminApi::revenue(2) === $rev0);
+check('an allocation that has been used cannot be deleted, an unused one can', $treas->delete('/admin/sales/allocations/' . $ov['allocations'][0]['id'], ['edition' => $ed])[0] === 422);
+$alloc(['personId' => $seller2Id, 'typeId' => 1, 'settlement' => 'free', 'quota' => 1]);
+$ov2 = $sa->get("/admin/sales/overview?edition=$ed")[1];
+$fresh = current(array_filter($ov2['allocations'], fn ($a) => (string) $a['personId'] === (string) $seller2Id));
+check('an unused allocation can be deleted', $treas->delete('/admin/sales/allocations/' . $fresh['id'], ['edition' => $ed])[0] === 200);
+
+// ---- paying online (the gateway is unreachable here, as in the other payment tests)
+$alloc(['personId' => $seller2Id, 'typeId' => 2, 'settlement' => 'pay_now', 'unitPrice' => 2500, 'quota' => 3]);
+[$c, $r] = $sel2->post('/admin/sales/generate', ['edition' => $ed, 'typeId' => 2, 'qty' => 1]);
+check('paying online asks the gateway for exactly the admin\'s price', in_array($c, [200, 502], true) && (float) $q("SELECT expected_amount FROM payments WHERE payer_email = 'seller2@test.dev' ORDER BY id DESC LIMIT 1")->fetchColumn() === 2500.0, (string) $c);
+if ($c === 502) {
+    [, $me2] = $sel2->get("/admin/sales/me?edition=$ed");
+    check('a failed payment attempt does not use up their allocation', $me2['allocations'][0]['taken'] === 0 && $me2['allocations'][0]['remaining'] === 3);
+}
+$db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'ticket', 'TIK-SELLPAY1', 2500, 'NGN', 'seller2@test.dev', 'pending')")->execute();
+$spid = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO ticket_orders (edition_id,reference,ticket_type_id,qty,amount,buyer_name,buyer_email,buyer_phone,status,payment_id,channel,settlement,unit_price,issued_by) VALUES (2,'TIK-SELLPAY1',2,1,2500,'Tunde Seller','seller2@test.dev','','pending',?,'seller','paid',2500,?)")->execute([$spid, $seller2Id]);
+$creditT = new ReflectionMethod('App\PaymentService', 'credit'); $creditT->setAccessible(true);
+$creditT->invoke(null, $db, ['id' => $spid, 'purpose' => 'ticket']);
+[, $me2] = $sel2->get("/admin/sales/me?edition=$ed");
+check('once the payment is confirmed the tickets exist and the money counts', (int) $q("SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE o.reference = 'TIK-SELLPAY1'")->fetchColumn() === 1 && (float) $me2['ledger']['paidOnline'] === 2500.0 && App\TicketAdminApi::revenue(2) === $rev0 + 2500.0);
+check('tickets paid for online cannot be returned for credit', $sel2->post('/admin/sales/groups/' . $q("SELECT g.group_code FROM ticket_groups g JOIN ticket_orders o ON o.id = g.order_id WHERE o.reference = 'TIK-SELLPAY1'")->fetchColumn() . '/return', ['edition' => $ed])[0] === 422);
+check('another seller cannot confirm someone else\'s payment', $sel->post('/admin/sales/orders/TIK-SELLPAY1/confirm', ['edition' => $ed])[0] === 403);
+
+// ---- free bulk batches
+$bulk = fn (array $b) => $sa->post('/admin/sales/bulk', array_merge(['edition' => $ed], $b));
+$revB = App\TicketAdminApi::revenue(2);
+check('a bulk batch needs a label, a quantity and a ticket type of this edition', $bulk(['typeId' => 2, 'qty' => 3, 'label' => ''])[0] === 422 && $bulk(['typeId' => 2, 'qty' => 0, 'label' => 'Sponsors'])[0] === 422 && $bulk(['typeId' => 999999, 'qty' => 1, 'label' => 'Sponsors'])[0] === 422);
+check('the treasurer and the sellers cannot make bulk tickets', $treas->post('/admin/sales/bulk', ['edition' => $ed, 'typeId' => 2, 'qty' => 3, 'label' => 'Mine'])[0] === 403 && $gate->post('/admin/sales/bulk', ['edition' => $ed, 'typeId' => 2, 'qty' => 3, 'label' => 'Mine'])[0] === 403);
+[$c, $r] = $bulk(['typeId' => 2, 'qty' => 3, 'label' => 'Sponsors']);
+$refB = $r['reference'] ?? '';
+check('a Super admin generates 3 free VIP tickets with a label', $c === 200 && (int) $q("SELECT COUNT(*) FROM tickets k JOIN ticket_orders o ON o.id = k.order_id WHERE o.reference = ? AND k.status = 'issued'", [$refB])->fetchColumn() === 3, json_encode($r));
+check('bulk tickets are free, send no email, and add no revenue', App\TicketAdminApi::revenue(2) === $revB && (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE payload LIKE ?", ['%' . $refB . '%'])->fetchColumn() === 0 && $q('SELECT channel FROM ticket_orders WHERE reference = ?', [$refB])->fetchColumn() === 'bulk');
+$batch = $sa->get("/admin/sales/orders/$refB?edition=$ed")[1]['order'] ?? [];
+check('the batch can be opened with every ticket and the look to draw it', count($batch['tickets'] ?? []) === 3 && ($batch['label'] ?? '') === 'Sponsors' && ($batch['look']['label'] ?? '') === 'VIP');
+$bCode = $batch['tickets'][0]['code'] ?? '';
+check('the scanner shows the tier look of a ticket at the gate', ($r2 = $sa->post('/admin/scan', ['edition' => $ed, 'code' => $bCode])[1]) && ($r2['result'] ?? '') === 'valid' && ($r2['ticket']['look']['label'] ?? '') === 'VIP' && ($r2['ticket']['look']['primary'] ?? '') === '#4a0d12', json_encode($r2['ticket'] ?? null));
+check('bulk tickets that nobody needs can be returned by a manager', $sa->post('/admin/sales/groups/' . ($q("SELECT g.group_code FROM ticket_groups g JOIN ticket_orders o ON o.id = g.order_id WHERE o.reference = ? ORDER BY g.id DESC LIMIT 1", [$refB])->fetchColumn()) . '/return', ['edition' => $ed])[0] === 200);
+check('the batch list shows seller and bulk batches to managers', count($sa->get("/admin/sales/overview?edition=$ed")[1]['batches'] ?? []) >= 4);
+check('the unused default for a ticket with no look never breaks the page', App\TicketLook::normalise(null, 'Platinum')['label'] === 'PLATINUM' && App\TicketLook::normalise('not json', 'X')['pattern'] === 'none');
+check('every built-in role still matches its factory defaults (seller included)', (function () use ($q) { foreach (App\RoleDefaults::PERMISSIONS as $slug => $want) { $have = $q('SELECT rp.perm_key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug = ?', [$slug])->fetchAll(PDO::FETCH_COLUMN); sort($have); sort($want); if ($have !== $want) { return false; } } return true; })());
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

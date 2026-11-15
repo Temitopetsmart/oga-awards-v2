@@ -96,17 +96,13 @@ async function qrOn(ctx, code, x, y, size) {
     qr.addData(code);
     qr.make();
     const n = qr.getModuleCount();
-    const cell = size / n;
+    const cell = Math.max(3, Math.floor(size / n)); // whole pixels: modules stay square and the code stays scannable
+    const off = (size - cell * n) / 2;
     ctx.fillStyle = "#000000";
     for (let r = 0; r < n; r++)
       for (let c = 0; c < n; c++)
         if (qr.isDark(r, c))
-          ctx.fillRect(
-            x + c * cell,
-            y + r * cell,
-            Math.ceil(cell),
-            Math.ceil(cell),
-          );
+          ctx.fillRect(x + off + c * cell, y + off + r * cell, cell, cell);
   } catch {
     ctx.strokeStyle = "#999999";
     ctx.strokeRect(x, y, size, size);

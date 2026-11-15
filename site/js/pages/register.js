@@ -34,7 +34,7 @@ const LEVELS = APP.levels.map((l) => ({
 
 export default async function register(ctx) {
   if (currentNominee()) {
-    go("dashboard");
+    go("portal/");
     return null;
   }
 
@@ -172,7 +172,7 @@ async function finishRegistration(el) {
         "Welcome aboard!",
         "Your payment is confirmed and your account is created.",
       );
-      go("dashboard");
+      go("portal/");
     } else {
       await notify.success(
         "Payment confirmed",
@@ -229,7 +229,7 @@ export function init(root, ctx) {
         "Welcome aboard!",
         "Your account is created and pending review.",
       );
-      go("dashboard");
+      go("portal/");
     },
   });
 }

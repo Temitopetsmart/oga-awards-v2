@@ -13,7 +13,7 @@ export const title = "Nominee Login";
 
 export default async function login() {
   if (currentNominee()) {
-    go("dashboard");
+    go("portal/");
     return null;
   }
 
@@ -21,7 +21,7 @@ export default async function login() {
     ${pageHero({
       eyebrow: "Nominees",
       title: "Log in",
-      lead: "Access your nominee dashboard.",
+      lead: "Sign in to your Nominee Portal.",
       crumbs: [{ label: "Login" }],
     })}
     ${pageBody(
@@ -71,7 +71,7 @@ export function init(root) {
     },
     async onSubmit(values) {
       await loginNominee(values);
-      go("dashboard");
+      go("portal/");
     },
   });
 }
