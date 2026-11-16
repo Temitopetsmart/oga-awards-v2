@@ -14,6 +14,8 @@ final class Maintenance
         '#^/webhooks/flutterwave$#',
         '#^/votes/orders/[A-Z0-9-]+/confirm$#',
         '#^/tickets/orders/[A-Z0-9-]+/confirm$#',
+        '#^/ads/orders/[A-Z0-9-]+/confirm$#',
+        '#^/ads/lookup$#',
         '#^/tickets/lookup$#',
         '#^/invite/accept$#',
         '#^/admin(-password)?/#',

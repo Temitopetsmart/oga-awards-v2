@@ -300,6 +300,58 @@ final class AdminApi
             TicketSalesApi::bulk();
         }
 
+        // ---- Advertising: ads, packages, settings, reports ----
+        if ($method === 'GET' && $path === '/admin/ads') {
+            AdAdminApi::list();
+        }
+        if ($method === 'POST' && $path === '/admin/ads') {
+            AdAdminApi::create();
+        }
+        if ($method === 'GET' && $path === '/admin/ads/categories') {
+            AdAdminApi::categories();
+        }
+        if ($method === 'POST' && $path === '/admin/ads/categories') {
+            AdAdminApi::createCategory();
+        }
+        if (preg_match('#^/admin/ads/categories/(\\d+)$#', $path, $m)) {
+            $method === 'PATCH'  && AdAdminApi::updateCategory((int) $m[1]);
+            $method === 'DELETE' && AdAdminApi::deleteCategory((int) $m[1]);
+        }
+        if ($method === 'GET' && $path === '/admin/ads/settings') {
+            AdAdminApi::settings();
+        }
+        if ($method === 'PUT' && $path === '/admin/ads/settings') {
+            AdAdminApi::saveSettings();
+        }
+        if ($method === 'GET' && $path === '/admin/ads/report') {
+            AdAdminApi::report();
+        }
+        if (preg_match('#^/admin/ads/(\\d+)$#', $path, $m)) {
+            $method === 'GET'   && AdAdminApi::detail((int) $m[1]);
+            $method === 'PATCH' && AdAdminApi::update((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/media$#', $path, $m)) {
+            AdAdminApi::media((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/approve$#', $path, $m)) {
+            AdAdminApi::approve((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/reject$#', $path, $m)) {
+            AdAdminApi::reject((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/remove$#', $path, $m)) {
+            AdAdminApi::remove((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/extend$#', $path, $m)) {
+            AdAdminApi::extend((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/mark-paid$#', $path, $m)) {
+            AdAdminApi::markPaid((int) $m[1]);
+        }
+        if ($method === 'POST' && preg_match('#^/admin/ads/(\\d+)/refunded$#', $path, $m)) {
+            AdAdminApi::refunded((int) $m[1]);
+        }
+
         // ---- Announcements and Face of the period ----
         if ($method === 'GET' && $path === '/admin/announcements') {
             AnnouncementApi::list();

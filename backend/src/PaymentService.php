@@ -110,7 +110,11 @@ final class PaymentService
                 break;
             case 'ticket':
                 Tickets::issueForPayment($db, $p);
-                break;        }
+                break;
+            case 'ad':
+                Ads::creditPayment($db, $p);
+                break;
+        }
     }
 
     /** One receipt per paid vote order. Queued inside the lock, so a rolled-back payment never sends one. Shows no totals. */

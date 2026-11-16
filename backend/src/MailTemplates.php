@@ -158,6 +158,54 @@ final class MailTemplates
             'subject' => 'Your committee application',
             'body' => "Hello {{name}},\n\n{{message}}",
         ],
+        'ad_received' => [
+            'label' => 'Ad received', 'group' => 'Advertising',
+            'description' => 'Sent to the advertiser when their order is complete (paid, or free) and waiting for review.',
+            'placeholders' => ['name' => 'The advertiser\'s contact name', 'business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'amount' => 'The amount paid, or Free', 'link' => 'Link to the private status page'],
+            'required' => ['link'], 'needs' => [],
+            'subject' => 'We received your ad: {{headline}}',
+            'body' => "Hello {{name}},\n\nThank you. Your ad \"{{headline}}\" for {{business}} is paid for and now waiting for review.\n\nPackage: {{category}}\nAmount: {{amount}}\nReference: {{reference}}\n\nWe review every ad before it goes live and will email you as soon as it is approved.\n\n[[See my ad | {{link}}]]",
+        ],
+        'ad_approved' => [
+            'label' => 'Ad approved', 'group' => 'Advertising',
+            'description' => 'Sent to the advertiser when their ad is approved, with the dates it will run.',
+            'placeholders' => ['name' => 'The advertiser\'s contact name', 'business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'starts' => 'The first day it shows', 'ends' => 'The last day it shows', 'link' => 'Link to the private status page'],
+            'required' => ['link'], 'needs' => [],
+            'subject' => 'Your ad is approved: {{headline}}',
+            'body' => "Hello {{name}},\n\nGood news. Your ad \"{{headline}}\" for {{business}} is approved.\n\nIt runs from {{starts}} until {{ends}}.\nReference: {{reference}}\n\nUse the link below any time to see how many people have seen and clicked it.\n\n[[See my ad | {{link}}]]",
+        ],
+        'ad_rejected' => [
+            'label' => 'Ad not approved', 'group' => 'Advertising',
+            'description' => 'Sent to the advertiser when an ad is rejected, with the reason the reviewer wrote.',
+            'placeholders' => ['name' => 'The advertiser\'s contact name', 'business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'note' => 'The reason the reviewer gave', 'link' => 'Link to the private status page'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your ad could not be approved: {{headline}}',
+            'body' => "Hello {{name}},\n\nWe are sorry, but we could not approve your ad \"{{headline}}\" for {{business}}.\n\nReason: {{note}}\n\nReference: {{reference}}\n\nIf you paid, the organisers will arrange your refund. You are welcome to place a new order that follows the guidance above.\n\n[[See my order | {{link}}]]",
+        ],
+        'ad_expiring' => [
+            'label' => 'Ad ending soon', 'group' => 'Advertising',
+            'description' => 'Sent a few days before an ad stops, with a link to renew it.',
+            'placeholders' => ['name' => 'The advertiser\'s contact name', 'business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'ends' => 'The last day it shows', 'days_left' => 'Days remaining', 'link' => 'Link to the status page, where it can be renewed'],
+            'required' => ['link'], 'needs' => [],
+            'subject' => 'Your ad ends in {{days_left}} days: {{headline}}',
+            'body' => "Hello {{name}},\n\nYour ad \"{{headline}}\" for {{business}} stops after {{ends}} ({{days_left}} days from now).\n\nTo keep it running without a gap, renew it from your status page. The new period starts when this one ends.\n\n[[Renew my ad | {{link}}]]",
+        ],
+        'ad_expired' => [
+            'label' => 'Ad ended', 'group' => 'Advertising',
+            'description' => 'Sent when an ad has finished its period and stopped showing.',
+            'placeholders' => ['name' => 'The advertiser\'s contact name', 'business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'ends' => 'The day it stopped', 'link' => 'Link to the status page, where it can be renewed'],
+            'required' => [], 'needs' => [],
+            'subject' => 'Your ad has ended: {{headline}}',
+            'body' => "Hello {{name}},\n\nYour ad \"{{headline}}\" for {{business}} has finished its run and no longer shows on the site.\n\nThank you for advertising with us. You can see the final numbers, and run it again, from your status page.\n\n[[See my ad | {{link}}]]",
+        ],
+        'ad_review_needed' => [
+            'label' => 'Ad waiting for review', 'group' => 'Advertising',
+            'description' => 'Sent to the contact email address in Settings when a new ad is paid for and waiting to be reviewed.',
+            'placeholders' => ['business' => 'The business name', 'reference' => 'The ad reference', 'headline' => 'The ad headline', 'category' => 'The package bought', 'amount' => 'The amount paid, or Free', 'link' => 'Link to the ad inbox in Admin'],
+            'required' => [], 'needs' => [],
+            'subject' => 'New ad to review: {{business}}',
+            'body' => "{{business}} has a new ad waiting for review.\n\nHeadline: {{headline}}\nPackage: {{category}}\nAmount: {{amount}}\nReference: {{reference}}\n\n[[Open the ad inbox | {{link}}]]",
+        ],
     ];
 
     /** Sample values used for previews and test emails. */
@@ -168,6 +216,7 @@ final class MailTemplates
         'whatsapp_link' => 'https://chat.whatsapp.com/sample', 'position' => 'Media Lead', 
         'ticket_type' => 'VIP table for 4', 'quantity' => '1', 'reference' => 'TIK-AB12CD34', 'nominee' => 'Ada Okafor', 'category' => 'Face of OGITECH', 'votes' => '10', 'amount' => '₦1,000',
         'sender_name' => 'Chika Eze', 'sender_email' => 'chika@example.com', 'subject' => 'Question about tickets',
+        'business' => 'Campus Bites', 'headline' => 'Fresh meals near campus', 'starts' => '1 Dec 2026', 'ends' => '30 Dec 2026', 'days_left' => '3', 'note' => 'The picture is too blurry to read. Please upload a clearer logo.',
     ];
 
     private static ?array $stored = null;
@@ -308,6 +357,19 @@ final class MailTemplates
                 break;
             case 'contact_message_received':
                 $v += ['sender_name' => (string) ($p['senderName'] ?? ''), 'sender_email' => (string) ($p['senderEmail'] ?? ''), 'subject' => (string) ($p['subject'] ?? '')];
+                break;
+            case 'ad_received':
+            case 'ad_approved':
+            case 'ad_rejected':
+            case 'ad_expiring':
+            case 'ad_expired':
+                $v += ['business' => (string) ($p['business'] ?? ''), 'reference' => (string) ($p['reference'] ?? ''), 'headline' => (string) ($p['headline'] ?? ''), 'category' => (string) ($p['category'] ?? ''),
+                    'amount' => (string) ($p['amount'] ?? ''), 'starts' => (string) ($p['starts'] ?? ''), 'ends' => (string) ($p['ends'] ?? ''), 'days_left' => (string) ($p['daysLeft'] ?? ''),
+                    'note' => trim((string) ($p['note'] ?? '')), 'link' => (string) ($p['link'] ?? '')];
+                break;
+            case 'ad_review_needed':
+                $v += ['business' => (string) ($p['business'] ?? ''), 'reference' => (string) ($p['reference'] ?? ''), 'headline' => (string) ($p['headline'] ?? ''), 'category' => (string) ($p['category'] ?? ''),
+                    'amount' => (string) ($p['amount'] ?? ''), 'link' => self::url('admin/ads')];
                 break;
             case 'nominee_access_pass':
                 $v += ['link' => self::url('portal/pass')];

@@ -49,6 +49,11 @@ final class DashboardApi
                 $out['ticketRevenue'] = TicketAdminApi::revenue((int) $ed);
             }
         }
+        if (Access::can($actor, 'ads.view', $ed)) {
+            $out['adsWaiting'] = self::one("SELECT COUNT(*) FROM ads WHERE status = 'paid'", []);
+            $out['adsRunning'] = self::one("SELECT COUNT(*) FROM ads WHERE status = 'approved' AND starts_at <= NOW() AND ends_at > NOW()", []);
+            $out['adRevenue'] = Ads::revenue();          // kept apart from ticket and vote money
+        }
         if (Access::can($actor, 'committee.view', $ed)) {
             $out['applications'] = self::one("SELECT COUNT(*) FROM committee_applications WHERE edition_id = ? AND status <> 'withdrawn'", [$ed]);
         }
@@ -77,6 +82,9 @@ final class DashboardApi
         }
         if (Access::can($person, 'committee.view', $editionId)) {
             $b['newApplications'] = self::one("SELECT COUNT(*) FROM committee_applications WHERE edition_id = ? AND status = 'submitted'", [$editionId]);
+        }
+        if (Access::can($person, 'ads.view', $editionId)) {
+            $b['adsWaiting'] = self::one("SELECT COUNT(*) FROM ads WHERE status = 'paid'", []);
         }
         return $b;
     }

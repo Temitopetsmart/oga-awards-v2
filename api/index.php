@@ -93,6 +93,29 @@ if ($method === 'POST' && $path === '/tickets/lookup') {
     App\TicketApi::lookup();
 }
 
+// ---- Advertising (public): showing ads, counting, the order form, paying, the advertiser's status page ----
+if ($method === 'GET' && $path === '/ads/serve') {
+    App\AdApi::serve();
+}
+if ($method === 'POST' && $path === '/ads/seen') {
+    App\AdApi::seen();
+}
+if ($method === 'GET' && preg_match('#^/ads/click/(\d+)$#', $path, $m)) {
+    App\AdApi::click((int) $m[1]);
+}
+if ($method === 'POST' && $path === '/ads/apply') {
+    App\AdApi::apply();
+}
+if ($method === 'POST' && preg_match('#^/ads/orders/([A-Z0-9-]+)/confirm$#', $path, $m)) {
+    App\AdApi::confirm($m[1]);
+}
+if ($method === 'POST' && $path === '/ads/lookup') {
+    App\AdApi::lookup();
+}
+if ($method === 'POST' && $path === '/ads/renew') {
+    App\AdApi::renew();
+}
+
  // ---- Nominee account area (registration, login, profile) ----
 if (str_starts_with($path, '/nominee/')) {
     App\AccountApi::handle($method, $path);
@@ -114,6 +137,7 @@ $public = [
     '/showcase'     => [fn () => Catalog::showcase(), 60],
     '/announcements' => [fn () => \App\AnnouncementApi::publicList(), 30],
     '/spotlight'    => [fn () => \App\SpotlightApi::publicView(), 60],
+    '/ad-options'   => [fn () => \App\Ads::publicOptions(), 60],
     '/committee'    => [fn () => Catalog::committee(), 60],
     '/settings'     => [fn () => SettingsApi::publicView(), 60],
     '/about'        => [fn () => Catalog::staticFile('about'), 300],
