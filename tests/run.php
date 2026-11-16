@@ -2196,6 +2196,26 @@ check('the batch list shows seller and bulk batches to managers', count($sa->get
 check('the unused default for a ticket with no look never breaks the page', App\TicketLook::normalise(null, 'Platinum')['label'] === 'PLATINUM' && App\TicketLook::normalise('not json', 'X')['pattern'] === 'none');
 check('every built-in role still matches its factory defaults (seller included)', (function () use ($q) { foreach (App\RoleDefaults::PERMISSIONS as $slug => $want) { $have = $q('SELECT rp.perm_key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug = ?', [$slug])->fetchAll(PDO::FETCH_COLUMN); sort($have); sort($want); if ($have !== $want) { return false; } } return true; })());
 
+
+// ================================================================== Y. Nominee Portal: what the new pages need from the server
+group('Y. Nominee Portal: Access Pass carries its tier look and event, emails link to the right portal page');
+[$c, $r] = $na->get('/nominee/access-pass');
+check('the Access Pass answers with its type name, tier look and event for the ticket image', $c === 200 && ($r['typeName'] ?? '') !== '' && preg_match('/^#[0-9a-f]{6}$/', $r['look']['primary'] ?? '') && ($r['look']['label'] ?? '') !== '' && ($r['event']['name'] ?? '') !== '', json_encode($r));
+check('the pass keeps its tickets, one per seat, each with its own code', count($r['tickets'] ?? []) >= 1 && count(array_unique(array_column($r['tickets'], 'code'))) === count($r['tickets']));
+[$c, $r2] = $nb->get('/nominee/access-pass');
+check('a nominee who has not claimed yet gets the look too, so the page can draw a preview', $c === 200 && isset($r2['look']['primary'], $r2['event']['name']));
+$mailPass = App\MailTemplates::render('nominee_access_pass', 'a@test.dev', ['editionName' => 'OGA 10.0']);
+check('the Access Pass email links to the portal pass page', is_array($mailPass) && str_contains($mailPass['text'], 'portal/pass') && !str_contains($mailPass['text'], '/dashboard'), json_encode($mailPass));
+$mailApproved = App\MailTemplates::render('nominee_entry_approved', 'a@test.dev', ['categoryName' => 'Face of OGITECH']);
+check('the approval email links to the portal entries page', is_array($mailApproved) && str_contains($mailApproved['text'], 'portal/entries') && !str_contains($mailApproved['text'], '/dashboard'), json_encode($mailApproved));
+check('the old dashboard address is a hand-over page, not a second copy of the portal', is_file($root . '/dashboard.html') && str_contains((string) file_get_contents($root . '/dashboard.html'), 'portal/') && !file_exists($root . '/site/js/pages/dashboard.js'));
+foreach (['index', 'entries', 'profile', 'promote', 'pass', 'updates', 'account'] as $pg) {
+    $f = $root . '/portal/' . $pg . '.html';
+    $bad = !is_file($f) || !preg_match('/data-page="([a-z]+)"/', (string) file_get_contents($f), $m) || !is_file($root . '/portal/js/pages/' . ($pg === 'index' ? 'home' : $m[1]) . '.js');
+    if ($bad) { break; }
+}
+check('every portal page shell has its page script', !$bad);
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

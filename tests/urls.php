@@ -59,6 +59,8 @@ $pages = [];
 foreach (glob($root . '/*.html') as $f) { $pages[] = basename($f, '.html'); }
 $adminPages = [];
 foreach (glob($root . '/admin/*.html') as $f) { $adminPages[] = basename($f, '.html'); }
+$portalPages = [];                                         // the Nominee Portal lives in its own folder, like the admin
+foreach (glob($root . '/portal/*.html') as $f) { $portalPages[] = basename($f, '.html'); }
 
 foreach ($pages as $p) {
     if ($p === 'index') {
@@ -84,6 +86,20 @@ foreach ($adminPages as $p) {
     check("/admin/$p.html", 301, "/admin/$p");
 }
 // query strings must survive the redirect
+foreach ($portalPages as $p) {
+    if ($p === 'index') {
+        check('/portal', 301, '/portal/');
+        check('/portal/', 200);
+        check('/portal/index', 301, '/portal/');
+        check('/portal/index.html', 301, '/portal/');
+        continue;
+    }
+    check("/portal/$p", 200);
+    check("/portal/$p.html", 301, "/portal/$p");
+}
+// the old nominee dashboard address still opens (it hands over to the portal, keeping the query string)
+check('/dashboard', 200);
+
 check('/vote.html?nominee=3&x=a%20b', 301, '/vote?nominee=3&x=a%20b');
 check('/vote?nominee=3', 200);
 // nothing pretends to exist
