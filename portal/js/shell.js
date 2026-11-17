@@ -77,8 +77,14 @@ export function renderShell({ page, title, content, p }) {
         </a>
         <div class="pt-me">
           ${me.photo
-            ? html`<img src="${mediaUrl(me.photo)}" alt="" />`
-            : html`<span class="pt-avatar" aria-hidden="true"
+            ? html`<img
+                class="oga-profile-image oga-avatar--compact"
+                src="${mediaUrl(me.photo)}"
+                alt=""
+              />`
+            : html`<span
+                class="pt-avatar oga-profile-image oga-avatar--compact"
+                aria-hidden="true"
                 >${initials(me.name)}</span
               >`}
           <div class="min-w-0">

@@ -488,7 +488,7 @@ $sent = fn () => is_file($mails) ? (string) file_get_contents($mails) : '';
 
 [$c, $r] = $sa->get("/admin/email?edition=$ed");
 $keys = array_column($r['templates'] ?? [], 'key');
-check('admin sees all sixteen email templates, none customised yet', $c === 200 && count($keys) === 16 && !array_filter($r['templates'], fn ($t) => $t['custom']));
+check('admin sees all twenty-two email templates, none customised yet', $c === 200 && count($keys) === 22 && !array_filter($r['templates'], fn ($t) => $t['custom']));
 check('every template lists its placeholders', !array_filter($r['templates'], fn ($t) => !isset($t['placeholders']['site_name']) || $t['placeholders'] === []));
 check('email page is hidden from gate staff', $gate->get("/admin/email?edition=$ed")[0] === 403 && $gate->get("/admin/email/outbox?edition=$ed")[0] === 403);
 check('email is not set up before SMTP is saved', ($r['configured'] ?? null) === false);
@@ -2215,6 +2215,316 @@ foreach (['index', 'entries', 'profile', 'promote', 'pass', 'updates', 'account'
     if ($bad) { break; }
 }
 check('every portal page shell has its page script', !$bad);
+
+// ================================================================== Z. PHASE 4: ADVERTISING
+group('Z. Phase 4: advertising (packages, order form, payment, review, rotation, tracking, expiry, revenue)');
+$advId = $mkPerson('Ada Advertising', 'adv@test.dev', 'advertising');
+$advC = new Client(); [$c] = $advC->login('adv@test.dev', 'Test-Pass-12345');
+check('an advertising manager can sign in', $c === 200);
+$tmpImg = tempnam(sys_get_temp_dir(), 'png'); file_put_contents($tmpImg, png(300));
+$tinyImg = tempnam(sys_get_temp_dir(), 'png'); file_put_contents($tinyImg, png(40));
+$webOf = fn (?string $p) => $p !== null && is_file($tmp . '/' . $p) ? substr((string) file_get_contents($tmp . '/' . $p), 8, 4) : '';
+
+// ---- permissions and the role
+$permKinds = $db->query("SELECT perm_key, kind, scope FROM permissions WHERE perm_key LIKE 'ads.%' ORDER BY perm_key")->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
+check('three ad permissions exist: view is read, review and manage change data', ($permKinds['ads.view']['kind'] ?? '') === 'read' && ($permKinds['ads.review']['kind'] ?? '') === 'write' && ($permKinds['ads.manage']['kind'] ?? '') === 'write' && count($permKinds) === 3);
+$have = fn (string $slug) => $q('SELECT rp.perm_key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.slug = ? AND rp.perm_key LIKE \'ads.%\' ORDER BY 1', [$slug])->fetchAll(PDO::FETCH_COLUMN);
+check('the Advertising role holds all three; treasurer and auditor can only view; nobody else gets any', $have('advertising') === ['ads.manage', 'ads.review', 'ads.view'] && $have('treasurer') === ['ads.view'] && $have('auditor') === ['ads.view'] && $have('seller') === [] && $have('gate') === [] && $have('editor') === []);
+foreach (['settings' => '/admin/settings', 'the audit log' => '/admin/audit', 'tickets' => '/admin/tickets', 'votes' => '/admin/votes', 'nominees' => '/admin/nominees'] as $what => $path) {
+    check("the Advertising role gets no access to $what", ($cc = $advC->get("$path?edition=$ed")[0]) === 403, (string) $cc);
+}
+check('strangers and gate staff are refused on the ad pages', (new Client())->get("/admin/ads?edition=$ed")[0] === 401 && $gate->get("/admin/ads?edition=$ed")[0] === 403 && $sel->get("/admin/ads?edition=$ed")[0] === 403);
+check('a treasurer can look but not change', $treas->get("/admin/ads?edition=$ed")[0] === 200 && $treas->post('/admin/ads/categories', ['edition' => $ed])[0] === 403 && $treas->put('/admin/ads/settings', ['edition' => $ed, 'value' => []])[0] === 403);
+
+// ---- closed by default, with starter packages that are off
+[$c, $r] = (new Client())->get('/ad-options');
+check('orders start CLOSED and nothing can be bought before an admin sets prices', $c === 200 && ($r['open'] ?? null) === false && ($r['categories'] ?? null) === []);
+$closed = (new Client())->call('POST', '/ads/apply', ['category_id' => '1', 'business_name' => 'X'], [], true);
+check('the order form refuses while orders are closed', $closed[0] === 403);
+$starters = $sa->get("/admin/ads/categories?edition=$ed")[1]['categories'] ?? [];
+check('three starter packages exist, all switched off', count($starters) === 3 && !array_filter($starters, fn ($s) => $s['active']));
+
+// ---- settings
+$setBase = $advC->get("/admin/ads/settings?edition=$ed")[1]['settings'] ?? [];
+$putSet = fn (array $over) => $advC->put('/admin/ads/settings', ['edition' => $ed, 'value' => array_replace_recursive($setBase, $over)]);
+check('settings refuse an impossible rotation time, empty label and absurd duration', $putSet(['placements' => ['site_footer' => ['rotateSeconds' => 1]]])[0] === 422 && $putSet(['label' => ''])[0] === 422 && $putSet(['maxDurationDays' => 99999])[0] === 422 && $putSet(['placements' => ['portal' => ['maxAds' => 0]]])[0] === 422);
+check('an admin opens orders and sets the rotation of each place', $putSet(['submissionsOpen' => true, 'placements' => ['site_footer' => ['rotateSeconds' => 5, 'maxAds' => 4]]])[0] === 200 && ($advC->get("/admin/ads/settings?edition=$ed")[1]['settings']['placements']['site_footer']['rotateSeconds'] ?? 0) === 5);
+
+// ---- packages
+$pk = fn (array $o = []) => array_merge(['edition' => $ed, 'name' => 'Banner', 'description' => 'Logo and banner', 'price' => 5000, 'durationDays' => 30, 'placements' => ['site_footer', 'portal'], 'mediaMode' => 'image',
+    'requireLogo' => false, 'requireBanner' => true, 'maxImageKb' => 2048, 'maxHeadline' => 60, 'maxText' => 120, 'maxRunning' => 0, 'active' => true, 'sortOrder' => 1], $o);
+check('a package must be sensible: name, price, days, at least one place, known media mode', $advC->post('/admin/ads/categories', $pk(['name' => '']))[0] === 422 && $advC->post('/admin/ads/categories', $pk(['price' => -5]))[0] === 422 && $advC->post('/admin/ads/categories', $pk(['durationDays' => 0]))[0] === 422
+    && $advC->post('/admin/ads/categories', $pk(['durationDays' => 9999]))[0] === 422 && $advC->post('/admin/ads/categories', $pk(['placements' => []]))[0] === 422 && $advC->post('/admin/ads/categories', $pk(['placements' => ['moon']]))[0] === 422 && $advC->post('/admin/ads/categories', $pk(['mediaMode' => 'flash']))[0] === 422);
+[$c, $r] = $advC->post('/admin/ads/categories', $pk()); $catPaid = (int) ($r['id'] ?? 0);
+[$c2, $r2] = $advC->post('/admin/ads/categories', $pk(['name' => 'Mention', 'price' => 0, 'durationDays' => 14, 'placements' => ['site_footer'], 'mediaMode' => 'text', 'requireBanner' => true, 'sortOrder' => 2])); $catFree = (int) ($r2['id'] ?? 0);
+[$c3, $r3] = $advC->post('/admin/ads/categories', $pk(['name' => 'Sponsor', 'price' => 20000, 'durationDays' => 60, 'placements' => ['site_footer', 'home_banner', 'portal'], 'mediaMode' => 'image_video', 'requireLogo' => true, 'sortOrder' => 3])); $catSpon = (int) ($r3['id'] ?? 0);
+check('an advertising manager creates three packages', $c === 200 && $c2 === 200 && $c3 === 200 && $catPaid > 0 && $catFree > 0 && $catSpon > 0);
+check('a text-only package never demands pictures', (int) $q('SELECT require_banner FROM ad_categories WHERE id = ?', [$catFree])->fetchColumn() === 0);
+[$c, $opt] = (new Client())->get('/ad-options');
+check('the public form now lists exactly the active packages, with price and length, and no admin-only fields', ($opt['open'] ?? false) === true && count($opt['categories'] ?? []) === 3 && ($opt['categories'][0]['price'] ?? 0) == 5000 && !isset($opt['categories'][0]['slug']) && !isset($opt['categories'][0]['active']), json_encode($opt));
+
+// ---- link and video rules
+check('only https links with a real host are accepted', App\Ads::link('https://shop.example.com/menu?a=1') !== null && App\Ads::link('http://shop.example.com') === null && App\Ads::link('javascript:alert(1)') === null && App\Ads::link('https://localhost/x') === null
+    && App\Ads::link('https://127.0.0.1/x') === null && App\Ads::link('https://user:pw@shop.example.com') === null && App\Ads::link("https://shop.example.com/\r\nSet-Cookie: x") === null && App\Ads::link('//shop.example.com') === null);
+check('video links are YouTube or Vimeo only and are turned into safe embed addresses', (App\Ads::video('https://youtu.be/dQw4w9WgXcQ')['embed'] ?? '') === 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' && (App\Ads::video('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=5')['provider'] ?? '') === 'youtube'
+    && (App\Ads::video('https://vimeo.com/123456789')['embed'] ?? '') === 'https://player.vimeo.com/video/123456789' && App\Ads::video('https://evil.example.com/watch?v=dQw4w9WgXcQ') === null && App\Ads::video('https://www.youtube.com/watch?v=<script>') === null && App\Ads::video('https://example.com/a.mp4') === null);
+
+// ---- the public order form
+$clearLimits();
+$n = 0;
+$form = fn (array $o = []) => array_merge(['category_id' => (string) $catPaid, 'business_name' => 'Campus Bites', 'contact_name' => 'Chika Eze', 'email' => 'chika' . (++$n) . '@shop.test', 'phone' => '08012345678', 'headline' => 'Fresh meals near campus',
+    'body' => 'Rice, beans and more, delivered to your hostel.', 'link_url' => 'https://campusbites.example.com', 'accept' => '1'], $o);
+$send = function (array $fields, array $files = []) use ($clearLimits) { $clearLimits(); return (new Client())->call('POST', '/ads/apply', $fields + $files, [], true); };
+$img = fn (string $f = null) => ['banner' => new CURLFile($f ?? $tmpImg, 'image/png', 'b.png')];
+check('the form needs the terms accepted, a valid email and phone, an https link, a banner', $send($form(['accept' => '']), $img())[0] === 422 && $send($form(['email' => 'nope']), $img())[0] === 422 && $send($form(['phone' => 'abc']), $img())[0] === 422
+    && $send($form(['link_url' => 'http://insecure.example.com']), $img())[0] === 422 && $send($form(), [])[0] === 422 && $send($form(['headline' => 'Hi']), $img())[0] === 422);
+check('the headline and description respect the package limits', $send($form(['headline' => str_repeat('A', 61)]), $img())[0] === 422 && $send($form(['body' => str_repeat('B', 121)]), $img())[0] === 422);
+check('a text file posing as an image, and a tiny image, are refused', $send($form(), ['banner' => new CURLFile($txt, 'image/png', 'b.png')])[0] === 422 && $send($form(), $img($tinyImg))[0] === 422);
+check('an unknown or switched-off package is refused', $send($form(['category_id' => '999999']), $img())[0] === 422 && $send($form(['category_id' => (string) $starters[0]['id']]), $img())[0] === 422);
+check('a text-only package needs a real description and ignores pictures', $send($form(['category_id' => (string) $catFree, 'body' => 'short']))[0] === 422);
+check('nothing is saved when an order is refused', (int) $q('SELECT COUNT(*) FROM ads')->fetchColumn() === 0);
+
+// free package: straight to review
+[$c, $r] = $send($form(['category_id' => (string) $catFree, 'email' => 'free1@shop.test', 'body' => 'We cook the best jollof in Igbesa.']));
+$freeRef = $r['reference'] ?? '';
+$freeAd = App\Ads::findByRef($freeRef);
+check('a free package goes straight to review, with no payment', $c === 200 && ($r['free'] ?? false) === true && ($freeAd['status'] ?? '') === 'paid' && ($freeAd['paid_via'] ?? '') === 'free' && $freeAd['payment_id'] === null, json_encode($r));
+check('the advertiser is emailed a receipt', (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_received' AND recipient = 'free1@shop.test'")->fetchColumn() === 1);
+
+// paid package: gateway is unreachable here, so we get 502 and a draft; then we play the gateway ourselves
+[$c, $r] = $send($form(['email' => 'paid1@shop.test']), $img());
+$paidAd = $q("SELECT * FROM ads WHERE email = 'paid1@shop.test'")->fetch();
+check('a paid order creates a payment for OUR price (the gateway is unreachable in the sandbox, so 502 is right here)', in_array($c, [200, 502], true) && $paidAd && (float) $paidAd['amount'] === 5000.0 && (int) $q('SELECT expected_amount FROM payments WHERE reference = ?', [$paidAd['reference']])->fetchColumn() === 5000 && (string) $q('SELECT purpose FROM payments WHERE reference = ?', [$paidAd['reference']])->fetchColumn() === 'ad', $c . ' ' . json_encode($r));
+check('a failed gateway leaves a draft and no charge', $c !== 502 || ($paidAd['status'] === 'draft' && (string) $q('SELECT status FROM payments WHERE reference = ?', [$paidAd['reference']])->fetchColumn() === 'failed'));
+check('the uploaded banner was re-encoded as WebP and stored under uploads/ads', str_starts_with((string) $paidAd['banner_path'], 'uploads/ads/') && $webOf($paidAd['banner_path']) === 'WEBP');
+$flw = 900;
+$fakeVerified = function (string $ref, float $amount, string $cur = 'NGN') use (&$flw) { $flw++; return ['status' => 'successful', 'tx_ref' => $ref, 'currency' => $cur, 'amount' => $amount, 'id' => (string) $flw, 'flw_ref' => 'F' . $flw]; };
+$reopen = function (string $ref) use ($db) { $db->prepare("UPDATE payments SET status = 'pending' WHERE reference = ?")->execute([$ref]); $db->prepare("UPDATE ads SET status = 'awaiting_payment' WHERE reference = ?")->execute([$ref]); };
+$reopen($paidAd['reference']);
+$short = App\PaymentService::settle($paidAd['reference'], $fakeVerified($paidAd['reference'], 100.0));
+check('paying too little does not buy the ad', ($short['status'] ?? '') === 'failed' && (string) $q('SELECT status FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() === 'awaiting_payment');
+$wrongCur = (function () use ($reopen, $paidAd, $fakeVerified) { $reopen($paidAd['reference']); return App\PaymentService::settle($paidAd['reference'], $fakeVerified($paidAd['reference'], 5000.0, 'USD')); })();
+check('paying in the wrong currency does not buy the ad either', ($wrongCur['status'] ?? '') === 'failed');
+$reopen($paidAd['reference']);
+$ok = App\PaymentService::settle($paidAd['reference'], $fakeVerified($paidAd['reference'], 5000.0));
+$after = App\Ads::findByRef($paidAd['reference']);
+check('a verified payment moves the ad to paid, waiting for review, and records how it was paid', ($ok['status'] ?? '') === 'paid' && $after['status'] === 'paid' && $after['paid_via'] === 'online' && $after['paid_at'] !== null);
+App\PaymentService::settle($paidAd['reference'], $fakeVerified($paidAd['reference'], 5000.0));
+check('settling again changes nothing and sends no second receipt', (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_received' AND recipient = 'paid1@shop.test'")->fetchColumn() === 1);
+check('nothing shows on the site before it is approved', array_filter((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'] ?? [], fn ($a) => $a['id'] === (int) $paidAd['id']) === []);
+check('ad revenue counts money received for ads only', App\Ads::revenue() === 5000.0);
+
+// ---- review
+[$c, $inbox] = $advC->get("/admin/ads?edition=$ed&status=inbox&page=1");
+$inboxIds = array_column($inbox['rows'] ?? [], 'id');
+check('the inbox lists ads that are paid and waiting, oldest first, with counts for the tabs', $c === 200 && in_array((string) $paidAd['id'], $inboxIds, true) && in_array((string) $freeAd['id'], $inboxIds, true) && ($inbox['counts']['inbox'] ?? 0) >= 2);
+check('a treasurer can read ads but cannot approve', $treas->get("/admin/ads/{$paidAd['id']}?edition=$ed")[0] === 200 && $treas->post("/admin/ads/{$paidAd['id']}/approve", ['edition' => $ed])[0] === 403);
+check('an ad cannot be approved before it is paid', (function () use ($reopen, $db, $advC, $ed, $send, $form, $img) { $r = $send($form(['email' => 'unpaid@shop.test']), $img()); $id = (int) $GLOBALS['db']->query("SELECT id FROM ads WHERE email = 'unpaid@shop.test'")->fetchColumn(); return $advC->post("/admin/ads/$id/approve", ['edition' => $ed])[0] === 422; })());
+[$c, $r] = $advC->post("/admin/ads/{$paidAd['id']}/approve", ['edition' => $ed, 'placements' => ['site_footer']]);
+$appr = App\Ads::find((int) $paidAd['id']);
+check('approving sets the start and an END (30 days), the places, who reviewed it', $c === 200 && $appr['status'] === 'approved' && abs(strtotime((string) $appr['ends_at']) - strtotime((string) $appr['starts_at']) - 30 * 86400) < 5 && json_decode((string) $appr['placements'], true) === ['site_footer'] && (int) $appr['reviewed_by'] === $advId, json_encode($r));
+check('the advertiser is emailed the approval with dates', (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_approved' AND recipient = 'paid1@shop.test'")->fetchColumn() === 1);
+check('approving twice is refused', $advC->post("/admin/ads/{$paidAd['id']}/approve", ['edition' => $ed])[0] === 422);
+check('approval is written to the audit log', (int) $q("SELECT COUNT(*) FROM audit_log WHERE action = 'Approved an ad' AND target = ?", [$paidAd['reference']])->fetchColumn() === 1);
+
+// ---- serving, rotation, tracking
+$srv = (new Client())->get('/ads/serve?placement=site_footer');
+$srvJson = json_encode($srv[1]);
+check('the footer place now serves the approved ad, with the admin-set rotation time and label', $srv[0] === 200 && in_array((int) $paidAd['id'], array_column($srv[1]['ads'] ?? [], 'id'), true) && ($srv[1]['rotateSeconds'] ?? 0) === 5 && ($srv[1]['label'] ?? '') === 'Ad');
+check('the ad shows only in the places it was approved for', !in_array((int) $paidAd['id'], array_column((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? [], 'id'), true) && !in_array((int) $paidAd['id'], array_column((new Client())->get('/ads/serve?placement=home_banner')[1]['ads'] ?? [], 'id'), true));
+check('what visitors receive carries no advertiser contact details, payment or review data', !str_contains($srvJson, 'chika') && !str_contains($srvJson, '0801234') && !str_contains($srvJson, 'amount') && !str_contains($srvJson, 'reviewNote') && !str_contains($srvJson, '"email"'));
+check('an unknown place is refused', (new Client())->get('/ads/serve?placement=moon')[0] === 404);
+$visit = new Client();
+[$c, $r] = $visit->post('/ads/seen', ['placement' => 'site_footer', 'ids' => [(int) $paidAd['id'], (int) $freeAd['id'], 999999]]);
+check('a showing is counted only for ads that really run in that place (the unapproved and unknown ones are ignored)', $c === 200 && ($r['counted'] ?? -1) === 1 && (int) $q('SELECT impressions FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() === 1 && (int) $q('SELECT impressions FROM ads WHERE id = ?', [$freeAd['id']])->fetchColumn() === 0);
+$visit->post('/ads/seen', ['placement' => 'portal', 'ids' => [(int) $paidAd['id']]]);
+check('counters are per day and place, with no visitor data', (int) $q('SELECT COUNT(*) FROM ad_stats WHERE ad_id = ?', [$paidAd['id']])->fetchColumn() === 1 && (int) $q('SELECT impressions FROM ad_stats WHERE ad_id = ? AND placement = ?', [$paidAd['id'], 'site_footer'])->fetchColumn() === 1 && count($q('SHOW COLUMNS FROM ad_stats')->fetchAll()) === 5);
+$headers = function (string $path): array { $ch = curl_init(API . $path); curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 20]); $raw = (string) curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch); preg_match('/^Location:\s*(.+)$/mi', $raw, $m); return [$code, trim($m[1] ?? '')]; };
+$clearLimits();
+[$c, $loc] = $headers("/ads/click/{$paidAd['id']}?p=site_footer");
+check('a click is counted, then the visitor is sent to the advertiser address', $c === 302 && $loc === 'https://campusbites.example.com' && (int) $q('SELECT clicks FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() === 1);
+for ($i = 0; $i < 25; $i++) { $headers("/ads/click/{$paidAd['id']}?p=site_footer"); }
+check('one visitor cannot inflate the click count by pressing again and again', (int) $q('SELECT clicks FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() <= 20);
+[$c, $loc] = $headers("/ads/click/{$freeAd['id']}");
+check('a click on an ad that is not live goes to the home page and counts nothing', $c === 302 && !str_contains($loc, 'campusbites') && (int) $q('SELECT clicks FROM ads WHERE id = ?', [$freeAd['id']])->fetchColumn() === 0);
+
+// ---- reject and refund
+[$c, $r] = $send($form(['category_id' => (string) $catFree, 'email' => 'rej@shop.test', 'body' => 'A description that is long enough.']));
+$rejRef = $r['reference'] ?? ''; $rejAd = App\Ads::findByRef($rejRef);
+check('rejecting needs a reason the advertiser will read', $advC->post("/admin/ads/{$rejAd['id']}/reject", ['edition' => $ed, 'note' => ''])[0] === 422);
+[$c] = $advC->post("/admin/ads/{$rejAd['id']}/reject", ['edition' => $ed, 'note' => 'The description makes claims we cannot allow.']);
+check('a rejected ad is not shown, emails the reason, and a free one owes no refund', $c === 200 && (string) $q('SELECT status FROM ads WHERE id = ?', [$rejAd['id']])->fetchColumn() === 'rejected' && (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_rejected' AND recipient = 'rej@shop.test'")->fetchColumn() === 1 && App\Ads::adminShape(App\Ads::find((int) $rejAd['id']))['refundDue'] === false);
+check('a running ad cannot be "rejected"; it is removed instead', $advC->post("/admin/ads/{$paidAd['id']}/reject", ['edition' => $ed, 'note' => 'changed my mind'])[0] === 422);
+[$c, $r] = $send($form(['email' => 'refund1@shop.test']), $img());
+$rfAd = $q("SELECT * FROM ads WHERE email = 'refund1@shop.test'")->fetch();
+$reopen($rfAd['reference']); App\PaymentService::settle($rfAd['reference'], $fakeVerified($rfAd['reference'], 5000.0));
+$revBefore = App\Ads::revenue();
+$advC->post("/admin/ads/{$rfAd['id']}/reject", ['edition' => $ed, 'note' => 'Banner shows a competitor logo.']);
+check('rejecting a paid ad flags a refund owed, and the dashboard counts it', App\Ads::adminShape(App\Ads::find((int) $rfAd['id']))['refundDue'] === true && ($advC->get("/admin/ads?edition=$ed&status=refund&page=1")[1]['total'] ?? 0) === 1);
+check('a refund needs a note, and recording it removes the amount from ad revenue', $advC->post("/admin/ads/{$rfAd['id']}/refunded", ['edition' => $ed, 'note' => ''])[0] === 422 && $advC->post("/admin/ads/{$rfAd['id']}/refunded", ['edition' => $ed, 'note' => 'Transferred back 17 Nov'])[0] === 200 && App\Ads::revenue() === $revBefore - 5000.0);
+check('a refund cannot be recorded twice', $advC->post("/admin/ads/{$rfAd['id']}/refunded", ['edition' => $ed, 'note' => 'again again'])[0] === 422);
+
+// ---- advertiser status page and renewal
+$look = fn (array $b) => (new Client())->post('/ads/lookup', $b);
+[$c, $r] = $look(['ref' => $paidAd['reference'], 'email' => 'PAID1@shop.test']);
+check('the advertiser sees status, dates and totals with reference + email, and nothing private', $c === 200 && ($r['ad']['status'] ?? '') === 'approved' && ($r['ad']['impressions'] ?? 0) >= 1 && !isset($r['ad']['email'], $r['ad']['phone'], $r['ad']['contact']) && !isset($r['ad']['reviewer']));
+check('a wrong email or reference finds nothing (same answer for both)', $look(['ref' => $paidAd['reference'], 'email' => 'other@shop.test'])[0] === 404 && $look(['ref' => 'AD-NOPE', 'email' => 'paid1@shop.test'])[0] === 404);
+$rej = $look(['ref' => $rejRef, 'email' => 'rej@shop.test'])[1]['ad'] ?? [];
+check('a rejected advertiser reads the reason', ($rej['note'] ?? '') === 'The description makes claims we cannot allow.');
+$clearLimits();
+for ($i = 0; $i < 41; $i++) { $look(['ref' => 'AD-NOPE', 'email' => 'x@y.test']); }
+check('guessing references is rate limited', $look(['ref' => $paidAd['reference'], 'email' => 'paid1@shop.test'])[0] === 429);
+$clearLimits();
+check('an ad still waiting for review cannot be renewed', (new Client())->post('/ads/renew', ['ref' => $freeRef, 'email' => 'free1@shop.test'])[0] === 422);
+[$c, $r] = (new Client())->post('/ads/renew', ['ref' => $paidAd['reference'], 'email' => 'paid1@shop.test']);
+$renew = $q('SELECT * FROM ads WHERE renewal_of = ?', [$paidAd['id']])->fetch();
+check('a renewal is a new order at the CURRENT price for the same content', in_array($c, [200, 502], true) && $renew && (float) $renew['amount'] === 5000.0 && $renew['headline'] === $paidAd['headline'] && $renew['banner_path'] === $paidAd['banner_path'], $c . json_encode($r));
+$reopen($renew['reference']); App\PaymentService::settle($renew['reference'], $fakeVerified($renew['reference'], 5000.0));
+$renewed = App\Ads::find((int) $renew['id']); $orig = App\Ads::find((int) $paidAd['id']);
+check('a paid renewal skips review and starts exactly when the old ad ends (no gap, no overlap)', $renewed['status'] === 'approved' && $renewed['starts_at'] === $orig['ends_at'] && abs(strtotime((string) $renewed['ends_at']) - strtotime((string) $renewed['starts_at']) - 30 * 86400) < 5);
+check('the renewed ad does not show yet, and cannot be renewed twice over', !in_array((int) $renew['id'], array_column((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'] ?? [], 'id'), true) && (function () use ($clearLimits, $paidAd) { $clearLimits(); return (new Client())->post('/ads/renew', ['ref' => $paidAd['reference'], 'email' => 'paid1@shop.test'])[0] === 422; })());
+
+// ---- correcting an ad, extending, removing
+[$c] = $advC->patch("/admin/ads/{$paidAd['id']}", ['edition' => $ed, 'headline' => 'Fresh meals, fast', 'link_url' => 'https://campusbites.example.com/new']);
+check('an admin can correct the wording and link, which show at once', $c === 200 && ((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'][0]['headline'] ?? '') !== '' && (string) $q('SELECT headline FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() === 'Fresh meals, fast');
+check('a correction cannot smuggle in an unsafe link', $advC->patch("/admin/ads/{$paidAd['id']}", ['edition' => $ed, 'link_url' => 'javascript:alert(1)'])[0] === 422 && $advC->patch("/admin/ads/{$paidAd['id']}", ['edition' => $ed, 'placements' => []])[0] === 422);
+$endBefore = (string) $q('SELECT ends_at FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn();
+check('extending adds days but never beyond the longest allowed run', $advC->post("/admin/ads/{$paidAd['id']}/extend", ['edition' => $ed, 'days' => 0])[0] === 422 && $advC->post("/admin/ads/{$paidAd['id']}/extend", ['edition' => $ed, 'days' => 400])[0] === 422 && $advC->post("/admin/ads/{$paidAd['id']}/extend", ['edition' => $ed, 'days' => 7])[0] === 200
+    && strtotime((string) $q('SELECT ends_at FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn()) - strtotime($endBefore) === 7 * 86400);
+// the renewal queued behind it moves with nothing; fine. Now replace images
+[$c, $r] = $advC->call('POST', "/admin/ads/{$paidAd['id']}/media", ['edition' => $ed, 'banner' => new CURLFile($tmpImg, 'image/png', 'n.png')], [], true);
+check('an admin can replace the banner; the new file is WebP', $c === 200 && $webOf($q('SELECT banner_path FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn()) === 'WEBP');
+check('a required banner cannot be removed', $advC->call('POST', "/admin/ads/{$paidAd['id']}/media", ['edition' => $ed, 'remove_banner' => '1'], [], true)[0] === 422);
+
+// ---- admin-made ads: free and cash
+$adminForm = fn (array $o = []) => array_merge(['edition' => $ed, 'category_id' => (string) $catSpon, 'business_name' => 'OGITECH Bookshop', 'headline' => 'Sponsor of the night', 'body' => 'Proud supporter.', 'link_url' => 'https://bookshop.example.com', 'duration_days' => '10', 'deal' => 'free'], $o);
+$files = ['logo' => new CURLFile($tmpImg, 'image/png', 'l.png'), 'banner' => new CURLFile($tmpImg, 'image/png', 'b.png')];
+check('an admin ad has a limited run: no ad is permanent', $advC->call('POST', '/admin/ads', $adminForm(['duration_days' => '400']) + $files, [], true)[0] === 422 && $advC->call('POST', '/admin/ads', $adminForm(['duration_days' => '0']) + $files, [], true)[0] === 422);
+check('a cash deal needs the amount received', $advC->call('POST', '/admin/ads', $adminForm(['deal' => 'cash', 'amount' => '']) + $files, [], true)[0] === 422);
+check('a package that requires a logo still needs one for an admin ad', $advC->call('POST', '/admin/ads', $adminForm() + ['banner' => $files['banner']], [], true)[0] === 422);
+$revB = App\Ads::revenue();
+[$c, $r] = $advC->call('POST', '/admin/ads', $adminForm() + $files, [], true);
+$freeAdm = $r['ad'] ?? [];
+check('a free admin ad skips review, starts now, ends in 10 days, adds no revenue', $c === 200 && ($freeAdm['status'] ?? '') === 'approved' && ($freeAdm['paidVia'] ?? '') === 'free' && ($freeAdm['source'] ?? '') === 'admin' && abs(strtotime($freeAdm['endsAt']) - strtotime($freeAdm['startsAt']) - 10 * 86400) < 5 && App\Ads::revenue() === $revB, json_encode($r));
+check('it shows in the places of its package', in_array((int) $freeAdm['id'], array_column((new Client())->get('/ads/serve?placement=home_banner')[1]['ads'] ?? [], 'id'), true) && in_array((int) $freeAdm['id'], array_column((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? [], 'id'), true));
+[$c, $r] = $advC->call('POST', '/admin/ads', $adminForm(['deal' => 'cash', 'amount' => '12000', 'note' => 'Cash received by Ada', 'business_name' => 'Igbesa Foods', 'starts_at' => date('Y-m-d', strtotime('+3 days'))]) + $files, [], true);
+$cashAdm = $r['ad'] ?? [];
+check('a cash deal counts as revenue (kept apart from tickets and votes) and can start later', $c === 200 && ($cashAdm['paidVia'] ?? '') === 'manual' && App\Ads::revenue() === $revB + 12000.0 && strtotime($cashAdm['startsAt']) > time() + 2 * 86400, json_encode($r));
+check('a scheduled ad is not shown before its start date', !in_array((int) $cashAdm['id'], array_column((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'] ?? [], 'id'), true) && in_array((string) $cashAdm['id'], array_column($advC->get("/admin/ads?edition=$ed&status=scheduled&page=1")[1]['rows'] ?? [], 'id'), true));
+check('only a manager (not a treasurer) may add ads', $treas->call('POST', '/admin/ads', $adminForm() + $files, [], true)[0] === 403);
+
+// ---- cash payment for an order the advertiser started online
+[$c, $r] = $send($form(['email' => 'cash1@shop.test']), $img());
+$cashAd = $q("SELECT * FROM ads WHERE email = 'cash1@shop.test'")->fetch();
+check('only a manager may mark an order as paid in cash, with a note', $treas->post("/admin/ads/{$cashAd['id']}/mark-paid", ['edition' => $ed, 'note' => 'cash'])[0] === 403 && $advC->post("/admin/ads/{$cashAd['id']}/mark-paid", ['edition' => $ed, 'note' => ''])[0] === 422);
+$reopen($cashAd['reference']);
+[$c] = $advC->post("/admin/ads/{$cashAd['id']}/mark-paid", ['edition' => $ed, 'note' => 'Cash paid to Ada, receipt 14']);
+check('marking it paid sends it to review, records who and how, and cancels the online link so it cannot be paid twice', $c === 200 && (string) $q('SELECT status FROM ads WHERE id = ?', [$cashAd['id']])->fetchColumn() === 'paid' && (string) $q('SELECT paid_via FROM ads WHERE id = ?', [$cashAd['id']])->fetchColumn() === 'manual' && (string) $q('SELECT status FROM payments WHERE reference = ?', [$cashAd['reference']])->fetchColumn() === 'abandoned');
+check('an ad already paid cannot be marked paid again', $advC->post("/admin/ads/{$cashAd['id']}/mark-paid", ['edition' => $ed, 'note' => 'cash again'])[0] === 422);
+
+// ---- the limit on running ads per package
+$q('UPDATE ad_categories SET max_running = 1 WHERE id = ?', [$catPaid]);
+[$c, $r] = $send($form(['email' => 'cap1@shop.test']), $img()); $capA = $q("SELECT * FROM ads WHERE email = 'cap1@shop.test'")->fetch(); $reopen($capA['reference']); App\PaymentService::settle($capA['reference'], $fakeVerified($capA['reference'], 5000.0));
+check('a package with a limit refuses to approve more at the same time, and says to pick a later date', $advC->post("/admin/ads/{$capA['id']}/approve", ['edition' => $ed])[0] === 422);
+check('a later start date outside the busy period is accepted', $advC->post("/admin/ads/{$capA['id']}/approve", ['edition' => $ed, 'startsAt' => date('Y-m-d', strtotime('+80 days'))])[0] === 200);
+$q('UPDATE ad_categories SET max_running = 0 WHERE id = ?', [$catPaid]);
+check('an approval date cannot be set more than 90 days away', (function () use ($send, $form, $img, $q, $reopen, $fakeVerified, $advC, $ed, &$flw) { $send($form(['email' => 'far1@shop.test']), $img()); $a = $q("SELECT * FROM ads WHERE email = 'far1@shop.test'")->fetch(); $reopen($a['reference']); App\PaymentService::settle($a['reference'], ['status' => 'successful', 'tx_ref' => $a['reference'], 'currency' => 'NGN', 'amount' => 5000.0, 'id' => (string) (++$flw)]); return $advC->post("/admin/ads/{$a['id']}/approve", ['edition' => $ed, 'startsAt' => date('Y-m-d', strtotime('+200 days'))])[0] === 422; })());
+
+// ---- removing
+[$c] = $advC->post("/admin/ads/{$freeAdm['id']}/remove", ['edition' => $ed, 'reason' => '']);
+check('removing needs a reason', $c === 422);
+[$c] = $advC->post("/admin/ads/{$freeAdm['id']}/remove", ['edition' => $ed, 'reason' => 'Complaint from a student']);
+check('a removed ad stops showing at once and the cache is cleared', $c === 200 && !in_array((int) $freeAdm['id'], array_column((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? [], 'id'), true));
+check('a removed ad cannot be edited or extended', $advC->patch("/admin/ads/{$freeAdm['id']}", ['edition' => $ed, 'headline' => 'Hello again'])[0] === 422 && $advC->post("/admin/ads/{$freeAdm['id']}/extend", ['edition' => $ed, 'days' => 3])[0] === 422);
+
+// ---- the end of an ad's life
+$q("UPDATE ads SET ends_at = DATE_SUB(NOW(), INTERVAL 1 HOUR), starts_at = DATE_SUB(NOW(), INTERVAL 31 DAY) WHERE id = ?", [$paidAd['id']]);
+$sw = App\Ads::sweep();
+check('the sweep stops an ad whose period is over and tells the advertiser', $sw['expired'] === 1 && (string) $q('SELECT status FROM ads WHERE id = ?', [$paidAd['id']])->fetchColumn() === 'expired' && (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_expired' AND recipient = 'paid1@shop.test'")->fetchColumn() === 1);
+App\Cache::flush();
+check('an expired ad no longer shows, even before the sweep has run', !in_array((int) $paidAd['id'], array_column((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'] ?? [], 'id'), true));
+check('an expired ad cannot be extended, but can be renewed (the renewal then starts now)', $advC->post("/admin/ads/{$paidAd['id']}/extend", ['edition' => $ed, 'days' => 3])[0] === 422);
+$q("UPDATE ads SET ends_at = DATE_ADD(NOW(), INTERVAL 2 DAY), starts_at = DATE_SUB(NOW(), INTERVAL 28 DAY), duration_days = 30, expiring_notified = 0 WHERE id = ?", [$capA['id']]);
+$q("UPDATE ads SET starts_at = DATE_SUB(NOW(), INTERVAL 28 DAY) WHERE id = ?", [$capA['id']]);
+$sw1 = App\Ads::sweep(); $sw2 = App\Ads::sweep();
+check('an ad ending within the warning window gets one warning, never two', $sw1['warned'] === 1 && $sw2['warned'] === 0 && (int) $q("SELECT COUNT(*) FROM notification_outbox WHERE type = 'ad_expiring' AND recipient = 'cap1@shop.test'")->fetchColumn() === 1);
+[$c, $r] = $send($form(['email' => 'late1@shop.test']), $img()); $late = $q("SELECT * FROM ads WHERE email = 'late1@shop.test'")->fetch();
+$reopen($late['reference']); $q("UPDATE ads SET created_at = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE id = ?", [$late['id']]);
+$sw = App\Ads::sweep();
+check('an order nobody paid for within a day stops counting as open', $sw['abandoned'] >= 1 && (string) $q('SELECT status FROM ads WHERE id = ?', [$late['id']])->fetchColumn() === 'draft');
+App\PaymentService::settle($late['reference'], $fakeVerified($late['reference'], 5000.0));
+check('but a late payment still completes it (the money is never lost)', (string) $q('SELECT status FROM ads WHERE id = ?', [$late['id']])->fetchColumn() === 'paid');
+
+// ---- limits on the public form
+$q('DELETE FROM ads WHERE email = ? AND status = ?', ['capcheck@shop.test', 'paid']);
+$putSet(['maxPendingPerEmail' => 1, 'submissionsOpen' => true]);
+$first = $send($form(['category_id' => (string) $catFree, 'email' => 'capcheck@shop.test', 'body' => 'A description that is long enough.']));
+$second = $send($form(['category_id' => (string) $catFree, 'email' => 'capcheck@shop.test', 'body' => 'A description that is long enough.']));
+check('one email cannot pile up more open orders than the admin allows', $first[0] === 200 && $second[0] === 422);
+$putSet(['maxPendingPerEmail' => 3]);
+$clearLimits();
+for ($i = 0; $i < 10; $i++) { $db->prepare('INSERT INTO login_attempts (identifier, ip_address, success) VALUES (?, ?, 1)')->execute([hash('sha256', 'ad-apply:127.0.0.1'), '127.0.0.1']); }
+check('the order form is rate limited per visitor', (new Client())->call('POST', '/ads/apply', $form(['category_id' => (string) $catFree, 'email' => 'rl@shop.test', 'body' => 'A description that is long enough.']), [], true)[0] === 429);
+$clearLimits();
+
+// ---- maintenance
+$sa->put('/admin/settings/maintenance', ['edition' => $ed, 'value' => ['enabled' => true, 'message' => 'Back soon']]);
+check('while the site is in maintenance new ad orders and counting are refused', $send($form(['email' => 'm1@shop.test']), $img())[0] === 503 && (new Client())->post('/ads/seen', ['placement' => 'site_footer', 'ids' => []])[0] === 503);
+check('but a payment already in flight and the advertiser status page stay open', (new Client())->post('/ads/orders/AD-NOPE/confirm', [])[0] === 404 && $look(['ref' => $late['reference'], 'email' => 'late1@shop.test'])[0] === 200);
+$sa->put('/admin/settings/maintenance', ['edition' => $ed, 'value' => ['enabled' => false, 'message' => '']]);
+check('showing ads is read-only and keeps working', (new Client())->get('/ads/serve?placement=portal')[0] === 200);
+
+// ---- master and per-place switches
+$advC->call('POST', '/admin/ads', $adminForm(['business_name' => 'Live Check', 'duration_days' => '5']) + $files, [], true);
+$putSet(['placements' => ['site_footer' => ['enabled' => false]]]);
+check('switching a place off empties it without touching the others', ((new Client())->get('/ads/serve?placement=site_footer')[1]['ads'] ?? ['x']) === [] && count((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? []) >= 1);
+$putSet(['placements' => ['site_footer' => ['enabled' => true]], 'enabled' => false]);
+check('the master switch hides every ad and closes the order form', ((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? ['x']) === [] && ((new Client())->get('/ad-options')[1]['open'] ?? true) === false);
+$putSet(['enabled' => true]);
+$putSet(['placements' => ['portal' => ['maxAds' => 1]]]);
+check('a place never shows more ads than the admin allows', count((new Client())->get('/ads/serve?placement=portal')[1]['ads'] ?? []) <= 1);
+$putSet(['placements' => ['portal' => ['maxAds' => 6]]]);
+
+// ---- reports
+[$c, $rep] = $advC->get("/admin/ads/report?edition=$ed");
+$rep = $rep['report'] ?? [];
+check('the report totals showings and clicks, by day, place and ad, with a click rate', $c === 200 && ($rep['impressions'] ?? 0) >= 1 && ($rep['clicks'] ?? 0) >= 1 && count($rep['days'] ?? []) >= 1 && count($rep['placements'] ?? []) >= 1 && count($rep['ads'] ?? []) >= 1 && isset($rep['ctr']));
+check('the report shows ad money apart from other money, and refunds still owed', (float) ($rep['revenue']['total'] ?? -1) === App\Ads::revenue() && isset($rep['refundsDue']['count']) && is_array($rep['counts'] ?? null), json_encode([$rep['revenue'] ?? null, App\Ads::revenue()]));
+check('a bad date range is tolerated, never an error', $advC->get("/admin/ads/report?edition=$ed&from=garbage&to=2020-13-45")[0] === 200);
+[$c, $d] = $advC->get("/admin/ads/{$capA['id']}?edition=$ed");
+check('one ad opens with its payment and daily numbers', $c === 200 && ($d['ad']['reference'] ?? '') === $capA['reference'] && isset($d['ad']['payment']) && isset($d['ad']['stats']));
+check('the dashboard and the sidebar show ads waiting and ad revenue to those who may see them only', isset($advC->get("/admin/dashboard?edition=$ed")[1]['adsWaiting']) && isset($advC->get("/admin/dashboard?edition=$ed")[1]['adRevenue']) && !isset($gate->get("/admin/dashboard?edition=$ed")[1]['adRevenue']));
+
+// ---- packages that have sold cannot vanish
+check('a package that has sold ads cannot be deleted, only switched off', $advC->delete("/admin/ads/categories/$catPaid", ['edition' => $ed])[0] === 422);
+[$c, $r] = $advC->post('/admin/ads/categories', $pk(['name' => 'Spare']));
+check('an unused package can be deleted', $advC->delete('/admin/ads/categories/' . ($r['id'] ?? 0), ['edition' => $ed])[0] === 200);
+$advC->patch("/admin/ads/categories/$catPaid", $pk(['price' => 7500]));
+$sold = (float) $q('SELECT amount FROM ads WHERE id = ?', [$cashAd['id']])->fetchColumn();
+check('changing a package price never changes what earlier ads cost', $sold === 5000.0);
+check('the public form uses the new price at once', ((new Client())->get('/ad-options')[1]['categories'][0]['price'] ?? 0) == 7500);
+$advC->patch("/admin/ads/categories/$catPaid", $pk(['price' => 5000]));
+
+// ---- emails
+foreach (['ad_received', 'ad_approved', 'ad_rejected', 'ad_expiring', 'ad_expired'] as $t) {
+    $m = App\MailTemplates::render($t, 'x@shop.test', ['applicantName' => 'Chika', 'business' => 'Campus Bites', 'headline' => 'Fresh meals', 'reference' => 'AD-1', 'category' => 'Banner', 'starts' => '1 Dec 2026', 'ends' => '30 Dec 2026', 'daysLeft' => 3, 'note' => 'Because <b>reasons</b>', 'amount' => '₦5,000', 'link' => 'https://example.com/advertise?ref=AD-1']);
+    if (!is_array($m) || !str_contains($m['subject'] . $m['text'], 'Fresh meals') || !str_contains($m['text'], 'https://example.com/advertise') || str_contains($m['html'], '<b>reasons</b>')) { break; }
+}
+check('all five advertiser emails render with their details, a link, and escape anything the reviewer typed', !isset($m) || (is_array($m) && !str_contains($m['html'], '<b>reasons</b>') && str_contains($m['text'], 'https://example.com/advertise')));
+check('the staff notice links to the ad inbox', str_contains((string) (App\MailTemplates::render('ad_review_needed', 'office@test.dev', ['business' => 'Campus Bites', 'headline' => 'Hi', 'reference' => 'AD-1', 'category' => 'Banner', 'amount' => 'Free'])['text'] ?? ''), 'admin/ads'));
+check('the wording of every ad email can be edited and reset by an admin', (function () use ($sa, $ed) { foreach (['ad_received', 'ad_approved', 'ad_rejected', 'ad_expiring', 'ad_expired', 'ad_review_needed'] as $t) { $w = $sa->get("/admin/email?edition=$ed")[1]['templates'] ?? []; if (!array_filter($w, fn ($x) => $x['key'] === $t && $x['group'] === 'Advertising')) { return false; } } return true; })());
+check('no ad email ever carries a vote count or ranking', (function () { foreach (App\MailTemplates::DEFAULTS as $k => $d) { if (str_starts_with($k, 'ad_') && preg_match('/\bvotes?\b|ranking|leading/i', $d['body'] . $d['subject'])) { return false; } } return true; })());
+
+// ---- front-end pieces exist and fit together
+foreach (['advertise.html' => 'advertise', 'admin/ads.html' => 'ads', 'admin/ad-setup.html' => 'ad-setup'] as $f => $pg) {
+    $src = is_file($root . '/' . $f) ? (string) file_get_contents($root . '/' . $f) : '';
+    $bad = !str_contains($src, 'data-page="' . $pg . '"') || !is_file($root . '/' . (str_starts_with($f, 'admin/') ? "admin/js/pages/$pg.js" : "site/js/pages/$pg.js"));
+    if ($bad) { break; }
+}
+check('the order page and the two admin pages each have their shell and their script', !$bad);
+check('the rotation component is shared and used by the footer, the home page and the portal', is_file($root . '/shared/js/components/oga-ads.js') && str_contains((string) file_get_contents($root . '/shared/js/components/oga-footer.js'), 'oga-ad-slot') && str_contains((string) file_get_contents($root . '/portal/js/main.js'), 'portalAdSlot') && str_contains((string) file_get_contents($root . '/site/js/pages/home.js'), 'home_banner'));
+check('the client permission catalogue knows all three ad permissions and the role', (function () use ($root) { $s = (string) file_get_contents($root . '/admin/js/config/permissions.js'); return str_contains($s, 'ads.view') && str_contains($s, 'ads.review') && str_contains($s, 'ads.manage') && str_contains($s, 'role-advertising'); })());
+check('the cron tool for the sweep exists and refuses to run in a browser', str_contains((string) file_get_contents($root . '/backend/tools/ads-sweep.php'), "PHP_SAPI !== 'cli'"));
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";

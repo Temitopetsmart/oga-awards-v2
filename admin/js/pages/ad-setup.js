@@ -238,7 +238,7 @@ ${s.terms}</textarea
     e.preventDefault();
     const f = form.elements;
     const value = {
-      enabled: f.enabled.checked,
+      enabled: form.querySelector("#s-enabled").checked,
       submissionsOpen: f.submissionsOpen.checked,
       label: f.label.value,
       defaultCta: f.defaultCta.value,

@@ -146,30 +146,56 @@ a.oga-card:hover .oga-card__go i {
   border: 1px solid var(--oga-border-strong);
 }
 
-/* Avatar (photo or initials) */
+/* Profile images — shared portrait standard */
+.oga-profile-image,
 .oga-avatar {
   display: grid;
   place-items: center;
-  width: 4.5rem;
-  height: 4.5rem;
-  border-radius: 50%;
+  flex: none;
+  width: 6rem;
+  height: 7.5rem;
   overflow: hidden;
+  border-radius: 0.75rem;
   font-family: var(--oga-font-display);
   font-weight: 700;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   color: var(--oga-ink-900);
   background: linear-gradient(135deg, var(--oga-gold-300), var(--oga-gold-600));
-  border: 2px solid var(--oga-gold-500);
+  border: 1px solid var(--oga-gold-500);
 }
+
+.oga-profile-image img,
 .oga-avatar img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
 }
+
 .oga-avatar--lg {
-  width: 7rem;
-  height: 7rem;
+  width: 9rem;
+  height: 11.25rem;
   font-size: 2.2rem;
+}
+
+.oga-avatar--compact {
+  width: 3rem;
+  height: 3.75rem;
+  border-radius: 0.55rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 575.98px) {
+  .oga-avatar {
+    width: 5.25rem;
+    height: 6.55rem;
+  }
+
+  .oga-avatar--lg {
+    width: 7.5rem;
+    height: 9.4rem;
+  }
 }
 
 /* Sections */
@@ -339,7 +365,6 @@ oga-countdown .oga-cd__lbl {
 .oga-swal--toast.swal2-popup {
   border-radius: var(--oga-radius);
 }
-
 
 /* ==========================================================================
    Advertising slot (shared/js/components/oga-ads.js). Sits in the page flow, never over content.

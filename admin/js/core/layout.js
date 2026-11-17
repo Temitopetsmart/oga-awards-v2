@@ -3,7 +3,6 @@ import { html, mount, safeClass } from "../../../shared/js/core/dom.js";
 import { ADMIN } from "../config/admin.config.js";
 import { statusBadge } from "../components/badges.js";
 import { pendingNomineeCount } from "../services/nominee.repo.js";
-import { unreadMessageCount, newApplicationCount } from "../services/counts.js";
 import {
   unreadMessageCount,
   newApplicationCount,

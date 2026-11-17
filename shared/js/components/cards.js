@@ -9,16 +9,34 @@ const mediaUrl = (p) =>
       ? p
       : ROOT + String(p).replace(/^\//, "");
 
-const avatar = (n, large = false) => {
-  const src = mediaUrl(large ? n.photo : (n.thumb ?? n.photo));
+/**
+ * Shared profile image.
+ * Uses the thumbnail for cards and the original photo for large displays.
+ * Falls back to initials when no photograph is available.
+ */
+export const profileImage = (person, { size = "card" } = {}) => {
+  const variant = ["card", "large", "compact"].includes(size) ? size : "card";
+
+  const src = mediaUrl(
+    variant === "large" ? person?.photo : person?.thumb || person?.photo,
+  );
+
   return html`<span
-    class="oga-avatar ${large ? "oga-avatar--lg" : ""}"
-    aria-hidden="true"
-    >${src
+    class="oga-avatar oga-profile-image oga-avatar--${variant === "large"
+      ? "lg"
+      : variant}"
+    role="img"
+    aria-label="${person?.name || "Profile photo"}"
+  >
+    ${src
       ? html`<img src="${src}" alt="" loading="lazy" />`
-      : initials(n.name)}</span
-  >`;
+      : initials(person?.name || "")}
+  </span>`;
 };
+
+/** Backward-compatible helper for existing nominee and winner cards. */
+const avatar = (person, large = false) =>
+  profileImage(person, { size: large ? "large" : "card" });
 
 export const categoryCard = (c, href) =>
   html` <a class="oga-card" href="${href}">

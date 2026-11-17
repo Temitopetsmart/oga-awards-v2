@@ -85,14 +85,17 @@ body.pt {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--oga-border);
 }
+
 .pt-me img,
 .pt-me .pt-avatar {
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 50%;
+  width: 3rem;
+  height: 3.75rem;
+  border-radius: 0.55rem;
   object-fit: cover;
+  object-position: center top;
   flex: none;
 }
+
 .pt-avatar {
   display: grid;
   place-items: center;
@@ -372,13 +375,17 @@ body.pt {
 .pt-ad {
   margin-top: 1.5rem;
 }
+
 .pt-photo {
-  width: 7rem;
-  height: 7rem;
-  border-radius: 50%;
+  display: block;
+  width: 8rem;
+  height: 10rem;
+  border-radius: 0.85rem;
   object-fit: cover;
-  border: 3px solid var(--oga-gold-600);
+  object-position: center top;
+  border: 1px solid var(--oga-gold-600);
 }
+
 @media print {
   .pt-sidebar,
   .pt-top,
