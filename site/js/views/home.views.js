@@ -14,19 +14,19 @@ import {
   cardGrid,
   occasionStrip,
 } from "../sections/sections.js";
-
-/**
- * One view per home state. Each receives (ctx, data) and returns HTML.
- * To add a state: add it to STATES in app.config.js, copy in data/content.json,
- * data loading in site/js/pages/home.js, and a view here.
- */
+import { faceCard } from "../sections/extras.js";
 
 const vars = () => ({
   price: money(APP.voting.pricePerVote),
   maxVotes: APP.voting.maxVotesPerPayment,
 });
+
 const items = (copy) =>
-  (copy.highlights ?? []).map((h) => ({ ...h, text: tpl(h.text, vars()) }));
+  (copy.highlights ?? []).map((h) => ({
+    ...h,
+    text: tpl(h.text, vars()),
+  }));
+
 const features = (copy, extra = {}) =>
   featureGrid({
     title: copy.sectionTitle,
@@ -35,31 +35,56 @@ const features = (copy, extra = {}) =>
     ...extra,
   });
 
-/* Default: the normal OGA landing page */
-const landing = (ctx) =>
-  html` ${hero({ ctx, copy: ctx.copy, aside: countdownPanel(ctx.countdown) })}
+/** Countdown and featured person share one coordinated homepage feature area. */
+const homeAside = (
+  ctx,
+  featuredFace,
+  primary = countdownPanel(ctx.countdown),
+) =>
+  html`<div class="oga-home-feature ${featuredFace ? "has-face" : ""}">
+    <div class="oga-home-feature__countdown">${primary}</div>
+    ${featuredFace
+      ? html`<div class="oga-home-feature__face">
+          ${faceCard(featuredFace, { big: true, home: true })}
+        </div>`
+      : ""}
+  </div>`;
+
+/* Default landing page */
+const landing = (ctx, { featuredFace } = {}) =>
+  html`${hero({
+    ctx,
+    copy: ctx.copy,
+    aside: homeAside(ctx, featuredFace),
+  })}
   ${features(ctx.copy, { eyebrow: "The experience" })}
   ${occasionStrip(ctx.specials)}`;
 
 /* Nominations are open */
-const nominations = (ctx, { categories }) =>
-  html` ${hero({ ctx, copy: ctx.copy, aside: countdownPanel(ctx.countdown) })}
+const nominations = (ctx, { categories, featuredFace } = {}) =>
+  html`${hero({
+    ctx,
+    copy: ctx.copy,
+    aside: homeAside(ctx, featuredFace),
+  })}
   ${features(ctx.copy, { eyebrow: "Get started" })}
   ${cardGrid({
     title: ctx.copy.categoriesTitle,
     lead: ctx.copy.categoriesLead,
     alt: true,
     eyebrow: "Categories",
-    cards: categories.map((c) =>
-      categoryCard(c, `${ROOT}categories#${c.id}`),
-    ),
+    cards: categories.map((c) => categoryCard(c, `${ROOT}categories#${c.id}`)),
     emptyText: "Categories will be announced soon.",
   })}
   ${occasionStrip(ctx.specials)}`;
 
 /* Voting is live */
-const voting = (ctx, { categories, nominees }) =>
-  html` ${hero({ ctx, copy: ctx.copy, aside: countdownPanel(ctx.countdown) })}
+const voting = (ctx, { categories, nominees, featuredFace } = {}) =>
+  html`${hero({
+    ctx,
+    copy: ctx.copy,
+    aside: homeAside(ctx, featuredFace),
+  })}
   ${features(ctx.copy, { eyebrow: "Simple & secure" })}
   ${cardGrid({
     title: ctx.copy.categoriesTitle,
@@ -85,15 +110,20 @@ const voting = (ctx, { categories, nominees }) =>
   ${occasionStrip(ctx.specials)}`;
 
 /* Voting ended, winners not published yet */
-const votingClosed = (ctx) =>
-  html` ${hero({ ctx, copy: ctx.copy, aside: countdownPanel(ctx.countdown) })}
+const votingClosed = (ctx, { featuredFace } = {}) =>
+  html`${hero({
+    ctx,
+    copy: ctx.copy,
+    aside: homeAside(ctx, featuredFace),
+  })}
   ${features(ctx.copy, { eyebrow: "Up next" })} ${occasionStrip(ctx.specials)}`;
 
 /* Winners are out */
-const results = (ctx, { winners }) => {
+const results = (ctx, { winners, featuredFace } = {}) => {
   const [first] = winners;
-  const spotlight = first
-    ? html` <div class="oga-panel oga-spotlight">
+
+  const winnerSpotlight = first
+    ? html`<div class="oga-panel oga-spotlight">
         <p class="oga-panel__label">
           <i class="fa-solid fa-trophy"></i> ${first.category.name}
         </p>
@@ -104,7 +134,12 @@ const results = (ctx, { winners }) => {
           : ""}
       </div>`
     : countdownPanel(null);
-  return html` ${hero({ ctx, copy: ctx.copy, aside: spotlight })}
+
+  return html`${hero({
+    ctx,
+    copy: ctx.copy,
+    aside: homeAside(ctx, featuredFace, winnerSpotlight),
+  })}
   ${cardGrid({
     title: ctx.copy.sectionTitle,
     lead: ctx.copy.sectionLead,

@@ -10,6 +10,7 @@ import {
 import { renderPreviewBar } from "../../../shared/js/components/preview-bar.js";
 import { homeViews } from "../views/home.views.js";
 import { mountHomeExtras } from "../sections/extras.js";
+import { getResource } from "../../../shared/js/core/http.js";
 
 const app = document.getElementById("app");
 let busy = false;
@@ -57,7 +58,13 @@ async function load() {
   mount(app, skeleton());
   try {
     const ctx = await getHomeContext();
-    const data = await loadData(ctx);
+
+    const [data, spotlight] = await Promise.all([
+      loadData(ctx),
+      getResource("spotlight").catch(() => ({ featured: null })),
+    ]);
+
+    data.featuredFace = spotlight?.featured ?? null;
     document.title = `${ctx.occasion.name} ${ctx.occasion.edition} — ${ctx.stateInfo.label}`;
     document.body.dataset.state = ctx.state;
     mount(app, homeViews[ctx.state](ctx, data));

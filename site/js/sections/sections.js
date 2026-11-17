@@ -4,19 +4,20 @@ import { formatDate } from "../../../shared/js/core/format.js";
 import { hasFeature } from "../../../shared/js/services/event.service.js";
 import { occasionCard } from "../../../shared/js/components/cards.js";
 
-/** Hero: badge, headline, lead, buttons, and an `aside` slot (countdown, winner spotlight…). */
+/** Homepage hero: introduction on the left, coordinated feature area on the right. */
 export function hero({ ctx, copy, aside }) {
   const ctas = (copy.ctas ?? []).filter(
     (c) => !c.feature || hasFeature(ctx.occasion, c.feature),
   );
-  return html` <section class="oga-hero">
+
+  return html`<section class="oga-hero">
     <div class="oga-hero__glow" aria-hidden="true"></div>
     <div class="container position-relative">
       <div class="row align-items-center gy-5 gx-lg-5">
-        <div class="col-lg-7">
-          <span class="oga-badge mb-4"
-            ><span class="oga-dot"></span>${ctx.stateInfo.label}</span
-          >
+        <div class="col-lg-5">
+          <span class="oga-badge mb-4">
+            <span class="oga-dot"></span>${ctx.stateInfo.label}
+          </span>
           <p class="oga-eyebrow d-block mb-2">${copy.kicker}</p>
           <h1 class="oga-hero__title">
             ${copy.title} <span class="text-gold">${copy.highlight}</span>
@@ -35,7 +36,7 @@ export function hero({ ctx, copy, aside }) {
             )}
           </div>
         </div>
-        <div class="col-lg-5">${aside}</div>
+        <div class="col-lg-7">${aside}</div>
       </div>
     </div>
   </section>`;
