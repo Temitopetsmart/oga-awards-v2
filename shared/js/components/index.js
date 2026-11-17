@@ -2,3 +2,4 @@
 import "./oga-countdown.js";
 import "./oga-header.js";
 import "./oga-footer.js";
+import "./oga-ads.js";

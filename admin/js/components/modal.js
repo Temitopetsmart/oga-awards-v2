@@ -36,8 +36,8 @@ function build(titleText, bodyHtml, { size = "" } = {}) {
 }
 
 /** Read-only modal with a close button. */
-export function openInfoModal({ title, body, size = "" }) {
-  const { modal } = build(
+export function openInfoModal({ title, body, size = "", onOpen }) {
+  const { el, modal } = build(
     title,
     html`<div class="modal-body">${body}</div>
       <div class="modal-footer">
@@ -46,8 +46,9 @@ export function openInfoModal({ title, body, size = "" }) {
     { size },
   );
   modal.show();
+  onOpen?.(el, modal);
+  return { el, modal };
 }
-
 /**
  * Form modal. fields: field() configs, plus { type: 'switch' } for on/off toggles.
  * onSubmit(values) may throw (errors are shown); the modal closes when it resolves.

@@ -1,5 +1,6 @@
 import "../../../shared/js/components/index.js";
 import { html, mount } from "../../../shared/js/core/dom.js";
+import { APP } from "../../../shared/js/config/app.config.js";
 import { getHomeContext } from "../../../shared/js/services/event.service.js";
 import {
   getCategories,
@@ -61,6 +62,13 @@ async function load() {
     document.body.dataset.state = ctx.state;
     mount(app, homeViews[ctx.state](ctx, data));
     mountHomeExtras(app).catch(() => {}); // latest news and the Face of the period, if there are any
+    if (!APP.maintenance?.enabled) {
+      // The home page banner for advertisers (Admin, Ad setup, place "home_banner"). Empty and invisible when nothing runs.
+      const banner = document.createElement("div");
+      banner.className = "container";
+      banner.innerHTML = '<oga-ad-slot placement="home_banner"></oga-ad-slot>';
+      app.append(banner);
+    }
     renderPreviewBar(ctx.state);
   } catch (err) {
     console.error(err);

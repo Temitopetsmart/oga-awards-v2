@@ -339,3 +339,205 @@ oga-countdown .oga-cd__lbl {
 .oga-swal--toast.swal2-popup {
   border-radius: var(--oga-radius);
 }
+
+
+/* ==========================================================================
+   Advertising slot (shared/js/components/oga-ads.js). Sits in the page flow, never over content.
+   ========================================================================== */
+oga-ad-slot:empty {
+  display: none !important;
+}
+.oga-ad {
+  position: relative;
+  margin-block: 1.5rem;
+  border: 1px solid var(--oga-border);
+  border-radius: 0.85rem;
+  background: var(--oga-ink-800);
+  overflow: hidden;
+}
+.oga-ad__label {
+  position: absolute;
+  z-index: 2;
+  top: 0.6rem;
+  left: 0.6rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(5, 5, 5, 0.78);
+  color: var(--oga-ink-100);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.oga-ad__slide {
+  display: none;
+}
+.oga-ad__slide.is-active {
+  display: block;
+  animation: oga-ad-in 0.5s ease both;
+}
+.oga-ad--still .oga-ad__slide.is-active {
+  animation: none;
+}
+.oga-ad--preview .oga-ad__slide {
+  display: block;
+}
+@keyframes oga-ad-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oga-ad__slide.is-active {
+    animation: none;
+  }
+}
+.oga-ad__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.oga-ad__link:hover .oga-ad__headline,
+.oga-ad__link:focus-visible .oga-ad__headline {
+  color: var(--oga-gold-400);
+}
+.oga-ad__banner {
+  display: block;
+  width: 100%;
+  max-height: 11rem;
+  aspect-ratio: 4 / 1;
+  object-fit: cover;
+  background: var(--oga-ink-700);
+}
+.oga-ad__body {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+}
+.oga-ad__logo {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  background: var(--oga-ink-700);
+}
+.oga-ad__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.oga-ad__headline {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.oga-ad__desc {
+  color: var(--oga-ink-200);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.oga-ad__biz {
+  color: var(--oga-ink-300);
+  font-size: 0.75rem;
+}
+.oga-ad__cta {
+  flex: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: var(--oga-gold-500);
+  color: #111;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.oga-ad__watch {
+  margin: 0 1rem 0.8rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--oga-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--oga-ink-100);
+  font-size: 0.8rem;
+}
+.oga-ad__watch:hover {
+  border-color: var(--oga-gold-500);
+  color: var(--oga-gold-400);
+}
+.oga-ad__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0 0 0.7rem;
+}
+.oga-ad__arrow {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--oga-ink-200);
+}
+.oga-ad__arrow:hover {
+  color: var(--oga-gold-400);
+}
+.oga-ad__dots {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+.oga-ad__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--oga-ink-500);
+}
+.oga-ad__dot[aria-current="true"] {
+  background: var(--oga-gold-500);
+}
+@media (max-width: 575.98px) {
+  .oga-ad__body {
+    flex-wrap: wrap;
+  }
+  .oga-ad__cta {
+    width: 100%;
+    text-align: center;
+  }
+}
+.oga-ad-video {
+  width: min(92vw, 56rem);
+  padding: 0;
+  border: 1px solid var(--oga-border);
+  border-radius: 0.8rem;
+  background: #000;
+  overflow: hidden;
+}
+.oga-ad-video::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+}
+.oga-ad-video iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+}
+.oga-ad-video__close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.5rem;
+  z-index: 2;
+  border: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+}

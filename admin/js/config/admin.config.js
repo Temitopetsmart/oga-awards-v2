@@ -95,6 +95,20 @@ export const ADMIN = {
       href: "admin/occasions",
       perm: "occasions.view",
     },
+    { section: "Advertising" },
+    {
+      label: "Ads",
+      icon: "fa-rectangle-ad",
+      href: "admin/ads",
+      perm: "ads.view",
+      badge: "adsWaiting",
+    },
+    {
+      label: "Ad setup",
+      icon: "fa-sliders",
+      href: "admin/ad-setup",
+      perm: "ads.manage",
+    },
     { section: "People" },
     {
       label: "Committee",

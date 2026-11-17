@@ -10,6 +10,7 @@ import {
 } from "../../shared/js/services/auth.service.js";
 import { loadPortalData } from "./data.js";
 import { renderShell, wireShell } from "./shell.js";
+import { mountAdSlot } from "../../shared/js/components/oga-ads.js";
 
 /**
  * The Nominee Portal runner. Each portal page sets <body data-page="name"> and portal/js/pages/<n>.js exports:
@@ -117,6 +118,10 @@ async function boot() {
     document.body.dataset.state = ctx.state;
     wireShell(root);
     await mod.init?.(root, p);
+    // Sponsors for nominees. An admin previewing a portal (read-only) does not add to the counts.
+    mountAdSlot(root.querySelector("#portalAdSlot"), "portal", {
+      count: !p.readOnly,
+    }).catch(() => {});
     if (!p.readOnly && currentNominee()?.needsMatric) askForMatric();
   } catch (err) {
     console.error(err);

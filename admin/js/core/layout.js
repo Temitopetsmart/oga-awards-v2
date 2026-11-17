@@ -4,6 +4,11 @@ import { ADMIN } from "../config/admin.config.js";
 import { statusBadge } from "../components/badges.js";
 import { pendingNomineeCount } from "../services/nominee.repo.js";
 import { unreadMessageCount, newApplicationCount } from "../services/counts.js";
+import {
+  unreadMessageCount,
+  newApplicationCount,
+  adsWaitingCount,
+} from "../services/counts.js";
 import { editionLabel } from "../services/edition.repo.js";
 import { effectivePerms } from "../services/team.repo.js";
 
@@ -11,6 +16,7 @@ const BADGES = {
   pendingNominees: pendingNomineeCount,
   unreadMessages: unreadMessageCount,
   newApplications: newApplicationCount,
+  adsWaiting: adsWaitingCount,
 };
 
 /**

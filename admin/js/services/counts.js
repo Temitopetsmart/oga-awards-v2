@@ -9,3 +9,4 @@ const count = (name) =>
 
 export const unreadMessageCount = () => count("unreadMessages");
 export const newApplicationCount = () => count("newApplications");
+export const adsWaitingCount = () => count("adsWaiting");

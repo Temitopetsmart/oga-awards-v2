@@ -41,6 +41,12 @@ const pages = [
   ["nominee", "nominee", "Nominee", "Nominee profile."],
   ["faq", "faq", "FAQ", "Answers to common questions."],
   ["contact", "contact", "Contact", "Get in touch with the OGA team."],
+  [
+    "advertise",
+    "advertise",
+    "Advertise",
+    "Advertise your business to OGITECH students and the awards audience.",
+  ],
   ["occasion", "occasion", "Occasion", "A special occasion from OGA."],
   ["vote", "vote", "Vote", "Vote for your favourite nominee."],
   ["results", "results", "Winners", "The winners of this edition."],

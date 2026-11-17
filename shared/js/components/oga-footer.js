@@ -24,77 +24,88 @@ class OgaFooter extends HTMLElement {
 
     mount(
       this,
-      html` <footer class="oga-footer">
-        <div class="container">
-          <div class="row gy-5 gx-lg-5">
-            <div class="col-lg-5">
-              <a class="oga-footer__brand" href="${ROOT}">${APP.brand.name}</a>
-              <p class="mt-3 mb-4">
-                ${APP.brand.org} — celebrating excellence, leadership and impact
-                across campus.
-              </p>
-              ${social.length
-                ? html`<div class="oga-social">
-                    ${social.map(
-                      (s) =>
-                        html`<a
-                          href="${s.href}"
-                          target="_blank"
-                          rel="noopener"
-                          aria-label="${s.label}"
-                          ><i class="${s.icon}"></i
-                        ></a>`,
-                    )}
-                  </div>`
-                : ""}
-            </div>
-            <div class="col-6 col-lg-3">
-              <h2 class="oga-footer__title">Explore</h2>
-              <ul class="list-unstyled oga-footer__links">
-                ${links.map(
-                  (n) =>
-                    html`<li><a href="${ROOT}${n.href}">${n.label}</a></li>`,
-                )}
-              </ul>
-            </div>
-            <div class="col-6 col-lg-4">
-              <h2 class="oga-footer__title">Contact</h2>
-              <ul class="list-unstyled oga-footer__links">
-                ${email
-                  ? html`<li>
-                      <i class="fa-solid fa-envelope"></i
-                      ><a href="mailto:${email}">${email}</a>
-                    </li>`
+      html`${ctx && !APP.maintenance?.enabled
+          ? html`<div class="container">
+              <oga-ad-slot placement="site_footer"></oga-ad-slot>
+            </div>`
+          : ""}
+        <footer class="oga-footer">
+          <div class="container">
+            <div class="row gy-5 gx-lg-5">
+              <div class="col-lg-5">
+                <a class="oga-footer__brand" href="${ROOT}"
+                  >${APP.brand.name}</a
+                >
+                <p class="mt-3 mb-4">
+                  ${APP.brand.org} — celebrating excellence, leadership and
+                  impact across campus.
+                </p>
+                ${social.length
+                  ? html`<div class="oga-social">
+                      ${social.map(
+                        (s) =>
+                          html`<a
+                            href="${s.href}"
+                            target="_blank"
+                            rel="noopener"
+                            aria-label="${s.label}"
+                            ><i class="${s.icon}"></i
+                          ></a>`,
+                      )}
+                    </div>`
                   : ""}
-                ${phone
-                  ? html`<li>
-                      <i class="fa-solid fa-phone"></i
-                      ><a href="tel:${phone}">${phone}</a>
-                    </li>`
-                  : ""}
-                <li>
-                  <i class="fa-solid fa-paper-plane"></i
-                  ><a href="${ROOT}contact">Send us a message</a>
-                </li>
-                <li>
-                  <i class="fa-solid fa-right-to-bracket"></i
-                  ><a href="${ROOT}login">Nominee login</a>
-                </li>
-              </ul>
+              </div>
+              <div class="col-6 col-lg-3">
+                <h2 class="oga-footer__title">Explore</h2>
+                <ul class="list-unstyled oga-footer__links">
+                  ${links.map(
+                    (n) =>
+                      html`<li><a href="${ROOT}${n.href}">${n.label}</a></li>`,
+                  )}
+                </ul>
+              </div>
+              <div class="col-6 col-lg-4">
+                <h2 class="oga-footer__title">Contact</h2>
+                <ul class="list-unstyled oga-footer__links">
+                  ${email
+                    ? html`<li>
+                        <i class="fa-solid fa-envelope"></i
+                        ><a href="mailto:${email}">${email}</a>
+                      </li>`
+                    : ""}
+                  ${phone
+                    ? html`<li>
+                        <i class="fa-solid fa-phone"></i
+                        ><a href="tel:${phone}">${phone}</a>
+                      </li>`
+                    : ""}
+                  <li>
+                    <i class="fa-solid fa-paper-plane"></i
+                    ><a href="${ROOT}contact">Send us a message</a>
+                  </li>
+                  <li>
+                    <i class="fa-solid fa-bullhorn"></i
+                    ><a href="${ROOT}advertise">Advertise with us</a>
+                  </li>
+                  <li>
+                    <i class="fa-solid fa-right-to-bracket"></i
+                    ><a href="${ROOT}login">Nominee login</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="oga-footer__bottom">
+              <span
+                >© ${new Date().getFullYear()} ${APP.brand.name}. All rights
+                reserved.</span
+              >
+              <span
+                ><a href="${ROOT}privacy">Privacy</a> ·
+                <a href="${ROOT}terms">Terms</a></span
+              >
             </div>
           </div>
-          <div class="oga-footer__bottom">
-            <span
-              >© ${new Date().getFullYear()} ${APP.brand.name}. All rights
-              reserved.</span
-            >
-            <span
-              ><a href="${ROOT}privacy">Privacy</a> ·
-              <a href="${ROOT}terms">Terms</a></span
-            >
-          </div>
-        </div>
-      </footer>`,
+        </footer>`,
     );
   }
 }

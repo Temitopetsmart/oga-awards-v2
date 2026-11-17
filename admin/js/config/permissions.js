@@ -70,6 +70,28 @@ export const PERMISSIONS = [
   P("Gate scanner", "scanner.use", "Scan tickets at the gate"),
 
   P(
+    "Advertising",
+    "ads.view",
+    "View ads, reports and ad revenue",
+    "read",
+    "global",
+  ),
+  P(
+    "Advertising",
+    "ads.review",
+    "Approve, reject and correct ads",
+    "write",
+    "global",
+  ),
+  P(
+    "Advertising",
+    "ads.manage",
+    "Set up ad packages, add free ads, record cash, remove",
+    "write",
+    "global",
+  ),
+
+  P(
     "Committee",
     "committee.view",
     "View the committee and applications",
@@ -201,6 +223,7 @@ export const ROLE_TEMPLATES = [
     "tickets.allocations",
     "results.view",
     "fraud.view",
+    "ads.view",
   ]),
   R(
     "role-secretary",
@@ -243,6 +266,12 @@ export const ROLE_TEMPLATES = [
     "Ticket seller",
     "Sells or hands out tickets from their own allocation.",
     ["dashboard.view", "tickets.distribute"],
+  ),
+  R(
+    "role-advertising",
+    "Advertising manager",
+    "Reviews and manages ads, packages and ad reports.",
+    ["dashboard.view", "ads.view", "ads.review", "ads.manage"],
   ),
   R(
     "role-auditor",
