@@ -42,6 +42,30 @@ final class SpotlightApi
         ];
     }
 
+    /** Public-safe version: never expose internal IDs, levels or staff position fields. */
+    private static function publicShape(array $r): array
+    {
+        $face = self::shape($r);
+
+        return [
+            'id' => $face['id'],
+            'type' => $face['type'],
+            'period' => $face['period'],
+            'headline' => $face['headline'],
+            'note' => $face['note'],
+            'featured' => $face['featured'],
+            'nomineeId' => $face['nomineeId'],
+            'name' => $face['name'],
+            'department' => $face['department'],
+            'category' => $face['category'],
+            'photo' => $face['photo'],
+            'thumb' => $face['thumb'],
+            'occasionId' => $face['occasionId'],
+            'edition' => $face['edition'],
+        ];
+    }
+
+
     private const SELECT = "
         SELECT
             f.*,
@@ -92,7 +116,7 @@ final class SpotlightApi
         )->fetchAll();
 
         $all = array_map(
-            [self::class, 'shape'],
+            [self::class, 'publicShape'],
             array_filter($rows, [self::class, 'validSubject'])
         );
 

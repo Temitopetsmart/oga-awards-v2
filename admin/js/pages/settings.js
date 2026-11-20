@@ -198,7 +198,6 @@ export default async function settings({ edition: ed, can, access }) {
                 help: "How many separate paid vote payments one email can make for one category. Enforced by the server.",
               })}
               ${field({
-                label: "Nominee registration fee (₦)",
                 label: "Registration fee per category (₦)",
                 name: "nomineeRegistrationFee",
                 type: "number",

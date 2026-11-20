@@ -271,6 +271,242 @@ final class AccountApi
         Response::json(['ok' => true] + self::sessionPayload($a));
     }
 
+
+    // ------------------------------------------------------ nominee email verification
+
+    /** POST /nominee/email/send: send a one-time verification code to the signed-in nominee. */
+    private static function sendVerification(): never
+    {
+        $a = self::requireAccount();
+
+        if ($a['email_verified_at'] !== null) {
+            Response::json(['ok' => true, 'alreadyVerified' => true]);
+        }
+
+        self::throttle('nominee-email-send', (string) $a['id'], 3, 60, false);
+        self::record('nominee-email-send', (string) $a['id'], true);
+
+        self::throttle('nominee-email-send-ip', Request::ip(), 30, 60, false);
+        self::record('nominee-email-send-ip', Request::ip(), true);
+
+        $token = self::newToken((int) $a['id'], 'email_verify');
+
+        self::queue('nominee_verify_email', $a['email'], [
+            'token' => $token,
+            'expiresMinutes' => self::TOKEN_MINUTES,
+        ]);
+
+        Audit::log(null, 'Nominee requested email verification', $a['email']);
+
+        Response::json([
+            'ok' => true,
+            'expiresInMinutes' => self::TOKEN_MINUTES,
+        ] + self::devToken($token));
+    }
+
+    /** POST /nominee/email/verify: verify the signed-in nominee's email using the emailed code. */
+    private static function verifyEmail(): never
+    {
+        $a = self::requireAccount();
+        $in = Request::json();
+        $token = Request::str($in, 'token', 128);
+
+        if ($a['email_verified_at'] !== null) {
+            Response::json(['ok' => true, 'alreadyVerified' => true]);
+        }
+
+        self::throttle('nominee-email-verify', (string) $a['id'], 10, 15);
+
+        $verified = Database::transaction(function (\PDO $db) use ($a, $token): bool {
+            $st = $db->prepare(
+                "SELECT id FROM account_tokens
+                 WHERE account_id = ? AND type = 'email_verify'
+                   AND token_hash = ? AND used_at IS NULL
+                   AND expires_at > NOW()
+                 FOR UPDATE"
+            );
+            $st->execute([(int) $a['id'], hash('sha256', $token)]);
+
+            if (!$st->fetch()) {
+                return false;
+            }
+
+            $db->prepare(
+                'UPDATE accounts SET email_verified_at = NOW() WHERE id = ? AND email_verified_at IS NULL'
+            )->execute([(int) $a['id']]);
+
+            $db->prepare(
+                "UPDATE account_tokens SET used_at = NOW()
+                 WHERE account_id = ? AND type = 'email_verify' AND used_at IS NULL"
+            )->execute([(int) $a['id']]);
+
+            return true;
+        });
+
+        self::record('nominee-email-verify', (string) $a['id'], $verified);
+
+        if (!$verified) {
+            self::fail('That code is invalid or has expired. Please request a new one.', 422, [
+                'fields' => ['token' => 'Invalid or expired code.'],
+            ]);
+        }
+
+        Audit::log(null, 'Nominee verified email address', $a['email']);
+
+        Response::json(['ok' => true]);
+    }
+
+    // ------------------------------------------------------ nominee password recovery
+
+    /** POST /nominee/password/forgot: request a password reset code. */
+    private static function forgotPassword(): never
+    {
+        $in = Request::json();
+        $email = mb_strtolower(Request::str($in, 'email', 190));
+
+        self::throttle('nominee-password-forgot-ip', Request::ip(), 20, 15, false);
+        self::record('nominee-password-forgot-ip', Request::ip(), true);
+
+        $dev = [];
+
+        if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $st = self::pdo()->prepare('SELECT id, email FROM accounts WHERE email = ?');
+            $st->execute([$email]);
+            $a = $st->fetch();
+
+            if ($a) {
+                $count = self::pdo()->prepare(
+                    "SELECT COUNT(*) FROM account_tokens
+                     WHERE account_id = ? AND type = 'password_reset'
+                       AND created_at > (NOW() - INTERVAL 60 MINUTE)"
+                );
+                $count->execute([(int) $a['id']]);
+
+                if ((int) $count->fetchColumn() < 3) {
+                    $token = self::newToken((int) $a['id'], 'password_reset');
+
+                    self::queue('nominee_password_reset', $a['email'], [
+                        'token' => $token,
+                        'expiresMinutes' => self::TOKEN_MINUTES,
+                    ]);
+
+                    $dev = self::devToken($token);
+                    Audit::log(null, 'Nominee requested password reset', $a['email']);
+                }
+            }
+        }
+
+        // Do not reveal whether an email belongs to an account.
+        Response::json([
+            'ok' => true,
+            'message' => 'If that email belongs to a nominee account, a reset code will be sent.',
+            'expiresInMinutes' => self::TOKEN_MINUTES,
+        ] + $dev);
+    }
+
+    /** POST /nominee/password/reset: set a new password using a valid reset code. */
+    private static function resetPassword(): never
+    {
+        $in = Request::json();
+        $token = Request::str($in, 'token', 128);
+        $newPassword = self::password((string) ($in['password'] ?? ''));
+
+        self::throttle('nominee-password-reset-ip', Request::ip(), 30, 15);
+
+        $tokenHash = hash('sha256', $token);
+
+        $accountId = Database::transaction(function (\PDO $db) use ($tokenHash, $newPassword): ?int {
+            $st = $db->prepare(
+                "SELECT id, account_id FROM account_tokens
+                 WHERE token_hash = ? AND type = 'password_reset'
+                   AND used_at IS NULL AND expires_at > NOW()
+                 FOR UPDATE"
+            );
+            $st->execute([$tokenHash]);
+            $row = $st->fetch();
+
+            if (!$row) {
+                return null;
+            }
+
+            $id = (int) $row['account_id'];
+
+            $db->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
+                ->execute([$newPassword, $id]);
+
+            $db->prepare(
+                "UPDATE account_tokens SET used_at = NOW()
+                 WHERE account_id = ? AND type = 'password_reset' AND used_at IS NULL"
+            )->execute([$id]);
+
+            return $id;
+        });
+
+        self::record('nominee-password-reset-ip', Request::ip(), $accountId !== null);
+
+        if ($accountId === null) {
+            self::fail('This reset code is invalid or has expired. Please request another one.');
+        }
+
+        $st = self::pdo()->prepare('SELECT email FROM accounts WHERE id = ?');
+        $st->execute([$accountId]);
+        $email = (string) $st->fetchColumn();
+
+        Audit::log(null, 'Nominee reset password', $email);
+
+        Response::json(['ok' => true]);
+    }
+
+    // ------------------------------------------------------ nominee password change
+
+    /** POST /nominee/password/change: change the password of the signed-in nominee. */
+    private static function changePassword(): never
+    {
+        $a = self::requireAccount();
+        $in = Request::json();
+
+        $current = (string) ($in['currentPassword'] ?? '');
+        $new = (string) ($in['newPassword'] ?? '');
+
+        self::throttle('nominee-password-change', (string) $a['id'], 5, 15);
+
+        $st = self::pdo()->prepare('SELECT password_hash FROM accounts WHERE id = ?');
+        $st->execute([(int) $a['id']]);
+        $currentHash = (string) $st->fetchColumn();
+
+        if (!password_verify($current, $currentHash)) {
+            self::record('nominee-password-change', (string) $a['id'], false);
+            self::fail('Your current password is incorrect.', 422, [
+                'fields' => ['currentPassword' => 'Your current password is incorrect.'],
+            ]);
+        }
+
+        if (password_verify($new, $currentHash)) {
+            self::fail('Choose a different password from your current one.', 422, [
+                'fields' => ['newPassword' => 'Choose a different password.'],
+            ]);
+        }
+
+        $newHash = self::password($new, 'newPassword');
+
+        Database::transaction(function (\PDO $db) use ($a, $newHash): void {
+            $db->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
+                ->execute([$newHash, (int) $a['id']]);
+
+            $db->prepare(
+                "UPDATE account_tokens SET used_at = NOW()
+                 WHERE account_id = ? AND type = 'password_reset' AND used_at IS NULL"
+            )->execute([(int) $a['id']]);
+        });
+
+        self::record('nominee-password-change', (string) $a['id'], true);
+
+        Audit::log(null, 'Nominee changed password', $a['email']);
+
+        Response::json(['ok' => true]);
+    }
+
+
     // ------------------------------------------------------------ register
 
     /** Shared by "register" and "apply": nominations must be open, and for the edition the page was built for. */
