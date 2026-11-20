@@ -56,8 +56,18 @@ final class Mailer
             };
 
             $mail->SMTPAutoTLS = $secure === 'tls';
+            // $mail->Timeout = 10;
+            // $mail->CharSet = 'UTF-8';
+
             $mail->Timeout = 10;
+            $mail->SMTPDebug = \PHPMailer\PHPMailer\SMTP::DEBUG_SERVER;
+            $mail->Debugoutput = static function (string $message, int $level): void {
+                if (str_starts_with($message, 'SERVER -> CLIENT:')) {
+                    error_log('[OGA SMTP] ' . $message);
+                }
+            };
             $mail->CharSet = 'UTF-8';
+            // THIS IS A TEMPORARY REPLACEMENT FOR THE ABOVE DEBUG SETTING. REMOVE THIS LINE AFTER TESTING.
 
             if (!$fromEmail || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
                 throw new \RuntimeException('A valid sender email is required.');
