@@ -30,6 +30,7 @@ final class AccountApi
 
         if ($method === 'GET' && $path === '/nominee/csrf')      Response::json(['ok' => true, 'csrf' => Session::csrf()]);
         if ($method === 'GET' && $path === '/nominee/me')        self::me();
+        if ($method === 'GET' && $path === '/nominee/category-options') self::categoryOptions();
         if ($method === 'POST' && $path === '/nominee/register') self::register();
         if ($method === 'POST' && $path === '/nominee/login')    self::login();
         if ($method === 'POST' && $path === '/nominee/logout')   self::logout();
@@ -43,6 +44,7 @@ final class AccountApi
         if ($method === 'GET' && $path === '/nominee/announcements') { self::requireAccount(); Response::json(['ok' => true, 'announcements' => AnnouncementApi::visible(['public', 'nominees'])]); }
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
+        if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/use-main$#', $path, $m)) self::useMain((int) $m[1]);
         if ($method === 'POST' && $path === '/nominee/password/change') self::changePassword();
         if ($method === 'POST' && $path === '/nominee/password/forgot') self::forgotPassword();
         if ($method === 'POST' && $path === '/nominee/password/reset')  self::resetPassword();
@@ -160,7 +162,7 @@ final class AccountApi
         return Auth::hash($pw);
     }
 
-    private static function mediaShape(array $e, string $edSlug): array
+    private static function mediaShape(array $e, string $edSlug, bool $isMain = false): array
     {
         return [
             'id'         => (string) $e['id'],
@@ -177,6 +179,9 @@ final class AccountApi
             'status'     => $e['status'],
             'reviewNote' => $e['review_note'] ?? '',
             'nickname'   => $e['nickname'] ?? '',
+            'isMain'     => $isMain,                                  // the first entry of the edition: later ones follow its bio and photo
+            'bioCustom'  => (bool) ($e['bio_custom'] ?? 0),
+            'photoCustom' => (bool) ($e['photo_custom'] ?? 0),
             'createdAt'  => (new \DateTimeImmutable($e['created_at']))->format('c'),
         ];
     }
@@ -185,7 +190,12 @@ final class AccountApi
     {
         $st = self::pdo()->prepare('SELECT n.*, e.slug AS edition_slug FROM nominee_entries n JOIN editions e ON e.id = n.edition_id WHERE n.account_id = ? ORDER BY n.id');
         $st->execute([$accountId]);
-        return array_map(fn ($e) => self::mediaShape($e, $e['edition_slug']), $st->fetchAll());
+        $rows = $st->fetchAll();
+        $first = [];
+        foreach ($rows as $r) {
+            $first[$r['edition_id']] ??= (int) $r['id'];             // ordered by id, so the first seen is the main one
+        }
+        return array_map(fn ($e) => self::mediaShape($e, $e['edition_slug'], $first[$e['edition_id']] === (int) $e['id']), $rows);
     }
 
     private static function sessionPayload(array $account): array
@@ -344,6 +354,10 @@ final class AccountApi
 
         $matric = self::matricField($in['matricNo'] ?? '', Options::requiresMatric($level));
         $catIds = self::chooseCategories($in, $ed, $level);
+        if (count($catIds) !== 1) {
+            $msg = 'Choose the one category you want to register with. You can enter more from your portal once you have joined.';
+            self::fail($msg, 422, ['fields' => ['categoryId' => $msg]]);
+        }
         $hash = self::password((string) ($in['password'] ?? ''));
 
         if ($matric !== null && ($why = Matric::problem(self::pdo(), $matric, $email)) !== null) {
@@ -359,7 +373,7 @@ final class AccountApi
         $profile = ['name' => $name, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'matricNo' => $matric, 'categoryIds' => $catIds];
 
         if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
-            self::startPaidRegistration($ed, null, $email, $hash, $profile, 'register');   // one fee, however many categories
+            self::startPaidRegistration($ed, null, $email, $hash, $profile, 'register', 1);   // the fee for this one category
         }
 
         try {
@@ -445,7 +459,10 @@ final class AccountApi
         $fresh = self::account();
         Response::json(['ok' => true] + self::sessionPayload($fresh));
     }
-    /** Enter one or more (more) categories: a returning nominee, or one adding to this edition. */
+    /**
+     * Enter one or more (more) categories: a returning nominee, or one adding to this edition. The fee is charged PER category:
+     * three categories at 1,000 each cost 3,000. Their own details are reused; nothing is asked again.
+     */
     private static function apply(): never
     {
         $a = self::requireAccount();
@@ -463,43 +480,30 @@ final class AccountApi
         $taken = Entries::takenCategories($pdo, $accountId, (int) $ed['id']);
         $catIds = self::chooseCategories($in, $ed, $level, $taken);
 
-        // Details to reuse: this edition's newest entry (with its photo), else the newest from an earlier edition.
-        $st = $pdo->prepare('SELECT * FROM nominee_entries WHERE account_id = ? AND edition_id = ? ORDER BY id DESC LIMIT 1');
-        $st->execute([$accountId, $ed['id']]);
-        $prev = $st->fetch() ?: null;
-        $photo = $prev['photo_path'] ?? null;
-        if ($prev === null) {
-            $st = $pdo->prepare('SELECT * FROM nominee_entries WHERE account_id = ? ORDER BY id DESC LIMIT 1');
-            $st->execute([$accountId]);
-            $prev = $st->fetch() ?: self::fail('We could not find your existing nominee profile.');
-        }
+        $from = Entries::template($pdo, $accountId, (int) $ed['id']) ?? self::fail('We could not find your existing nominee profile.');
 
-        // The registration fee is paid once per edition: more categories in the same edition are free.
-        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0 && !Entries::feeSettled($pdo, $accountId, (int) $ed['id'])) {
+        if ((float) ($ed['nominee_registration_fee'] ?? 0) > 0) {
             self::startPaidRegistration($ed, $accountId, $a['email'], null, [
-                'name' => $prev['name'], 'phone' => $prev['phone'], 'department' => $prev['department'], 'level' => $level,
-                'bio' => $prev['bio'], 'categoryIds' => $catIds,
-            ], 'portal/entries');
+                'name' => $from['name'], 'phone' => $from['phone'], 'department' => $from['department'], 'level' => $level,
+                'bio' => $from['bio'], 'categoryIds' => $catIds,
+            ], 'portal/entries', count($catIds));
         }
 
         $max = Entries::maxPerNominee((int) $ed['id']);
         try {
-            $newIds = Database::transaction(function (\PDO $db) use ($accountId, $ed, $catIds, $prev, $level, $photo, $max) {
+            $newIds = Database::transaction(function (\PDO $db) use ($accountId, $ed, $catIds, $level, $max) {
                 $db->prepare('SELECT id FROM accounts WHERE id = ? FOR UPDATE')->execute([$accountId]);   // one request at a time per nominee
                 $have = Entries::takenCategories($db, $accountId, (int) $ed['id']);
                 if (count($have) + count($catIds) > $max) {
                     throw new \DomainException("You can enter up to $max " . ($max === 1 ? 'category' : 'categories') . ' in this edition.');
                 }
-                $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, photo_path, nickname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
-                $ids = [];
                 foreach ($catIds as $cid) {
                     if (in_array($cid, $have, true)) {
                         throw new \DomainException('You already entered that category.');
                     }
-                    $ins->execute([$ed['id'], $accountId, $cid, $prev['name'], $prev['phone'], $prev['department'], $level, $prev['bio'], $photo, $prev['nickname'] ?? null]);
-                    $ids[] = (string) $db->lastInsertId();
                 }
-                return $ids;
+                $from = Entries::template($db, $accountId, (int) $ed['id']);
+                return array_map('strval', Entries::addFrom($db, (int) $ed['id'], $accountId, $from, $catIds, $level));
             });
         } catch (\DomainException $e) {
             self::fail($e->getMessage(), 422, ['fields' => ['categoryId' => $e->getMessage()]]);
@@ -513,13 +517,53 @@ final class AccountApi
         Audit::log(null, $taken === [] ? 'Nominee applied for a new edition' : 'Nominee entered more categories', $a['email'], (int) $ed['id']);
         Response::json(['ok' => true, 'entryId' => $newIds[0], 'entryIds' => $newIds] + self::sessionPayload($a));
     }
+
+    /**
+     * GET /nominee/category-options?occasionId=..&level=.. : the categories THIS person may enter, for the dropdown.
+     * Someone signed in is answered from their own account (their level, what they already have, how many are left).
+     * Someone registering sends their level; nothing is stored.
+     */
+    private static function categoryOptions(): never
+    {
+        $ed = EditionState::openForNominations();
+        if ($ed === null) {
+            Response::json(['ok' => true, 'open' => false, 'categories' => []]);
+        }
+        if (Request::str($_GET, 'occasionId', 60) !== $ed['slug']) {
+            self::fail('This page belongs to a different edition. Refresh the page and try again.');
+        }
+        $account = self::account();
+        $level = $account !== null ? (string) self::accountLevel($account) : Request::str($_GET, 'level', 30);
+        if ($level === '' || !Options::isActive('level', $level)) {
+            self::fail('Choose your level.', 422, ['fields' => ['level' => 'Choose your level.']]);
+        }
+        $pdo = self::pdo();
+        $taken = $account !== null ? Entries::takenCategories($pdo, (int) $account['id'], (int) $ed['id']) : [];
+        $max = Entries::maxPerNominee((int) $ed['id']);
+        $st = $pdo->prepare('SELECT id, name, description, icon FROM categories WHERE edition_id = ? AND active = 1 ORDER BY sort_order, name');
+        $st->execute([$ed['id']]);
+        $rows = $st->fetchAll();
+        $levels = Eligibility::forCategories(array_map(fn ($r) => (int) $r['id'], $rows));
+        $out = [];
+        foreach ($rows as $r) {
+            $ok = ($levels[(int) $r['id']] ?? []) === [] || in_array($level, $levels[(int) $r['id']], true);
+            if ($ok && !in_array((int) $r['id'], $taken, true)) {
+                $out[] = ['id' => (string) $r['id'], 'name' => $r['name'], 'description' => $r['description'] ?? '', 'icon' => $r['icon'] ?? ''];
+            }
+        }
+        Response::json([
+            'ok' => true, 'open' => true, 'level' => $level, 'requiresMatric' => Options::requiresMatric($level),
+            'fee' => round((float) ($ed['nominee_registration_fee'] ?? 0), 2), 'currency' => $ed['currency'] ?: 'NGN',
+            'max' => $max, 'taken' => array_map('strval', $taken), 'room' => max(0, $max - count($taken)), 'categories' => $out,
+        ]);
+    }
    /**
      * The edition charges a registration fee: keep the details safe, send the person to pay, and create nothing yet.
      * The account and entry are created by Registrations::complete() once Flutterwave has confirmed the money.
      */
-    private static function startPaidRegistration(array $ed, ?int $accountId, string $email, ?string $hash, array $profile, string $returnPage): never
+    private static function startPaidRegistration(array $ed, ?int $accountId, string $email, ?string $hash, array $profile, string $returnPage, int $categories = 1): never
     {
-        $fee = round((float) $ed['nominee_registration_fee'], 2);
+        $fee = round((float) $ed['nominee_registration_fee'] * max(1, $categories), 2);       // the fee is per category
         $currency = $ed['currency'] ?: 'NGN';
         $reference = 'REG-' . strtoupper(bin2hex(random_bytes(6)));
         Database::transaction(function (\PDO $db) use ($ed, $accountId, $email, $hash, $profile, $fee, $currency, $reference) {
@@ -533,7 +577,8 @@ final class AccountApi
             $link = Flutterwave::createPayment([
                 'reference' => $reference, 'amount' => $fee, 'currency' => $currency, 'email' => $email, 'name' => $profile['name'],
                 'redirectUrl' => rtrim((string) Env::get('APP_URL', ''), '/') . '/' . $returnPage . '?pay=return', 'purpose' => 'nominee_fee',
-                'title' => $ed['name'] . ' ' . $ed['edition_label'] . ' — nominee registration', 'description' => 'Registration fee',
+                'title' => $ed['name'] . ' ' . $ed['edition_label'] . ' — nominee registration', 
+                'description' => $categories > 1 ? "Registration fee for $categories categories" : 'Registration fee',
             ]);
         } catch (GatewayException $e) {
             error_log((string) $e);
@@ -542,7 +587,7 @@ final class AccountApi
             self::fail('The payment service is unavailable right now. You have not been charged. Please try again shortly.', 502);
         }
         Session::put('pending_reg', $reference);        // only THIS browser may be signed in when the payment is confirmed
-        Response::json(['ok' => true, 'paymentRequired' => true, 'reference' => $reference, 'amount' => $fee, 'paymentLink' => $link]);
+        Response::json(['ok' => true, 'paymentRequired' => true, 'reference' => $reference, 'amount' => $fee, 'categories' => max(1, $categories), 'paymentLink' => $link]);
     }
 
     /** The person came back from Flutterwave. We ask Flutterwave ourselves; only the browser that started it is signed in. */
@@ -653,47 +698,48 @@ final class AccountApi
         return $e;
     }
 
-private static function updateEntry(int $id): never
-{
-    $a = self::requireAccount();
-    self::requireMatric($a);
+    /**
+     * PATCH /nominee/entries/{id}: the person's details (name, phone, department, nickname) are the same in every category;
+     * the bio belongs to the category being edited (changing the main entry's bio also updates categories still using it).
+     */
+    private static function updateEntry(int $id): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
 
-    $e = self::ownEntry($id, $a);
-    $in = Request::json();
+        $e = self::ownEntry($id, $a);
+        $in = Request::json();
 
-    [$name, $phone, $dept, $level] = self::profile($in, self::accountLevel($a));
-    self::assertEligible((int) $e['category_id'], $level);
+        [$name, $phone, $dept, $level] = self::profile($in, self::accountLevel($a));
+        self::assertEligible((int) $e['category_id'], $level);
 
-    $bio = Request::str($in, 'bio', 600);
+        $bio = Request::str($in, 'bio', 600);
+        $nick = array_key_exists('nickname', $in) ? trim(Request::str($in, 'nickname', 60)) : (string) ($e['nickname'] ?? '');
+        if (mb_strlen($nick) > 40 || preg_match('/[\x00-\x1F\x7F<>]/', $nick)) {
+            self::fail('Your nickname can be at most 40 characters, with no special symbols.', 422, ['fields' => ['nickname' => 'At most 40 characters.']]);
+        }
+        if (mb_strlen($bio) > 500) {
+            self::fail('Your bio can be at most 500 characters.', 422, ['fields' => ['bio' => 'At most 500 characters.']]);
+        }
 
-    $nick = array_key_exists('nickname', $in) ? trim(Request::str($in, 'nickname', 60)) : (string) ($e['nickname'] ?? '');
-    if (mb_strlen($nick) > 40 || preg_match('/[\x00-\x1F\x7F<>]/', $nick)) {
-        self::fail('Your nickname can be at most 40 characters, with no special symbols.', 422, ['fields' => ['nickname' => 'At most 40 characters.']]);
+        Database::transaction(function (\PDO $db) use ($a, $e, $name, $nick, $phone, $dept, $level, $bio) {
+            Entries::syncShared($db, (int) $a['id'], (int) $e['edition_id'], ['name' => $name, 'nickname' => $nick !== '' ? $nick : null, 'phone' => $phone, 'department' => $dept, 'level' => $level]);
+            if ($bio !== (string) ($e['bio'] ?? '')) {
+                Entries::setBio($db, $e, $bio !== '' ? $bio : null);
+            }
+        });
+        Cache::flush();
+        Response::json(['ok' => true] + self::sessionPayload($a));
     }
 
-    if (mb_strlen($bio) > 500) {
-        self::fail('Your bio can be at most 500 characters.', 422, [
-            'fields' => ['bio' => 'At most 500 characters.']
-        ]);
-    }
-
-    // The same person in every category of this edition: one set of details.
-    Entries::syncProfile(self::pdo(), (int) $a['id'], (int) $e['edition_id'], [
-        'name' => $name, 'nickname' => $nick !== '' ? $nick : null, 'phone' => $phone, 'department' => $dept, 'level' => $level, 'bio' => $bio ?: null,
-    ]);
-
-    Cache::flush();
-
-    Response::json(['ok' => true] + self::sessionPayload($a));
-}
+    /** POST /nominee/entries/{id}/photo: the photo for THIS category (the main entry's photo is what the others use until they have their own). */
     private static function uploadPhoto(int $id): never
     {
         $a = self::requireAccount();
         self::requireMatric($a);
         $e = self::ownEntry($id, $a);
         $path = Photos::save($_FILES['photo'] ?? [], 'nominees');
-        $old = Entries::photosOf(self::pdo(), (int) $a['id'], (int) $e['edition_id']);
-        Entries::setPhoto(self::pdo(), (int) $a['id'], (int) $e['edition_id'], $path);    // one photo for all of this edition's entries
+        $old = Database::transaction(fn (\PDO $db) => Entries::setPhotoFor($db, $e, $path));
         foreach ($old as $p) {
             Photos::delete($p);
         }
@@ -701,32 +747,40 @@ private static function updateEntry(int $id): never
         Response::json(['ok' => true] + self::sessionPayload($a));
     }
 
-
-private static function removePhoto(int $id): never
-{
-    $a = self::requireAccount();
-    self::requireMatric($a);
-
-    $e = self::ownEntry($id, $a);
-
-    $photos = Entries::photosOf(
-        self::pdo(),
-        (int) $a['id'],
-        (int) $e['edition_id']
-    );
-
-    Entries::setPhoto(
-        self::pdo(),
-        (int) $a['id'],
-        (int) $e['edition_id'],
-        null
-    );
-
-    foreach ($photos as $photo) {
-        Photos::delete($photo);
+    /** DELETE /nominee/entries/{id}/photo: on the main entry this removes the photo; on another category it goes back to the main photo. */
+    private static function removePhoto(int $id): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
+        $e = self::ownEntry($id, $a);
+        $old = Database::transaction(function (\PDO $db) use ($e) {
+            $main = Entries::main($db, (int) $e['account_id'], (int) $e['edition_id']);
+            return $main !== null && (int) $main['id'] !== (int) $e['id'] ? Entries::useMain($db, $e, false, true) : Entries::setPhotoFor($db, $e, null);
+        });
+        foreach ($old as $p) {
+            Photos::delete($p);
+        }
+        Cache::flush();
+        Response::json(['ok' => true] + self::sessionPayload($a));
     }
 
-    Cache::flush();
-    Response::json(['ok' => true] + self::sessionPayload($a));
-}
+    /** POST /nominee/entries/{id}/use-main {bio?, photo?}: put this category back on the main entry's bio and/or photo. */
+    private static function useMain(int $id): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
+        $e = self::ownEntry($id, $a);
+        $in = Request::json();
+        $bio = !empty($in['bio']);
+        $photo = !empty($in['photo']);
+        if (!$bio && !$photo) {
+            self::fail('Choose what to take from your main entry: the bio, the photo, or both.');
+        }
+        $old = Database::transaction(fn (\PDO $db) => Entries::useMain($db, $e, $bio, $photo));
+        foreach ($old as $p) {
+            Photos::delete($p);
+        }
+        Cache::flush();
+        Response::json(['ok' => true] + self::sessionPayload($a));
+    }
 }

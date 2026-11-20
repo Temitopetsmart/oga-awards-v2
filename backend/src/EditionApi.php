@@ -354,7 +354,7 @@ final class EditionApi
         $price = $whole('pricePerVote', 1, 1000000, 'Price per vote');
         $maxVotes = $whole('maxVotesPerPayment', 1, 10000, 'Max votes per payment');
         $maxPays = $whole('maxPaidVotesPerEmailPerCategory', 1, 1000, 'Max paid payments per email');
-        $fee = $whole('nomineeRegistrationFee', 0, 10000000, 'Nominee registration fee');
+        $fee = $whole('nomineeRegistrationFee', 0, 10000000, 'Registration fee per category');
         $maxCats = array_key_exists('maxCategoriesPerNominee', $in)
             ? $whole('maxCategoriesPerNominee', 1, 20, 'Categories per nominee')
             : Entries::maxPerNominee((int) $e['id']);          // older callers that do not send it keep the limit

@@ -135,33 +135,57 @@
 }
 
 /* Homepage countdown + Face feature area */
-.oga-home-feature {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
-  align-items: stretch;
-}
 
-.oga-home-feature.has-face {
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-}
-
-.oga-home-feature__countdown,
-.oga-home-feature__face {
-  min-width: 0;
-}
-
-.oga-home-feature__countdown > .oga-panel {
-  height: 100%;
+/* Homepage status and conditional countdown placement */
+.oga-hero__status-row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
 }
 
-.oga-home-feature__face .oga-face-card {
-  height: 100%;
+.oga-hero__status-row .oga-badge {
+  margin: 0 !important;
 }
 
+.oga-hero__inline-countdown {
+  min-width: 0;
+  max-width: 20rem;
+}
+
+.oga-hero__inline-countdown .oga-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--oga-radius);
+}
+
+.oga-hero__inline-countdown .oga-panel__label,
+.oga-hero__inline-countdown .oga-panel__note {
+  display: none;
+}
+
+.oga-hero__inline-countdown oga-countdown .oga-cd {
+  gap: 0.25rem;
+}
+
+.oga-hero__inline-countdown oga-countdown .oga-cd__unit {
+  padding: 0.4rem 0.25rem;
+}
+
+.oga-hero__inline-countdown oga-countdown .oga-cd__num {
+  font-size: 1.05rem;
+}
+
+.oga-hero__inline-countdown oga-countdown .oga-cd__lbl {
+  margin-top: 0.2rem;
+  font-size: 0.48rem;
+  letter-spacing: 0.05em;
+}
+
+/* Face card */
 .oga-face-card {
   display: flex;
   flex-direction: column;
@@ -170,40 +194,51 @@
   text-align: left;
 }
 
-.oga-face-card__photo {
-  display: block;
+.oga-face-card--home {
+  height: 27rem;
+}
+
+.oga-face-card__photo,
+.oga-face-card__placeholder {
+  flex: 0 0 70%;
   width: 100%;
-  height: 13rem;
+  min-height: 0;
+  height: auto;
   object-fit: cover;
   object-position: center 25%;
-  background: var(--oga-ink-700);
 }
 
 .oga-face-card__placeholder {
   display: grid;
   place-items: center;
-  height: 13rem;
   color: var(--oga-gold-400);
   background: var(--oga-ink-700);
   font-size: 3rem;
 }
 
 .oga-face-card__details {
-  padding: 1rem;
+  flex: 1 1 30%;
+  min-height: 0;
+  padding: 0.8rem 1rem;
+  overflow: hidden;
 }
 
 .oga-face-card__details h3 {
+  font-size: 1.05rem;
   overflow-wrap: anywhere;
 }
 
-.oga-face-card__note {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--oga-text-muted);
+.oga-face-card__details p {
+  font-size: 0.76rem;
 }
 
-.oga-face-card--home .oga-face-card__photo {
-  height: 13rem;
+.oga-face-card__note {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.78rem;
+  color: var(--oga-text-muted);
 }
 
 .oga-face-card--large:not(.oga-face-card--home) {
@@ -215,23 +250,17 @@
   height: 25rem;
 }
 
-@media (max-width: 991.98px) {
-  .oga-home-feature.has-face {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 575.98px) {
-  .oga-home-feature.has-face {
-    grid-template-columns: minmax(0, 1fr);
+  .oga-hero__status-row {
+    align-items: flex-start;
   }
 
-  .oga-face-card--home .oga-face-card__photo {
-    height: 18rem;
+  .oga-hero__inline-countdown {
+    max-width: 100%;
   }
 
-  .oga-home-feature__countdown > .oga-panel {
-    padding: 1.25rem;
+  .oga-face-card--home {
+    height: 29rem;
   }
 }
 

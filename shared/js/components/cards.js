@@ -51,26 +51,28 @@ export const categoryCard = (c, href) =>
   </a>`;
 
 export const nomineeCard = (n, { category, voteHref } = {}) =>
-  html` <article class="oga-card oga-card--hover nominee-card">
-    ${avatar(n)}
-    <h3>${n.name}</h3>
-    <p>${[category?.name, n.department].filter(Boolean).join(" · ")}</p>
-    ${voteHref
-      ? html`<a
-          class="btn btn-gold btn-sm mt-3 align-self-start"
-          href="${voteHref}"
-          ><i class="fa-solid fa-check-to-slot me-2"></i>Vote</a
-        >`
-      : ""}
+  html`<article class="oga-card oga-card--hover oga-person-card nominee-card">
+    <div class="oga-person-card__media">${avatar(n, true)}</div>
+    <div class="oga-person-card__body">
+      <h3>${n.name}</h3>
+      <p>${[category?.name, n.department].filter(Boolean).join(" · ")}</p>
+      ${voteHref
+        ? html`<a
+            class="btn btn-gold btn-sm mt-2 align-self-start"
+            href="${voteHref}"
+            ><i class="fa-solid fa-check-to-slot me-2"></i>Vote</a
+          >`
+        : ""}
+    </div>
   </article>`;
 
 export const winnerCard = ({ category, nominee }) =>
-  html` <article class="oga-card oga-card--hover winner-card">
-    <span class="oga-badge"
-      ><i class="fa-solid fa-trophy"></i> ${category.name}</span
-    >
-    <div class="winner-card__body">
-      ${avatar(nominee)}
+  html`<article class="oga-card oga-card--hover oga-person-card winner-card">
+    <div class="oga-person-card__media">${avatar(nominee, true)}</div>
+    <div class="oga-person-card__body">
+      <span class="oga-badge">
+        <i class="fa-solid fa-trophy"></i> ${category.name}
+      </span>
       <h3>${nominee.name}</h3>
       ${nominee.department ? html`<p>${nominee.department}</p>` : ""}
     </div>

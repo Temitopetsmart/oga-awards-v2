@@ -18,12 +18,14 @@ final class Registrations
         $accountId = $r['account_id'] === null ? null : (int) $r['account_id'];
         $newAccount = $accountId === null;
 
-        // One fee covers every category asked for (the older single "categoryId" is still understood).
+        // The fee was charged PER category, so the money covers exactly the categories asked for.
         $catIds = Entries::requested($p);
+        $editionId = (int) $r['edition_id'];
         if ($catIds === []) {
             self::conflict($db, $r, 'no category was chosen');
             return;
         }
+        $level = ($p['level'] ?? null) ?: null;
         if ($newAccount) {
             $q = $db->prepare('SELECT COUNT(*) FROM accounts WHERE email = ?');
             $q->execute([$r['email']]);
@@ -31,10 +33,35 @@ final class Registrations
                 self::conflict($db, $r, 'an account with this email already exists');
                 return;
             }
+            if (count($catIds) !== 1) {
+                self::conflict($db, $r, 'a new registration must be for one category');
+                return;
+            }
         } else {
-            $catIds = array_values(array_diff($catIds, Entries::takenCategories($db, $accountId, (int) $r['edition_id'])));
-            if ($catIds === []) {
+            $acc = $db->prepare('SELECT level FROM accounts WHERE id = ?');
+            $acc->execute([$accountId]);
+            $level = ($acc->fetchColumn() ?: null) ?? $level;
+            $have = Entries::takenCategories($db, $accountId, $editionId);
+            $fresh = array_values(array_diff($catIds, $have));
+            if ($fresh === []) {
                 self::conflict($db, $r, 'the account already has an entry for every category chosen');
+                return;
+            }
+            if (count($have) + count($fresh) > Entries::maxPerNominee($editionId)) {
+                self::conflict($db, $r, 'the limit on categories per nominee would be passed');
+                return;
+            }
+            if (count($fresh) < count($catIds)) {
+                Audit::log(null, 'Paid registration needs attention', $r['email'] . ' — paid for ' . count($catIds) . ' categories but already had ' . (count($catIds) - count($fresh)) . ' of them', $editionId, ['reference' => $r['reference']]);
+            }
+            $catIds = $fresh;
+        }
+        // Each category must still exist in this edition and be open to this person's level.
+        $okCat = $db->prepare('SELECT COUNT(*) FROM categories WHERE id = ? AND edition_id = ? AND active = 1');
+        foreach ($catIds as $cid) {
+            $okCat->execute([$cid, $editionId]);
+            if ((int) $okCat->fetchColumn() === 0 || ($level !== null && !Eligibility::allows($cid, $level))) {
+                self::conflict($db, $r, 'a chosen category is no longer open to this nominee');
                 return;
             }
         }
@@ -45,18 +72,17 @@ final class Registrations
                 self::conflict($db, $r, $why);                      // paid, but the number was taken meanwhile: flagged for an admin
                 return;
             }
-            $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')->execute([$r['email'], $r['password_hash'], $matric, $p['level'] ?? null]);
+            $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')->execute([$r['email'], $r['password_hash'], $matric, $level]);
             $accountId = (int) $db->lastInsertId();
             if ($matric !== null) {
                 Matric::claim($db, $matric, $r['email'], 'nominee');
             }
+            $from = ['name' => $p['name'], 'phone' => $p['phone'] ?? null, 'department' => $p['department'] ?? null, 'level' => $level, 'bio' => $p['bio'] ?? null, 'photo_path' => null, 'nickname' => null];
+        } else {
+            // A returning nominee is never asked again: the new categories start from their main entry (name, phone, bio, photo...).
+            $from = Entries::template($db, $accountId, $editionId) ?? ['name' => $p['name'], 'phone' => $p['phone'] ?? null, 'department' => $p['department'] ?? null, 'level' => $level, 'bio' => $p['bio'] ?? null, 'photo_path' => null, 'nickname' => null];
         }
-        
-        $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, bio, status, registration_payment_id)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
-        foreach ($catIds as $cid) {
-            $ins->execute([$r['edition_id'], $accountId, $cid, $p['name'], $p['phone'] ?? null, $p['department'] ?? null, $p['level'] ?? null, $p['bio'] ?? null, $payment['id']]);
-        }
+        Entries::addFrom($db, $editionId, $accountId, $from, $catIds, $level, (int) $payment['id']);
         if ($newAccount) {
             $token = AccountApi::newToken($accountId, 'email_verify');
             AccountApi::queue('nominee_verify_email', $r['email'], ['token' => $token, 'expiresMinutes' => 30]);

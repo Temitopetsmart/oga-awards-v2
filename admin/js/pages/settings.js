@@ -199,12 +199,13 @@ export default async function settings({ edition: ed, can, access }) {
               })}
               ${field({
                 label: "Nominee registration fee (₦)",
+                label: "Registration fee per category (₦)",
                 name: "nomineeRegistrationFee",
                 type: "number",
                 required: true,
                 value: o.voting?.nomineeRegistrationFee ?? 0,
                 col: "col-md-4",
-                help: "Charged once per nominee for this edition, however many categories they enter. Enter 0 to make registration free.",
+                help: "Charged for EACH category a nominee enters: 1 category pays this amount, 3 categories pay three times it. Enter 0 to make registration free.",
               })}
               ${field({
                 label: "Categories per nominee",
@@ -213,7 +214,7 @@ export default async function settings({ edition: ed, can, access }) {
                 required: true,
                 value: o.voting?.maxCategoriesPerNominee ?? 3,
                 col: "col-md-4",
-                help: "How many categories one nominee may enter in this edition. Enter 1 to allow only one. Enforced by the server.",
+                help: "The most categories one nominee may enter in this edition, in total. They register with one, then add the rest from their portal. Enter 1 to allow only one. Enforced by the server.",
               })}
             </div>
             ${save("Save voting rules")}

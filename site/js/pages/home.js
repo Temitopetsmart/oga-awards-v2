@@ -13,6 +13,7 @@ import { mountHomeExtras } from "../sections/extras.js";
 import { getResource } from "../../../shared/js/core/http.js";
 
 const app = document.getElementById("app");
+document.body.dataset.page = "home";
 let busy = false;
 
 /** Load only the data each state actually needs. */

@@ -7,6 +7,8 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import {
   updateNominee,
   uploadNomineePhoto,
+  switchNomineeEntry,
+  useMainDetails,
 } from "../../../shared/js/services/auth.service.js";
 import { href, card } from "../ui.js";
 
@@ -18,7 +20,53 @@ const kv = (label, value) =>
   </div>`;
 
 export default function profile(p) {
-  const { me, readOnly, percent, checklist } = p;
+  const { me, readOnly, percent, checklist, mineHere = [], catName } = p;
+  // A nominee in several categories keeps one set of personal details, but the photo and bio can differ per category.
+  const several = !readOnly && mineHere.length > 1;
+  const editing = several
+    ? html`<div class="border rounded-3 p-3 mb-4">
+        <label class="form-label" for="editingEntry"
+          >Which category are you editing?</label
+        >
+        <select class="form-select" id="editingEntry">
+          ${mineHere.map(
+            (e) =>
+              html`<option value="${e.id}" ${e.id === me.id ? "selected" : ""}>
+                ${catName(e) ?? "Category"}${e.isMain ? " (main)" : ""}
+              </option>`,
+          )}
+        </select>
+        <p class="small text-secondary mb-0 mt-2">
+          ${me.isMain
+            ? "This is your main entry. The photo and bio you set here are used by every category that has not got its own."
+            : html`The photo and bio below are for
+                <strong>${catName(me)}</strong> only. Your name, phone and
+                department are the same everywhere.`}
+        </p>
+        ${!me.isMain && (me.photoCustom || me.bioCustom)
+          ? html`<div class="d-flex flex-wrap gap-2 mt-2">
+              ${me.photoCustom
+                ? html`<button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-use-main="photo"
+                  >
+                    Use my main photo
+                  </button>`
+                : ""}
+              ${me.bioCustom
+                ? html`<button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-use-main="bio"
+                  >
+                    Use my main bio
+                  </button>`
+                : ""}
+            </div>`
+          : ""}
+      </div>`
+    : "";
   const checks = html`<ul class="list-unstyled mb-0 small">
     ${checklist.map(
       ([label, ok]) =>
@@ -52,6 +100,7 @@ export default function profile(p) {
         : card(
             "Your details",
             html`<form id="profileForm" novalidate>
+              ${editing}
               <div class="d-flex align-items-center gap-3 mb-3">
                 <div id="photoPreview">
                   ${me.photo
@@ -142,7 +191,10 @@ export default function profile(p) {
                     type: "textarea",
                     rows: 4,
                     value: me.bio ?? "",
-                    help: "Maximum 500 characters. Shown on your public profile.",
+                    help:
+                      several && !me.isMain
+                        ? "Maximum 500 characters. Shown on your public profile for this category."
+                        : "Maximum 500 characters. Shown on your public profile.",
                   })}
                 </div>
               </div>
@@ -191,6 +243,27 @@ export default function profile(p) {
 export function init(root, p) {
   const form = root.querySelector("#profileForm");
   if (!form) return;
+  root.querySelector("#editingEntry")?.addEventListener("change", (e) => {
+    try {
+      switchNomineeEntry(e.target.value);
+      location.reload();
+    } catch (err) {
+      notify.failure(err);
+    }
+  });
+  root.querySelectorAll("[data-use-main]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      try {
+        await useMainDetails(p.me.id, { [b.dataset.useMain]: true });
+        notify.toast("success", "Back on your main " + b.dataset.useMain);
+        location.reload();
+      } catch (err) {
+        b.disabled = false;
+        notify.failure(err);
+      }
+    }),
+  );
   const input = root.querySelector("#profilePhoto");
   const preview = root.querySelector("#photoPreview");
   let file = null;

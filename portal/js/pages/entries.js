@@ -1,18 +1,15 @@
 import { html } from "../../../shared/js/core/dom.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import { bindForm } from "../../../shared/js/ui/form.js";
-import {
-  categoryPicker,
-  pickedCategories,
-  bindCategoryPicker,
-} from "../../../shared/js/components/category-picker.js";
+import { mountCategoryDropdown } from "../../../shared/js/components/category-dropdown.js";
+import { money } from "../../../shared/js/core/format.js";
 import {
   createNomineeEntry,
   resubmitNomineeEntry,
   switchNomineeEntry,
-  currentNominee,
+  getCategoryOptions,
 } from "../../../shared/js/services/auth.service.js";
-import { statusChip, card, emptyState } from "../ui.js";
+import { statusChip, card, emptyState, href } from "../ui.js";
 
 export const title = "My entries";
 
@@ -25,7 +22,7 @@ export default function entries(p) {
     entries: all,
     catName,
     canApply,
-    feeDue,
+    fee,
     categories,
     takenIds,
     maxCategories,
@@ -57,6 +54,24 @@ export default function entries(p) {
                     ? html`<span class="pt-chip">Shown on Home</span>`
                     : ""}
                 </div>
+                ${!readOnly && here.length > 1
+                  ? html`<p class="small text-secondary mb-0 mt-2">
+                      ${e.isMain
+                        ? "Your main entry: the other categories use its photo and bio unless you change them."
+                        : e.photoCustom || e.bioCustom
+                          ? `Has its own ${[e.photoCustom ? "photo" : "", e.bioCustom ? "bio" : ""].filter(Boolean).join(" and ")}.`
+                          : "Uses your main photo and bio."}
+                      ${open
+                        ? html` <button
+                            class="btn btn-link btn-sm p-0 align-baseline"
+                            type="button"
+                            data-edit="${e.id}"
+                          >
+                            Change photo or bio for this category
+                          </button>`
+                        : ""}
+                    </p>`
+                  : ""}
                 ${e.status === "approved"
                   ? html`<p class="small text-secondary mb-0 mt-2">
                       You’re on the public list. Votes for each category are
@@ -104,24 +119,30 @@ export default function entries(p) {
         ${card(
           mineHere.length === 0
             ? `Apply for ${ctx.occasion.name} ${ctx.occasion.edition}`
-            : "Enter another category",
+            : "Enter more categories",
           html`<p class="small text-secondary">
-              ${mineHere.length === 0
-                ? "We’ll reuse your account and profile details, but create a new entry for this edition."
-                : "Same profile and photo, no extra registration fee. Each category is reviewed and voted on separately."}${feeDue
-                ? " The registration fee is paid once, however many categories you pick."
-                : ""}
+              We reuse your account and details, so there is nothing to fill in
+              again.
+              ${fee > 0
+                ? `Each category costs ${money(fee)}: choose two and you pay ${money(fee * 2)}, choose three and you pay ${money(fee * 3)}.`
+                : "Entering more categories is free."}
+              Each category is reviewed and voted on separately.
             </p>
             <form id="newEntryForm" novalidate>
-              ${categoryPicker({
-                categories,
-                taken: takenIds,
-                max: maxCategories,
-              })}
-              <button class="btn btn-gold" type="submit">
-                ${mineHere.length === 0
-                  ? "Create edition entry"
-                  : "Enter the selected categories"}
+              <label class="form-label" for="addHost"
+                >Categories open to you</label
+              >
+              <div id="addHost">
+                <div class="text-secondary small">Loading…</div>
+              </div>
+              <div
+                class="invalid-feedback d-block"
+                id="addError"
+                role="alert"
+              ></div>
+              <div id="addSummary" class="small my-3" aria-live="polite"></div>
+              <button class="btn btn-gold" type="submit" id="addBtn" disabled>
+                Choose at least one category
               </button>
             </form>`,
           { icon: "fa-plus" },
@@ -185,19 +206,75 @@ export function init(root, p) {
       }
     }),
   );
+  root.querySelectorAll("[data-edit]").forEach((b) =>
+    b.addEventListener("click", () => {
+      try {
+        switchNomineeEntry(b.dataset.edit);
+        location.assign(href(p, "profile"));
+      } catch (err) {
+        notify.failure(err);
+      }
+    }),
+  );
   const form = root.querySelector("#newEntryForm");
   if (!form) return;
-  bindCategoryPicker(form, {
-    max: p.maxCategories,
-    taken: p.takenIds,
-    level: currentNominee()?.accountLevel ?? currentNominee()?.level ?? "",
-  });
+  const host = form.querySelector("#addHost");
+  const summary = form.querySelector("#addSummary");
+  const btn = form.querySelector("#addBtn");
+  const error = form.querySelector("#addError");
+  let o = null;
+  let dd = null;
+  const refresh = () => {
+    const n = dd?.values().length ?? 0;
+    error.textContent = "";
+    if (!n) {
+      summary.textContent =
+        o?.room === 0
+          ? "You have entered the most categories allowed in this edition."
+          : "";
+      btn.textContent = "Choose at least one category";
+      btn.disabled = true;
+      return;
+    }
+    const fee = Number(o.fee) || 0;
+    summary.textContent =
+      fee > 0
+        ? `${n} ${n === 1 ? "category" : "categories"} × ${money(fee)} = ${money(fee * n)}`
+        : `${n} ${n === 1 ? "category" : "categories"}, no fee`;
+    btn.textContent =
+      fee > 0
+        ? `Pay ${money(fee * n)} and apply`
+        : `Enter ${n === 1 ? "this category" : `these ${n} categories`}`;
+    btn.disabled = false;
+  };
+  getCategoryOptions({ occasionId: p.ctx.occasion.id })
+    .then((r) => {
+      o = r;
+      if (!r.open || r.room === 0 || !r.categories.length) {
+        host.innerHTML = `<p class="text-secondary mb-0">${r.room === 0 ? "You have entered the most categories allowed in this edition." : "There are no more categories open to you right now."}</p>`;
+        btn.classList.add("d-none");
+        return;
+      }
+      dd = mountCategoryDropdown(host, {
+        categories: r.categories,
+        multi: true,
+        max: r.room,
+        placeholder: `Choose up to ${r.room} ${r.room === 1 ? "category" : "categories"}`,
+        onChange: refresh,
+      });
+      refresh();
+    })
+    .catch((err) => {
+      host.innerHTML = `<p class="text-danger mb-0">${err.message ?? "We could not load the categories."}</p>`;
+    });
   bindForm(form, {
     schema: {},
-    async onSubmit(values, formEl) {
-      const categoryIds = pickedCategories(formEl);
-      if (categoryIds.length === 0)
+    async onSubmit() {
+      const categoryIds = dd?.values() ?? [];
+      if (categoryIds.length === 0) {
+        error.textContent = "Choose at least one category.";
         throw new Error("Choose at least one category.");
+      }
       const r = await createNomineeEntry({
         occasionId: p.ctx.occasion.id,
         categoryIds,
@@ -207,8 +284,10 @@ export function init(root, p) {
         await new Promise(() => {});
       }
       await notify.success(
-        "Entry created",
-        "Your new entry is pending review. Your profile and photo are shared by all your categories.",
+        "Entered",
+        categoryIds.length === 1
+          ? "Your new entry is pending review. It starts with your main photo and bio, which you can change for each category."
+          : "Your new entries are pending review. They start with your main photo and bio, which you can change for each category.",
       );
       location.reload();
     },

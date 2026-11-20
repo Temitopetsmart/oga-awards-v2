@@ -35,20 +35,17 @@ const features = (copy, extra = {}) =>
     ...extra,
   });
 
-/** Countdown and featured person share one coordinated homepage feature area. */
+/** Face takes the right side when active; otherwise the countdown stays there. */
 const homeAside = (
   ctx,
   featuredFace,
-  primary = countdownPanel(ctx.countdown),
+  fallback = countdownPanel(ctx.countdown),
 ) =>
-  html`<div class="oga-home-feature ${featuredFace ? "has-face" : ""}">
-    <div class="oga-home-feature__countdown">${primary}</div>
-    ${featuredFace
-      ? html`<div class="oga-home-feature__face">
-          ${faceCard(featuredFace, { big: true, home: true })}
-        </div>`
-      : ""}
-  </div>`;
+  featuredFace ? faceCard(featuredFace, { big: true, home: true }) : fallback;
+
+/** Move countdown beside the status badge only when a Face is active. */
+const homeInlineCountdown = (ctx, featuredFace) =>
+  featuredFace ? countdownPanel(ctx.countdown) : null;
 
 /* Default landing page */
 const landing = (ctx, { featuredFace } = {}) =>
@@ -56,6 +53,7 @@ const landing = (ctx, { featuredFace } = {}) =>
     ctx,
     copy: ctx.copy,
     aside: homeAside(ctx, featuredFace),
+    inlineCountdown: homeInlineCountdown(ctx, featuredFace),
   })}
   ${features(ctx.copy, { eyebrow: "The experience" })}
   ${occasionStrip(ctx.specials)}`;
@@ -66,6 +64,7 @@ const nominations = (ctx, { categories, featuredFace } = {}) =>
     ctx,
     copy: ctx.copy,
     aside: homeAside(ctx, featuredFace),
+    inlineCountdown: homeInlineCountdown(ctx, featuredFace),
   })}
   ${features(ctx.copy, { eyebrow: "Get started" })}
   ${cardGrid({
@@ -84,6 +83,7 @@ const voting = (ctx, { categories, nominees, featuredFace } = {}) =>
     ctx,
     copy: ctx.copy,
     aside: homeAside(ctx, featuredFace),
+    inlineCountdown: homeInlineCountdown(ctx, featuredFace),
   })}
   ${features(ctx.copy, { eyebrow: "Simple & secure" })}
   ${cardGrid({
@@ -115,6 +115,7 @@ const votingClosed = (ctx, { featuredFace } = {}) =>
     ctx,
     copy: ctx.copy,
     aside: homeAside(ctx, featuredFace),
+    inlineCountdown: homeInlineCountdown(ctx, featuredFace),
   })}
   ${features(ctx.copy, { eyebrow: "Up next" })} ${occasionStrip(ctx.specials)}`;
 

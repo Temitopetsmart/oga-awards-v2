@@ -24,7 +24,9 @@ class OgaFooter extends HTMLElement {
 
     mount(
       this,
-      html`${ctx && !APP.maintenance?.enabled
+      html`${ctx &&
+        document.body.dataset.page !== "home" &&
+        !APP.maintenance?.enabled
           ? html`<div class="container">
               <oga-ad-slot placement="site_footer"></oga-ad-slot>
             </div>`

@@ -62,8 +62,7 @@ export async function loadPortalData(ctx, params) {
     ctx.state === "nominations" &&
     mineHere.length < maxCategories &&
     stillOpen.length > 0;
-  const feeDue =
-    mineHere.length === 0 && Number(APP.voting.nomineeRegistrationFee) > 0;
+  const fee = Number(APP.voting.nomineeRegistrationFee) || 0; // per category
   const catName = (entry) =>
     categories.find((c) => String(c.id) === String(entry.categoryId))?.name;
 
@@ -103,7 +102,7 @@ export async function loadPortalData(ctx, params) {
     takenIds,
     maxCategories,
     canApply,
-    feeDue,
+    fee,
     catName,
     isWinner,
     checklist,

@@ -898,42 +898,63 @@ check('unless the admin says it is meant', $prog(['mode' => 'apply', 'confirm' =
 check('past entries keep the level they were made with', (string) $sqlv('SELECT level FROM nominee_entries WHERE id = ?', [$mine]) === 'ND I');
 $db->exec('DELETE FROM level_promotions');
 
-// ================================================================== J. MULTI-CATEGORY NOMINATIONS AND THE ONE-TIME FEE (Round 2, phase 8)
-group('J. Several categories per nominee, one registration fee per edition');
+// ================================================================== J. ONE CATEGORY TO REGISTER, MORE FROM THE PORTAL, FEE PER CATEGORY
+group('J. Register with one category, add more later, pay per category, bio and photo per category');
 check('migration 013 made entries unique per account, edition and category', $sqlv("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'nominee_entries' AND index_name = 'uq_entry_account_edition_cat'") == 3
     && $sqlv("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'nominee_entries' AND index_name = 'uq_entry_account_edition'") == 0);
+check('migration 024 added the per-category bio and photo flags', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'nominee_entries' AND column_name IN ('bio_custom', 'photo_custom')") === 2);
 check('the limit is a setting, 3 until the admin changes it', $sqlv("SELECT max_categories_per_nominee FROM edition_settings WHERE edition_id = 2") == 3);
 $db->exec("UPDATE edition_settings SET nominee_registration_fee = 0 WHERE edition_id = 2");
 $cats = array_map('intval', $db->query("SELECT id FROM categories WHERE edition_id = 2 AND active = 1 ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
 check('the sample edition has enough categories for these tests', count($cats) >= 4, (string) count($cats));
 $db->exec("DELETE FROM category_levels WHERE category_id IN (" . implode(',', $cats) . ")");
 $mk = fn (array $over = []) => (new Client('nominee'))->post('/nominee/register', array_merge(['occasionId' => $ed, 'name' => 'Multi Student', 'email' => 'multi1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II',
-    'matricNo' => 'HSWF/24/0910', 'categoryIds' => [(string) $cats[0], (string) $cats[1]], 'password' => 'Test-Pass-12345', 'terms' => 'on'], $over));
+    'matricNo' => 'HSWF/24/0910', 'categoryIds' => [(string) $cats[0]], 'password' => 'Test-Pass-12345', 'terms' => 'on'], $over));
 $entriesOf = fn (string $email) => (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = (SELECT id FROM accounts WHERE email = ?)", [$email]);
 
-// ---- registering for several categories at once
+// ---- registering: exactly ONE category
 [$c, $r] = $mk();
-check('a nominee can register in two categories at once', $c === 200 && count($r['entries'] ?? []) === 2, json_encode($r['error'] ?? $c));
-check('each category is its own entry', $sqlv("SELECT COUNT(DISTINCT category_id) FROM nominee_entries WHERE account_id = (SELECT id FROM accounts WHERE email = 'multi1@test.dev')") == 2);
+check('a nominee registers with one category', $c === 200 && count($r['entries'] ?? []) === 1 && $entriesOf('multi1@test.dev') === 1, json_encode($r['error'] ?? $c));
+[$c, $r] = $mk(['email' => 'multi1b@test.dev', 'matricNo' => 'HSWF/24/0919', 'categoryIds' => [(string) $cats[0], (string) $cats[1]]]);
+check('registering with two categories at once is refused, with a message that points to the portal', $c === 422 && isset($r['fields']['categoryId']) && str_contains($r['error'] ?? '', 'one category') && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi1b@test.dev'") === 0, json_encode($r));
 check('the single "categoryId" from older pages still works', $mk(['email' => 'multi2@test.dev', 'matricNo' => 'HSWF/24/0911', 'categoryIds' => null, 'categoryId' => (string) $cats[0]])[0] === 200 && $entriesOf('multi2@test.dev') === 1);
 check('a repeated category in one request is counted once', $mk(['email' => 'multi3@test.dev', 'matricNo' => 'HSWF/24/0912', 'categoryIds' => [(string) $cats[0], (string) $cats[0]]])[0] === 200 && $entriesOf('multi3@test.dev') === 1);
 check('no category at all is refused', $mk(['email' => 'multi4@test.dev', 'matricNo' => 'HSWF/24/0913', 'categoryIds' => []])[0] === 422);
-check('a category from nowhere is refused, and nothing is half-made', $mk(['email' => 'multi4@test.dev', 'matricNo' => 'HSWF/24/0913', 'categoryIds' => [(string) $cats[0], '999999']])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi4@test.dev'") === 0);
-[$c, $r] = $mk(['email' => 'multi5@test.dev', 'matricNo' => 'HSWF/24/0914', 'categoryIds' => array_map('strval', array_slice($cats, 0, 4))]);
-check('more than the admin allows is refused', $c === 422 && isset($r['fields']['categoryId']) && str_contains($r['error'] ?? '', 'up to 3'), json_encode($r));
+check('a category from nowhere is refused, and nothing is half-made', $mk(['email' => 'multi4@test.dev', 'matricNo' => 'HSWF/24/0913', 'categoryIds' => ['999999']])[0] === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi4@test.dev'") === 0);
 $db->exec("INSERT INTO category_levels (category_id, level) VALUES ({$cats[2]}, 'HND I')");
-$c = $mk(['email' => 'multi6@test.dev', 'matricNo' => 'HSWF/24/0915', 'categoryIds' => [(string) $cats[0], (string) $cats[2]]])[0];
+$c = $mk(['email' => 'multi6@test.dev', 'matricNo' => 'HSWF/24/0915', 'categoryIds' => [(string) $cats[2]]])[0];
 $db->exec("DELETE FROM category_levels WHERE category_id = {$cats[2]}");
-check('an ineligible category in the list refuses the whole request', $c === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi6@test.dev'") === 0);
+check('a category the chosen level may not enter is refused', $c === 422 && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'multi6@test.dev'") === 0);
 
-// ---- adding categories later, from the dashboard
+// ---- the dropdown: only the categories this person may enter
+$db->exec("INSERT INTO category_levels (category_id, level) VALUES ({$cats[2]}, 'HND II')");
+$opt = fn (string $q, ?Client $c = null) => ($c ?? new Client('nominee'))->get('/nominee/category-options?occasionId=' . $ed . $q);
+[$c, $o2] = $opt('&level=' . rawurlencode('HND II'));
+[$c1, $o1] = $opt('&level=' . rawurlencode('HND I'));
+$ids = fn (array $o) => array_map('intval', array_column($o['categories'] ?? [], 'id'));
+check('someone at HND II is offered the HND II category as well as the open ones', $c === 200 && in_array($cats[2], $ids($o2), true) && in_array($cats[0], $ids($o2), true), json_encode($o2));
+check('someone at HND I is NOT offered a category that is for HND II only', $c1 === 200 && !in_array($cats[2], $ids($o1), true) && in_array($cats[0], $ids($o1), true));
+check('the answer carries the fee, the limit, the room left and whether a matric number is needed', isset($o2['fee'], $o2['currency'], $o2['max']) && $o2['max'] === 3 && $o2['room'] === 3 && is_bool($o2['requiresMatric']) && $o2['taken'] === []);
+check('an unknown level, a missing level and a wrong edition are refused', $opt('&level=' . rawurlencode('Wizard'))[0] === 422 && $opt('')[0] === 422 && (new Client('nominee'))->get('/nominee/category-options?occasionId=oga-1&level=' . rawurlencode('HND II'))[0] === 422);
+$staffLevel = (string) $sqlv("SELECT name FROM lookup_options WHERE kind = 'level' AND active = 1 AND requires_matric = 0 ORDER BY id LIMIT 1");
+if ($staffLevel !== '') { check('a level that needs no matric number says so', ($opt('&level=' . rawurlencode($staffLevel))[1]['requiresMatric'] ?? true) === false); }
+$db->exec("DELETE FROM category_levels WHERE category_id = {$cats[2]}");
+$db->exec("UPDATE categories SET active = 0 WHERE id = {$cats[3]}");
+check('a switched-off category is never offered', !in_array($cats[3], $ids($opt('&level=' . rawurlencode('HND II'))[1]), true));
+$db->exec("UPDATE categories SET active = 1 WHERE id = {$cats[3]}");
+
+// ---- adding categories later, from the portal
 $m1 = new Client('nominee');
 $m1->login('multi1@test.dev', 'Test-Pass-12345');
 $apply = fn (Client $c, array $ids) => $c->post('/nominee/entries', ['occasionId' => $ed, 'categoryIds' => $ids]);
-[$c, $r] = $apply($m1, [(string) $cats[1]]);
+[$c, $r] = $apply($m1, [(string) $cats[0]]);
 check('entering a category you already have is refused', $c === 422 && str_contains($r['error'] ?? '', 'already entered'), json_encode($r));
+[$c, $mo] = $opt('', $m1);
+check('signed in, the dropdown leaves out what you already have and counts the room left', $c === 200 && !in_array($cats[0], $ids($mo), true) && $mo['taken'] === [(string) $cats[0]] && $mo['room'] === 2 && $mo['level'] === 'HND II', json_encode($mo));
+[$c, $r] = $apply($m1, [(string) $cats[1]]);
+check('a second category can be added', $c === 200 && count($r['entries'] ?? []) === 2 && !empty($r['entryId']), json_encode($r['error'] ?? $c));
 [$c, $r] = $apply($m1, [(string) $cats[2]]);
-check('a third category can be added', $c === 200 && count($r['entries'] ?? []) === 3 && !empty($r['entryId']) && count($r['entryIds'] ?? []) === 1, json_encode($r['error'] ?? $c));
+check('and a third', $c === 200 && count($r['entries'] ?? []) === 3);
 [$c, $r] = $apply($m1, [(string) $cats[3]]);
 check('but not a fourth: the limit counts what they already have', $c === 422 && str_contains($r['error'] ?? '', '3 of the 3'), json_encode($r));
 check('an empty choice is refused', $apply($m1, [])[0] === 422);
@@ -944,9 +965,10 @@ check('the admin can raise the limit, and the public site is told', $sa->put("/a
 check('saving the other voting rules without the limit keeps it', $sa->put("/admin/editions/$ed/voting", $vr)[0] === 200 && $sqlv("SELECT max_categories_per_nominee FROM edition_settings WHERE edition_id = 2") == 4);
 check('and then the fourth goes in', $apply($m1, [(string) $cats[3]])[0] === 200 && $entriesOf('multi1@test.dev') === 4);
 $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 1]);
-check('a limit of 1 gives the old one-category rule', $mk(['email' => 'multi7@test.dev', 'matricNo' => 'HSWF/24/0916'])[0] === 422 && $mk(['email' => 'multi7@test.dev', 'matricNo' => 'HSWF/24/0916', 'categoryIds' => [(string) $cats[0]]])[0] === 200);
-$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 3]);
+check('a limit of 1 gives a one-category-only edition', $mk(['email' => 'multi7@test.dev', 'matricNo' => 'HSWF/24/0916'])[0] === 200);
 $m7 = new Client('nominee'); $m7->login('multi7@test.dev', 'Test-Pass-12345');
+check('...and they cannot add a second', $apply($m7, [(string) $cats[1]])[0] === 422 && $entriesOf('multi7@test.dev') === 1);
+$sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 3]);
 check('with a limit of 3 again, that nominee can add two more at once', $apply($m7, [(string) $cats[1], (string) $cats[2]])[0] === 200 && $entriesOf('multi7@test.dev') === 3);
 $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 2]);
 $m8 = new Client('nominee');
@@ -955,59 +977,114 @@ $one = $apply($m8, [(string) $cats[1]])[0]; $two = $apply($m8, [(string) $cats[2
 check('the limit holds for repeated requests', $one === 200 && $two === 422 && $entriesOf('multi8@test.dev') === 2);
 $sa->put("/admin/editions/$ed/voting", $vr + ['maxCategoriesPerNominee' => 4]);
 
-// ---- one profile, one photo, several categories
+// ---- the person's details are shared; the bio and photo belong to each category
 $aid = (int) $sqlv("SELECT id FROM accounts WHERE email = 'multi1@test.dev'");
 $entryIds = array_map('intval', $db->query("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
-check('editing the profile in one category updates them all', $m1->patch("/nominee/entries/{$entryIds[0]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'One bio for all'])[0] === 200
-    && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND name = 'Multi Renamed' AND department = 'Law' AND bio = 'One bio for all'") === count($entryIds));
+[$c] = $m1->patch("/nominee/entries/{$entryIds[0]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'One bio for all']);
+check('name, phone and department are the same in every category', $c === 200 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND name = 'Multi Renamed' AND department = 'Law' AND phone = '08039999999'") === count($entryIds));
+check('the main (first) entry bio reaches every category still using the main bio', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND bio = 'One bio for all'") === count($entryIds));
+[$c] = $m1->patch("/nominee/entries/{$entryIds[1]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'Only for this category']);
+check('a bio changed on another category applies to that category only', $c === 200 && (string) $sqlv("SELECT bio FROM nominee_entries WHERE id = {$entryIds[1]}") === 'Only for this category' && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND bio = 'One bio for all'") === count($entryIds) - 1 && (int) $sqlv("SELECT bio_custom FROM nominee_entries WHERE id = {$entryIds[1]}") === 1);
+$m1->patch("/nominee/entries/{$entryIds[0]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'Main bio, new']);
+check('changing the main bio later updates the others, but never a bio the nominee wrote for a category', (string) $sqlv("SELECT bio FROM nominee_entries WHERE id = {$entryIds[2]}") === 'Main bio, new' && (string) $sqlv("SELECT bio FROM nominee_entries WHERE id = {$entryIds[1]}") === 'Only for this category');
+[$c] = $m1->post("/nominee/entries/{$entryIds[1]}/use-main", ['bio' => true]);
+check('"use my main bio" puts a category back on the main one', $c === 200 && (string) $sqlv("SELECT bio FROM nominee_entries WHERE id = {$entryIds[1]}") === 'Main bio, new' && (int) $sqlv("SELECT bio_custom FROM nominee_entries WHERE id = {$entryIds[1]}") === 0);
+check('"use main" with nothing chosen is refused', $m1->post("/nominee/entries/{$entryIds[1]}/use-main", [])[0] === 422);
+$m1->patch("/nominee/entries/{$entryIds[0]}", ['name' => 'Multi Renamed', 'phone' => '08039999999', 'department' => 'Law', 'bio' => 'One bio for all']);
 $db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = {$entryIds[0]}");
 check('approval stays separate for each category', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND status = 'approved'") === 1);
-$img = imagecreatetruecolor(400, 400); imagefill($img, 0, 0, imagecolorallocate($img, 200, 60, 60));
-$tmpImg = sys_get_temp_dir() . '/multi-photo.png'; imagepng($img, $tmpImg);
-$upload = fn (int $id) => $m1->call('POST', "/nominee/entries/$id/photo", ['photo' => new CURLFile($tmpImg, 'image/png', 'p.png')], [], true);
-[$c, $r] = $upload($entryIds[1]);
-$photoPath = (string) $sqlv("SELECT photo_path FROM nominee_entries WHERE id = {$entryIds[0]}");
-$photoFile = dirname(App\Photos::root()) . '/' . $photoPath;
-check('a photo added in one category shows in all of them', $c === 200 && $photoPath !== '' && (int) $sqlv("SELECT COUNT(DISTINCT photo_path) FROM nominee_entries WHERE account_id = $aid") === 1 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === count($entryIds), $c . ' ' . json_encode($r));
-check('the photo file is on disk', is_file($photoFile), $photoFile);
-App\Photos::delete($photoPath);
+$mkPng = function (string $file, array $rgb) { $img = imagecreatetruecolor(400, 400); imagefill($img, 0, 0, imagecolorallocate($img, $rgb[0], $rgb[1], $rgb[2])); imagepng($img, $file); return $file; };
+$tmpImg = $mkPng(sys_get_temp_dir() . '/multi-photo.png', [200, 60, 60]);
+$tmpImg2 = $mkPng(sys_get_temp_dir() . '/multi-photo2.png', [60, 60, 200]);
+$upload = fn (int $id, string $f = null) => $m1->call('POST', "/nominee/entries/$id/photo", ['photo' => new CURLFile($f ?? $tmpImg, 'image/png', 'p.png')], [], true);
+$photoOf = fn (int $id) => (string) $sqlv("SELECT photo_path FROM nominee_entries WHERE id = $id");
+[$c, $r] = $upload($entryIds[0]);
+$mainPhoto = $photoOf($entryIds[0]);
+$mainFile = dirname(App\Photos::root()) . '/' . $mainPhoto;
+check('a photo added to the main entry shows in every category still using the main photo', $c === 200 && $mainPhoto !== '' && (int) $sqlv("SELECT COUNT(DISTINCT photo_path) FROM nominee_entries WHERE account_id = $aid") === 1 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === count($entryIds), $c . ' ' . json_encode($r));
+check('the photo file is on disk', is_file($mainFile), $mainFile);
+[$c] = $upload($entryIds[1], $tmpImg2);
+$ownPhoto = $photoOf($entryIds[1]);
+check('a photo added to ANOTHER category is that category\'s own; the rest keep the main photo', $c === 200 && $ownPhoto !== '' && $ownPhoto !== $mainPhoto && $photoOf($entryIds[2]) === $mainPhoto && $photoOf($entryIds[3]) === $mainPhoto && (int) $sqlv("SELECT photo_custom FROM nominee_entries WHERE id = {$entryIds[1]}") === 1);
+$upload($entryIds[0], $tmpImg2);
+$mainPhoto2 = $photoOf($entryIds[0]);
+check('a new main photo reaches the others but never overwrites a category\'s own photo', $mainPhoto2 !== $mainPhoto && $photoOf($entryIds[2]) === $mainPhoto2 && $photoOf($entryIds[1]) === $ownPhoto);
 clearstatcache();
-check('a photo still used by an entry is never deleted from disk', is_file($photoFile));
-[$c, $r] = $m1->delete("/nominee/entries/{$entryIds[0]}/photo");
+check('the replaced main photo file is deleted once nothing uses it', !is_file($mainFile));
+App\Photos::delete($mainPhoto2);
 clearstatcache();
-check('removing it from one category removes it from all, and deletes the file', $c === 200 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === 0 && !is_file($photoFile), $c . ' ' . $photoFile);
+check('a photo still used by an entry is never deleted from disk', is_file(dirname(App\Photos::root()) . '/' . $mainPhoto2));
+[$c] = $m1->delete("/nominee/entries/{$entryIds[1]}/photo");
+check('removing a category\'s own photo puts it back on the main photo', $c === 200 && $photoOf($entryIds[1]) === $mainPhoto2 && (int) $sqlv("SELECT photo_custom FROM nominee_entries WHERE id = {$entryIds[1]}") === 0);
+[$c] = $m1->delete("/nominee/entries/{$entryIds[0]}/photo");
+check('removing the main photo removes it from every category using it', $c === 200 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $aid AND photo_path IS NOT NULL") === 0);
 $upload($entryIds[0]);
-$p2 = (string) $sqlv("SELECT photo_path FROM nominee_entries WHERE id = {$entryIds[0]}");
-check('a new photo replaces the old one in every category', $p2 !== '' && $p2 !== $photoPath && (int) $sqlv("SELECT COUNT(DISTINCT photo_path) FROM nominee_entries WHERE account_id = $aid") === 1);
+$upload($entryIds[2], $tmpImg2);
+$ownP = $photoOf($entryIds[2]);
+$m1->post("/nominee/entries/{$entryIds[2]}/use-main", ['photo' => true]);
+check('"use my main photo" puts a category back on the main photo and removes its own file', $photoOf($entryIds[2]) === $photoOf($entryIds[0]) && !is_file(dirname(App\Photos::root()) . '/' . $ownP));
+check('the session tells the portal which entry is the main one and which are customised', (function () use ($m1, $entryIds) { $es = array_column($m1->get('/nominee/me')[1]['entries'] ?? [], null, 'id'); return ($es[(string) $entryIds[0]]['isMain'] ?? null) === true && ($es[(string) $entryIds[1]]['isMain'] ?? null) === false && isset($es[(string) $entryIds[1]]['bioCustom'], $es[(string) $entryIds[1]]['photoCustom']); })());
 
-// ---- the registration fee is paid once per edition
+// ---- the fee is charged PER category
 $db->exec("UPDATE edition_settings SET nominee_registration_fee = 500 WHERE edition_id = 2");
-[$c, $r] = (new Client('nominee'))->post('/nominee/register', ['occasionId' => $ed, 'name' => 'Paying Student', 'email' => 'fee1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'HSWF/24/0920', 'categoryIds' => [(string) $cats[0], (string) $cats[1]], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
-check('with a fee, two categories start ONE payment (or fail cleanly if the gateway is unreachable)', (($r['paymentRequired'] ?? false) === true && (float) ($r['amount'] ?? 0) === 500.0) || $c === 502, json_encode($r));
+[$c, $r] = (new Client('nominee'))->post('/nominee/register', ['occasionId' => $ed, 'name' => 'Paying Student', 'email' => 'fee1@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'HSWF/24/0920', 'categoryIds' => [(string) $cats[0]], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
+check('with a fee, registering starts ONE payment for one category (or fails cleanly if the gateway is unreachable)', (($r['paymentRequired'] ?? false) === true && (float) ($r['amount'] ?? 0) === 500.0) || $c === 502, json_encode($r));
 check('no account or entry exists before the money is confirmed', (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'fee1@test.dev'") === 0 && (int) $sqlv("SELECT COUNT(*) FROM payments WHERE payer_email = 'fee1@test.dev'") === 1);
-check('the pending registration remembers both categories', count(json_decode((string) $sqlv("SELECT profile FROM pending_registrations WHERE email = 'fee1@test.dev'"), true)['categoryIds'] ?? []) === 2);
-$paid = function (string $ref, string $email, string $matricNo, array $profileCats) use ($db, $pwHash) {
-    $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'nominee_fee', ?, 500, 'NGN', ?, 'successful')")->execute([$ref, $email]);
+check('the payment was for our price: one category at 500', (float) $sqlv("SELECT expected_amount FROM payments WHERE payer_email = 'fee1@test.dev'") === 500.0);
+[$c, $r] = (new Client('nominee'))->post('/nominee/register', ['occasionId' => $ed, 'name' => 'Paying Student', 'email' => 'fee1x@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'HSWF/24/0929', 'categoryIds' => [(string) $cats[0], (string) $cats[1]], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
+check('two categories at registration are refused even when there is a fee, and no payment is started', $c === 422 && (int) $sqlv("SELECT COUNT(*) FROM payments WHERE payer_email = 'fee1x@test.dev'") === 0);
+$paid = function (string $ref, string $email, string $matricNo, array $profileCats, float $amount = 500.0) use ($db, $pwHash) {
+    $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'nominee_fee', ?, ?, 'NGN', ?, 'successful')")->execute([$ref, $amount, $email]);
     $pid = (int) $db->lastInsertId();
     $db->prepare("INSERT INTO pending_registrations (reference, edition_id, account_id, email, password_hash, profile, payment_id, status) VALUES (?, 2, NULL, ?, ?, ?, ?, 'pending')")
         ->execute([$ref, $email, $pwHash, json_encode(['name' => 'Paid Multi', 'phone' => '0803', 'department' => 'Law', 'level' => 'ND II', 'matricNo' => $matricNo] + $profileCats), $pid]);
     App\Registrations::complete($db, ['id' => $pid]);
     return $pid;
 };
-$pid = $paid('REG-J1', 'fee2@test.dev', 'HSWF/24/0921', ['categoryIds' => [$cats[0], $cats[1]]]);
-check('one payment creates an entry for every category chosen', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ?", [$pid]) === 2);
+$pid = $paid('REG-J1', 'fee2@test.dev', 'HSWF/24/0921', ['categoryIds' => [$cats[0]]]);
+check('the payment creates the account and ONE entry for the chosen category', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ?", [$pid]) === 1 && $entriesOf('fee2@test.dev') === 1);
 $paid('REG-J2', 'fee3@test.dev', 'HSWF/24/0922', ['categoryIds' => []]);
 check('a paid registration with no category is flagged for an admin, not half-made', $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-J2'") === 'failed' && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'fee3@test.dev'") === 0);
+$paid('REG-J2b', 'fee3b@test.dev', 'HSWF/24/0928', ['categoryIds' => [$cats[0], $cats[1]]], 1000.0);
+check('a paid NEW registration for two categories is flagged too (the rule is one at a time)', $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-J2b'") === 'failed' && (int) $sqlv("SELECT COUNT(*) FROM accounts WHERE email = 'fee3b@test.dev'") === 0);
 $pid3 = $paid('REG-J3', 'fee4@test.dev', 'HSWF/24/0923', ['categoryId' => $cats[0]]);
 check('an older pending registration with a single "categoryId" still completes', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ?", [$pid3]) === 1);
+
+// adding categories later costs the fee for EACH category
 $fee2 = new Client('nominee'); $fee2->login('fee2@test.dev', 'Test-Pass-12345');
-[$c, $r] = $apply($fee2, [(string) $cats[2]]);
-check('a third category for someone who already paid is free: no second payment', $c === 200 && empty($r['paymentRequired']) && $entriesOf('fee2@test.dev') === 3 && (int) $sqlv("SELECT COUNT(*) FROM payments WHERE payer_email = 'fee2@test.dev'") === 1, json_encode($r['error'] ?? $c));
 $fee2id = (int) $sqlv("SELECT id FROM accounts WHERE email = 'fee2@test.dev'");
-$db->exec("DELETE FROM nominee_entries WHERE account_id = $fee2id");
-check('even if every entry is removed, they do not pay again for that edition', App\Entries::feeSettled($db, $fee2id, 2) === true);
-check('someone who never registered in an edition still owes its fee', App\Entries::feeSettled($db, $fee2id, 1) === false);
+[$c, $r] = $apply($fee2, [(string) $cats[1], (string) $cats[2]]);
+check('two more categories start ONE payment of 2 x 500 = 1,000 (or fail cleanly if the gateway is unreachable)', (($r['paymentRequired'] ?? false) === true && (float) ($r['amount'] ?? 0) === 1000.0 && ($r['categories'] ?? 0) === 2) || $c === 502, json_encode($r));
+check('the payment row holds our computed total, and nothing is entered yet', (float) $sqlv("SELECT expected_amount FROM payments WHERE payer_email = 'fee2@test.dev' AND reference <> 'REG-J1' ORDER BY id DESC LIMIT 1") === 1000.0 && $entriesOf('fee2@test.dev') === 1);
+[$c, $r] = $apply($fee2, [(string) $cats[1]]);
+check('one more category costs 500', (($r['paymentRequired'] ?? false) === true && (float) ($r['amount'] ?? 0) === 500.0) || $c === 502, json_encode($r));
+$paidMore = function (string $ref, int $accountId, array $ids, float $amount) use ($db) {
+    $db->prepare("INSERT INTO payments (edition_id, purpose, reference, expected_amount, currency, payer_email, status) VALUES (2, 'nominee_fee', ?, ?, 'NGN', 'fee2@test.dev', 'successful')")->execute([$ref, $amount]);
+    $pid = (int) $db->lastInsertId();
+    $db->prepare("INSERT INTO pending_registrations (reference, edition_id, account_id, email, password_hash, profile, payment_id, status) VALUES (?, 2, ?, 'fee2@test.dev', NULL, ?, ?, 'pending')")
+        ->execute([$ref, $accountId, json_encode(['categoryIds' => $ids]), $pid]);
+    App\Registrations::complete($db, ['id' => $pid]);
+    return $pid;
+};
+$db->exec("UPDATE nominee_entries SET bio = 'Fee2 main bio' WHERE account_id = $fee2id");
+$pm = $paidMore('REG-J4', $fee2id, [$cats[1], $cats[2]], 1000.0);
+check('the money for two categories creates two entries, pending, linked to that payment', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE registration_payment_id = ? AND status = 'pending'", [$pm]) === 2 && $entriesOf('fee2@test.dev') === 3);
+check('the new categories start from the main entry: same name, bio and photo, none customised, nothing asked again', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE account_id = $fee2id AND name = 'Paid Multi' AND bio = 'Fee2 main bio' AND bio_custom = 0 AND photo_custom = 0") === 3);
+$db->exec("UPDATE edition_settings SET max_categories_per_nominee = 3 WHERE edition_id = 2");
+$paidMore('REG-J5', $fee2id, [$cats[3]], 500.0);
+check('a paid request that would pass the limit is flagged for an admin, not entered', $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-J5'") === 'failed' && $entriesOf('fee2@test.dev') === 3);
+$db->exec("UPDATE edition_settings SET max_categories_per_nominee = 6 WHERE edition_id = 2");
+$db->exec("UPDATE categories SET active = 0 WHERE id = {$cats[3]}");
+$paidMore('REG-J6', $fee2id, [$cats[3]], 500.0);
+check('a paid category that was switched off meanwhile is flagged, not entered', $sqlv("SELECT status FROM pending_registrations WHERE reference = 'REG-J6'") === 'failed' && $entriesOf('fee2@test.dev') === 3);
+$db->exec("UPDATE categories SET active = 1 WHERE id = {$cats[3]}");
+$paidMore('REG-J7', $fee2id, [$cats[1], $cats[3]], 1000.0);
+check('if one of two paid categories is already held, the other is entered and an admin is told about the difference', $entriesOf('fee2@test.dev') === 4 && (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Paid registration needs attention' AND details LIKE '%REG-J7%'") >= 1);
+$db->exec("UPDATE edition_settings SET max_categories_per_nominee = 4 WHERE edition_id = 2");
 $db->exec("UPDATE edition_settings SET nominee_registration_fee = 0 WHERE edition_id = 2");
+$m9 = new Client('nominee'); $m9->login('fee4@test.dev', 'Test-Pass-12345');
+[$c, $r] = $apply($m9, [(string) $cats[1]]);
+check('when the fee is 0 adding a category is immediate and free', $c === 200 && empty($r['paymentRequired']) && $entriesOf('fee4@test.dev') === 2);
 
 // ---- admin side
 $entryA = (int) $sqlv("SELECT id FROM nominee_entries WHERE account_id = $aid ORDER BY id LIMIT 1");
@@ -1017,6 +1094,10 @@ $catA = $sqlv("SELECT category_id FROM nominee_entries WHERE id = $entryA");
 check('an admin cannot move an entry into a category the nominee already has (clean message, no 500)', $c === 422 && str_contains($r['error'] ?? '', 'already has an entry'), $c . ' ' . json_encode($r));
 $list = $sa->get("/admin/nominees?edition=$ed&page=1&q=" . rawurlencode('Multi Renamed'))[1];
 check('the admin list shows every category as its own row', ($list['total'] ?? 0) === count($entryIds), json_encode($list['total'] ?? null));
+check('the registration page, the portal and the dropdown component fit together', is_file($root . '/shared/js/components/category-dropdown.js') && !is_file($root . '/shared/js/components/category-picker.js')
+    && str_contains((string) file_get_contents($root . '/site/js/pages/register.js'), 'getCategoryOptions') && str_contains((string) file_get_contents($root . '/portal/js/pages/entries.js'), 'mountCategoryDropdown') && str_contains((string) file_get_contents($root . '/portal/js/pages/profile.js'), 'useMainDetails'));
+check('the register page no longer offers a list of tick boxes', !str_contains((string) file_get_contents($root . '/site/js/pages/register.js'), 'categoryPicker'));
+check('the admin settings call the fee "per category"', str_contains((string) file_get_contents($root . '/admin/js/pages/settings.js'), 'Registration fee per category'));
 
 // ================================================================== K. LEAK AUDIT AND SUSPENSE RESULTS (Round 2, phase 9)
 group('K. Suspense results: no counts, rankings or early winners leak');

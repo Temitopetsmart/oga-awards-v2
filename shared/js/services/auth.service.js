@@ -228,8 +228,30 @@ export async function changeNomineePassword({ currentPassword, newPassword }) {
   });
 }
 
-/** Enter one or more (more) categories. A nominee who already paid this edition's fee is not charged again. */
-export async function createNomineeEntry({ occasionId, categoryIds }) {
+/**
+ * The categories THIS person may enter, for the dropdown. Before an account exists pass the chosen level; signed in, the server
+ * uses the account's own level and leaves out what is already entered. Also returns the fee per category and how many more fit.
+ */
+export const getCategoryOptions = ({ occasionId, level = "" }) =>
+  call(
+    `/nominee/category-options?occasionId=${encodeURIComponent(occasionId)}${level ? `&level=${encodeURIComponent(level)}` : ""}`,
+  );
+
+/** Puts one category back on the main entry's bio and/or photo. */
+export async function useMainDetails(entryId, { bio = false, photo = false }) {
+  const r = await call(`/nominee/entries/${entryId}/use-main`, {
+    method: "POST",
+    body: { bio, photo },
+  });
+  hydrate(r);
+  store.set(SELECTED, String(entryId));
+  return currentNominee();
+}
+
+/** Enter one or more (more) categories. The fee is charged for EACH category chosen (the server works the total out). */ export async function createNomineeEntry({
+  occasionId,
+  categoryIds,
+}) {
   const r = await call("/nominee/entries", {
     method: "POST",
     body: { occasionId, categoryIds },

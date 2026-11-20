@@ -570,3 +570,146 @@
     margin-bottom: 1rem;
   }
 }
+
+/* Nominee profile presentation */
+.oga-nominee-profile {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  overflow: hidden;
+  background: linear-gradient(145deg, var(--oga-surface), var(--oga-ink-800));
+  border: 1px solid var(--oga-border-strong);
+  border-radius: var(--oga-radius-lg);
+  box-shadow: var(--oga-shadow-md);
+}
+
+.oga-nominee-profile__visual {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at top, rgba(212, 175, 55, 0.15), transparent 65%),
+    var(--oga-ink-800);
+}
+
+.oga-nominee-profile__portrait {
+  width: 100%;
+  height: 26rem;
+  overflow: hidden;
+}
+
+.oga-nominee-profile__portrait .oga-avatar {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  font-size: 3rem;
+}
+
+.oga-nominee-profile__portrait .oga-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.oga-nominee-profile__identity {
+  padding: 1.5rem;
+}
+
+.oga-nominee-profile__identity h2 {
+  margin: 0.5rem 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.oga-nominee-profile__identity p {
+  color: var(--oga-text-muted);
+  font-size: 0.9rem;
+}
+
+.oga-nominee-profile__content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.75rem;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  min-width: 0;
+}
+
+.oga-profile-block h2 {
+  margin: 0.35rem 0 1rem;
+  font-size: 1.65rem;
+}
+
+.oga-profile-block h3,
+.oga-profile-actions h3 {
+  font-size: 1.05rem;
+}
+
+.oga-profile-bio {
+  color: var(--oga-text-muted);
+  font-size: 1rem;
+  line-height: 1.9;
+  white-space: pre-line;
+}
+
+.oga-profile-facts {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.oga-profile-fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--oga-border);
+}
+
+.oga-profile-fact span {
+  color: var(--oga-text-muted);
+  font-size: 0.85rem;
+}
+
+.oga-profile-fact strong {
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.oga-profile-actions {
+  padding: 1.1rem;
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid var(--oga-border);
+  border-radius: var(--oga-radius);
+}
+
+.oga-profile-actions p {
+  color: var(--oga-text-muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 767.98px) {
+  .oga-nominee-profile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oga-nominee-profile__portrait {
+    height: 24rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .oga-nominee-profile__portrait {
+    height: 20rem;
+  }
+
+  .oga-profile-fact {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .oga-profile-fact strong {
+    text-align: left;
+  }
+}

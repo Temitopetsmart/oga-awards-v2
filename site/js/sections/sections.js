@@ -4,8 +4,8 @@ import { formatDate } from "../../../shared/js/core/format.js";
 import { hasFeature } from "../../../shared/js/services/event.service.js";
 import { occasionCard } from "../../../shared/js/components/cards.js";
 
-/** Homepage hero: introduction on the left, coordinated feature area on the right. */
-export function hero({ ctx, copy, aside }) {
+/** Homepage hero with an optional compact countdown beside the status badge. */
+export function hero({ ctx, copy, aside, inlineCountdown = null }) {
   const ctas = (copy.ctas ?? []).filter(
     (c) => !c.feature || hasFeature(ctx.occasion, c.feature),
   );
@@ -14,15 +14,24 @@ export function hero({ ctx, copy, aside }) {
     <div class="oga-hero__glow" aria-hidden="true"></div>
     <div class="container position-relative">
       <div class="row align-items-center gy-5 gx-lg-5">
-        <div class="col-lg-5">
-          <span class="oga-badge mb-4">
-            <span class="oga-dot"></span>${ctx.stateInfo.label}
-          </span>
+        <div class="col-lg-7">
+          <div class="oga-hero__status-row">
+            <span class="oga-badge">
+              <span class="oga-dot"></span>${ctx.stateInfo.label}
+            </span>
+            ${inlineCountdown
+              ? html`<div class="oga-hero__inline-countdown">
+                  ${inlineCountdown}
+                </div>`
+              : ""}
+          </div>
+
           <p class="oga-eyebrow d-block mb-2">${copy.kicker}</p>
           <h1 class="oga-hero__title">
             ${copy.title} <span class="text-gold">${copy.highlight}</span>
           </h1>
           <p class="oga-hero__lead">${copy.lead}</p>
+
           <div class="d-flex flex-wrap gap-3 mt-4">
             ${ctas.map(
               (c) =>
@@ -36,7 +45,8 @@ export function hero({ ctx, copy, aside }) {
             )}
           </div>
         </div>
-        <div class="col-lg-7">${aside}</div>
+
+        <div class="col-lg-5">${aside}</div>
       </div>
     </div>
   </section>`;
