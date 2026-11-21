@@ -318,6 +318,9 @@ export async function resubmitNomineeEntry(id) {
 /** The nominee's Access Pass for the active edition: { enabled, eligible, claimed, guests, tickets[] }. */
 export const getAccessPass = () => call("/nominee/access-pass");
 
+/** The nominee's own votes: { enabled, names, entries: [{ id, category, status, votes, recent: [{ name, votes, at }] }], total }. */
+export const getMyVotes = () => call("/nominee/votes");
+
 /** Claims the free pass (once per edition). */
 export const claimAccessPass = () =>
   call("/nominee/access-pass", { method: "POST" });

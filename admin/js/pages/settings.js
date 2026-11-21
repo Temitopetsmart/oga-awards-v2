@@ -15,6 +15,7 @@ import {
   saveEditionState,
   saveVotingRules,
   saveAccessPass,
+  saveVoteFeed,
   saveFlier,
 } from "../services/edition.api.js";
 
@@ -251,6 +252,50 @@ export default async function settings({ edition: ed, can, access }) {
           </fieldset>
         </form>`,
         "cardPass",
+      )}
+      ${card(
+        "Nominee vote feed",
+        html` <form id="feedForm" novalidate>
+          <fieldset ${lock}>
+            <p class="small text-secondary">
+              Lets each nominee see their own total votes and the latest votes
+              they received (voter, number of votes, time) on their portal home
+              page. Nominees never see rankings or anybody else’s numbers. Leave
+              it off to keep everything secret until the winners are announced.
+            </p>
+            ${sw(
+              "feedEnabled",
+              "Nominees can see their own votes",
+              o.voteFeed?.enabled,
+            )}
+            <div class="row">
+              ${field({
+                label: "Voter names",
+                name: "feedNames",
+                required: true,
+                value: o.voteFeed?.names ?? "masked",
+                col: "col-md-6",
+                options: [
+                  { value: "masked", label: "Shortened (Ade O.)" },
+                  { value: "full", label: "Full name" },
+                  { value: "anonymous", label: "Hidden (A supporter)" },
+                ],
+                help: "Emails are never shown.",
+              })}
+              ${field({
+                label: "Latest votes to show",
+                name: "feedRecent",
+                type: "number",
+                required: true,
+                value: o.voteFeed?.recent ?? 5,
+                col: "col-md-4",
+                help: "1 to 20.",
+              })}
+            </div>
+            ${save("Save vote feed")}
+          </fieldset>
+        </form>`,
+        "cardFeed",
       )}
       ${card(
         "Nominee promo flier",
@@ -513,6 +558,17 @@ export async function init(root, { admin, edition: ed, can, access }) {
           guests: Number(v.guests),
         });
         notify.toast("success", "Access Pass saved");
+      },
+    });
+    bindForm(root.querySelector("#feedForm"), {
+      schema: { feedRecent: [rules.required(), whole(1, 20)] },
+      async onSubmit(v, form) {
+        await saveVoteFeed(ed.id, {
+          enabled: form.elements.feedEnabled.checked,
+          names: v.feedNames,
+          recent: Number(v.feedRecent),
+        });
+        notify.toast("success", "Vote feed saved");
       },
     });
     bindForm(root.querySelector("#flierForm"), {

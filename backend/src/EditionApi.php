@@ -320,6 +320,29 @@ final class EditionApi
         Response::json(['ok' => true]);
     }
 
+    /** Nominee vote feed: show each nominee their own vote total and latest votes (names: full, masked or anonymous). */
+    public static function saveVoteFeed(string $slug): never
+    {
+        $in = Request::json();
+        $e = self::find($slug);
+        $actor = Access::require('settings.edit', $slug);
+        $n = $in['recent'] ?? null;
+        if (!is_numeric($n) || (float) $n != (int) $n || (int) $n < 1 || (int) $n > 20) {
+            self::fail('Latest votes to show: enter a whole number from 1 to 20.');
+        }
+        $names = (string) ($in['names'] ?? '');
+        if (!in_array($names, VoteFeed::NAME_MODES, true)) {
+            self::fail('Choose how voter names are shown.');
+        }
+        $enabled = !empty($in['enabled']) ? 1 : 0;
+        self::pdo()->prepare('INSERT INTO edition_settings (edition_id, vote_feed_enabled, vote_feed_names, vote_feed_recent, updated_by) VALUES (?, ?, ?, ?, ?)
+                              ON DUPLICATE KEY UPDATE vote_feed_enabled = VALUES(vote_feed_enabled), vote_feed_names = VALUES(vote_feed_names), vote_feed_recent = VALUES(vote_feed_recent), updated_by = VALUES(updated_by)')
+            ->execute([$e['id'], $enabled, $names, (int) $n, $actor['id']]);
+        Cache::flush();
+        Audit::log((int) $actor['id'], 'Updated the nominee vote feed', ($enabled ? 'on' : 'off') . ", names $names, latest $n", (int) $e['id']);
+        Response::json(['ok' => true]);
+    }
+    
     /** Phase 13: the look and wording of the nominee promo flier. */
     public static function saveFlier(string $slug): never
     {

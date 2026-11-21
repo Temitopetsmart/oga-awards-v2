@@ -41,6 +41,7 @@ final class AccountApi
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\\d+)/resubmit$#', $path, $m)) self::resubmit((int) $m[1]);
         if ($method === 'GET' && $path === '/nominee/access-pass') self::accessPass(false);
         if ($method === 'POST' && $path === '/nominee/access-pass') self::accessPass(true);
+        if ($method === 'GET' && $path === '/nominee/votes') self::votes();
         if ($method === 'GET' && $path === '/nominee/announcements') { self::requireAccount(); Response::json(['ok' => true, 'announcements' => AnnouncementApi::visible(['public', 'nominees'])]); }
         if ($method === 'POST' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::uploadPhoto((int) $m[1]);
         if ($method === 'DELETE' && preg_match('#^/nominee/entries/(\d+)/photo$#', $path, $m)) self::removePhoto((int) $m[1]);
@@ -863,6 +864,18 @@ final class AccountApi
 
     // ------------------------------------------------------ my entry, photo
 
+    /** GET /nominee/votes: the nominee's own vote total and latest votes, when the admin has switched the feed on. */
+    private static function votes(): never
+    {
+        $a = self::requireAccount();
+        self::requireMatric($a);
+        $ed = AccessPass::activeEdition();
+        if (!$ed) {
+            Response::json(['ok' => true, 'enabled' => false, 'entries' => [], 'total' => 0]);
+        }
+        Response::json(['ok' => true] + VoteFeed::forAccount((int) $a['id'], $ed));
+    }
+    
     /** Phase 12: the nominee's free event pass. GET shows it; POST claims it (once per edition). */
     private static function accessPass(bool $claim): never
     {

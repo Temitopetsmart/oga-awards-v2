@@ -51,7 +51,10 @@ final class Catalog
                 s.max_categories_per_nominee,
                 s.access_pass_enabled,
                 s.access_pass_guests,
-                s.flier_config
+                s.flier_config,
+                s.vote_feed_enabled,
+                s.vote_feed_names,
+                s.vote_feed_recent
             FROM editions e
             LEFT JOIN edition_settings s ON s.edition_id = e.id
             ORDER BY e.year DESC, e.id DESC;'
@@ -107,6 +110,7 @@ final class Catalog
                     'maxCategoriesPerNominee'         => (int) ($e['max_categories_per_nominee'] ?? 3),
                 ],
                 'accessPass' => ['enabled' => (bool) ($e['access_pass_enabled'] ?? 0), 'guests' => (int) ($e['access_pass_guests'] ?? 0)],
+                'voteFeed'   => ['enabled' => (bool) ($e['vote_feed_enabled'] ?? 0), 'names' => (string) ($e['vote_feed_names'] ?? 'masked'), 'recent' => (int) ($e['vote_feed_recent'] ?? 5)],
                 'flier'      => Flier::merged($e['flier_config'] ?? null),                    
                 'occasions'  => $occ[$e['id']] ?? [],
             ];

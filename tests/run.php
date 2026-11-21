@@ -2607,6 +2607,90 @@ check('the rotation component is shared and used by the footer, the home page an
 check('the client permission catalogue knows all three ad permissions and the role', (function () use ($root) { $s = (string) file_get_contents($root . '/admin/js/config/permissions.js'); return str_contains($s, 'ads.view') && str_contains($s, 'ads.review') && str_contains($s, 'ads.manage') && str_contains($s, 'role-advertising'); })());
 check('the cron tool for the sweep exists and refuses to run in a browser', str_contains((string) file_get_contents($root . '/backend/tools/ads-sweep.php'), "PHP_SAPI !== 'cli'"));
 
+// ================================================================== AA. NOMINEE VOTE FEED (own total + latest votes, admin switch)
+group('AA. Nominee vote feed: own total and latest votes, off by default, admin-controlled names and count');
+$vfSlug = (string) $sqlv('SELECT slug FROM editions WHERE id = 2');
+$db->exec("UPDATE editions SET status = 'active' WHERE id = 2");
+$db->exec("UPDATE edition_settings SET vote_feed_enabled = 0, vote_feed_names = 'masked', vote_feed_recent = 5 WHERE edition_id = 2");
+$db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id IN ({$entry['na']}, {$entry['nb']})");
+App\Cache::flush();
+$vfNa = new Client('nominee'); $vfNa->login('na@test.dev', 'Test-Pass-12345');
+$vfNb = new Client('nominee'); $vfNb->login('nb@test.dev', 'Test-Pass-12345');
+$vfPut = fn (array $b) => $sa->put("/admin/editions/$vfSlug/vote-feed", $b);
+check('migration 025 added the three feed settings', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'edition_settings' AND column_name IN ('vote_feed_enabled', 'vote_feed_names', 'vote_feed_recent')") === 3);
+[$c, $r] = $vfNa->get('/nominee/votes');
+check('the feed is OFF by default: nothing is returned (suspense kept)', $c === 200 && $r['enabled'] === false && $r['entries'] === [] && $r['total'] === 0, json_encode($r));
+check('anonymous visitors get 401', (new Client('nominee'))->get('/nominee/votes')[0] === 401);
+
+// ---- admin switch and its validation
+check('latest votes must be a whole number from 1 to 20', $vfPut(['enabled' => true, 'names' => 'masked', 'recent' => 0])[0] === 422 && $vfPut(['enabled' => true, 'names' => 'masked', 'recent' => 21])[0] === 422 && $vfPut(['enabled' => true, 'names' => 'masked', 'recent' => 'x'])[0] === 422 && $vfPut(['enabled' => true, 'names' => 'masked'])[0] === 422);
+check('the name style must be one of the three', $vfPut(['enabled' => true, 'names' => 'everything', 'recent' => 5])[0] === 422 && $vfPut(['enabled' => true, 'recent' => 5])[0] === 422);
+check('a nominee cannot use the admin route', $vfNa->put("/admin/editions/$vfSlug/vote-feed", ['enabled' => true, 'names' => 'full', 'recent' => 5])[0] >= 401);
+check('the admin can switch it on', $vfPut(['enabled' => true, 'names' => 'masked', 'recent' => 5])[0] === 200 && (int) $sqlv('SELECT vote_feed_enabled FROM edition_settings WHERE edition_id = 2') === 1);
+check('the change is written to the audit log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Updated the nominee vote feed'") >= 1);
+$pubEd = array_values(array_filter((new Client())->get('/editions')[1]['editions'] ?? [], fn ($x) => (string) ($x['id'] ?? '') === $vfSlug));
+check('the edition options carry the feed settings for the admin page', ($pubEd[0]['voteFeed']['enabled'] ?? null) === true && ($pubEd[0]['voteFeed']['names'] ?? '') === 'masked' && ($pubEd[0]['voteFeed']['recent'] ?? 0) === 5, json_encode($pubEd[0]['voteFeed'] ?? null));
+
+// ---- the numbers
+$vfMake = function (string $ref, int $entryId, int $votes, string $voter, string $status, string $paidAt) use ($db): void {
+    $cat = (int) $db->query("SELECT category_id FROM nominee_entries WHERE id = $entryId")->fetchColumn();
+    $db->prepare("INSERT INTO vote_orders (edition_id, reference, nominee_entry_id, category_id, votes, amount, voter_name, voter_email, status, source, paid_at) VALUES (2, ?, ?, ?, ?, ?, ?, 'secret.voter@example.com', ?, 'payment', ?)")
+        ->execute([$ref, $entryId, $cat, $votes, $votes * 50, $voter, $status, $status === 'paid' ? $paidAt : null]);
+    if ($status === 'paid') {
+        App\VoteTotals::addOrder($db, ['nominee_entry_id' => $entryId, 'category_id' => $cat, 'edition_id' => 2, 'votes' => $votes, 'source' => 'payment', 'amount' => $votes * 50]);
+    }
+};
+$vfBase = (int) $sqlv('SELECT COALESCE(SUM(votes), 0) FROM vote_totals WHERE nominee_entry_id = ?', [$entry['na']]);
+$vfNames = ['Ade Okoro', 'Chinedu', 'secret.voter@example.com', "  Funke   Bello  ", 'Tolu Ade Bamidele', 'Zainab Yusuf', 'Ike Obi'];
+foreach ($vfNames as $i => $nm) {
+    $vfMake('VFD-' . $i, (int) $entry['na'], $i + 1, $nm, 'paid', date('Y-m-d H:i:s', time() + 3600 + $i * 60));   // later = newer
+}
+$vfMake('VFD-PEND', (int) $entry['na'], 99, 'Pending Person', 'pending', '');
+$vfMake('VFD-VOID', (int) $entry['na'], 98, 'Void Person', 'void', '');
+$vfMake('VFD-NB', (int) $entry['nb'], 7, 'Only For B', 'paid', date('Y-m-d H:i:s', time() + 7200));
+$vfPaid = array_sum(range(1, 7));
+[$c, $r, $raw] = $vfNa->get('/nominee/votes');
+$mine = array_values(array_filter($r['entries'] ?? [], fn ($e) => (string) $e['id'] === (string) $entry['na']))[0] ?? [];
+check('the nominee sees their own total: paid votes only, pending and void left out', $c === 200 && $r['enabled'] === true && ($mine['votes'] ?? -1) === $vfBase + $vfPaid, json_encode($mine));
+check('the grand total adds up their categories', $r['total'] === array_sum(array_column($r['entries'], 'votes')));
+check('it shows only the latest 5, newest first', count($mine['recent'] ?? []) === 5 && array_column($mine['recent'], 'votes') === [7, 6, 5, 4, 3], json_encode($mine['recent'] ?? null));
+$nm = array_column($mine['recent'] ?? [], 'name');
+check('masked style: "Ike O.", "Zainab Y.", "Tolu B."; the email voter becomes "A supporter"', $nm === ['Ike O.', 'Zainab Y.', 'Tolu B.', 'Funke B.', 'A supporter'], json_encode($nm));
+check('the voter email is never in the answer', !str_contains($raw, 'secret.voter') && !str_contains($raw, 'example.com') && !str_contains($raw, 'voter_email'));
+check('each row has a number of votes and a time', isset($mine['recent'][0]['at']) && strtotime($mine['recent'][0]['at']) > time() && is_int($mine['recent'][0]['votes']));
+check('pending and void orders never appear', !str_contains($raw, 'Pending Person') && !str_contains($raw, 'Void Person'));
+check('the answer carries no ranking, position or other nominee data', !array_intersect($walk($r), ['rank', 'ranking', 'position', 'percent', 'percentage', 'leading', 'tally']));
+[$c, $rb, $rawb] = $vfNb->get('/nominee/votes');
+check('another nominee sees only their own entry and numbers, none of the first nominee\'s voters', $c === 200 && !str_contains($rawb, 'Zainab') && !str_contains($rawb, 'Ade O.') && array_column($rb['entries'], 'id') !== array_column($r['entries'], 'id') && !in_array((string) $entry['na'], array_column($rb['entries'], 'id'), true));
+
+// ---- the admin's other choices
+$vfPut(['enabled' => true, 'names' => 'full', 'recent' => 3]);
+[, $r] = $vfNa->get('/nominee/votes');
+$mine = array_values(array_filter($r['entries'], fn ($e) => (string) $e['id'] === (string) $entry['na']))[0];
+check('full names and a smaller list when the admin says so', array_column($mine['recent'], 'name') === ['Ike Obi', 'Zainab Yusuf', 'Tolu Ade Bamidele'], json_encode($mine['recent']));
+check('full names still never show an email address', !in_array('secret.voter@example.com', array_column($mine['recent'], 'name'), true));
+$vfPut(['enabled' => true, 'names' => 'anonymous', 'recent' => 5]);
+[, $r, $raw] = $vfNa->get('/nominee/votes');
+$mine = array_values(array_filter($r['entries'], fn ($e) => (string) $e['id'] === (string) $entry['na']))[0];
+check('anonymous style hides every name', array_unique(array_column($mine['recent'], 'name')) === ['A supporter'] && !str_contains($raw, 'Zainab'));
+check('the unit helper masks as documented', App\VoteFeed::displayName('Ade Okoro', 'masked') === 'Ade O.' && App\VoteFeed::displayName('Chinedu', 'masked') === 'C***' && App\VoteFeed::displayName('', 'full') === 'A supporter' && App\VoteFeed::displayName('x@y.com', 'full') === 'A supporter' && App\VoteFeed::displayName('Ngozi Eze', 'anonymous') === 'A supporter');
+$vfPut(['enabled' => false, 'names' => 'masked', 'recent' => 5]);
+[, $r, $raw] = $vfNa->get('/nominee/votes');
+check('switching it off again returns nothing at all', $r['enabled'] === false && $r['entries'] === [] && !str_contains($raw, 'Zainab'));
+
+// ---- the screens
+$vfHome = (string) file_get_contents($root . '/portal/js/pages/home.js');
+check('the portal home asks for the feed and draws it only when it is switched on', str_contains($vfHome, 'getMyVotes') && str_contains($vfHome, 'votes?.enabled') && !str_contains($vfHome, 'Live counts and rankings are never shown'));
+check('the admin settings page has the feed card and saves it', str_contains((string) file_get_contents($root . '/admin/js/pages/settings.js'), 'saveVoteFeed') && str_contains((string) file_get_contents($root . '/admin/js/services/edition.api.js'), '/vote-feed'));
+
+// clean up what this group added so later checks see the old numbers
+foreach ($db->query("SELECT * FROM vote_orders WHERE reference LIKE 'VFD-%'")->fetchAll() as $o) {
+    if ($o['status'] === 'paid') { App\VoteTotals::removeOrder($db, $o); }
+}
+$db->exec("DELETE FROM vote_orders WHERE reference LIKE 'VFD-%'");
+check('this group left vote totals matching the orders', App\VoteTotals::drift($db) === []);
+App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

@@ -93,6 +93,10 @@ export const deleteOccasion = (id) => write(`/admin/occasions/${id}`, "DELETE");
 export const saveAccessPass = (id, body) =>
   write(`/admin/editions/${id}/access-pass`, "PUT", body);
 
+/** { enabled, names: full|masked|anonymous, recent }: what a nominee sees of their own votes. */
+export const saveVoteFeed = (id, body) =>
+  write(`/admin/editions/${id}/vote-feed`, "PUT", body);
+
 /** { enabled, headline, tagline, footer, bg, accent, text, showQr, showCategory }: the nominee promo flier. */
 export const saveFlier = (id, body) =>
   write(`/admin/editions/${id}/flier`, "PUT", body);

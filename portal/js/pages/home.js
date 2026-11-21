@@ -2,6 +2,7 @@ import { html } from "../../../shared/js/core/dom.js";
 import {
   getNomineeAnnouncements,
   getAccessPass,
+  getMyVotes,
 } from "../../../shared/js/services/auth.service.js";
 import { STEPS } from "../data.js";
 import { href, statusChip, card } from "../ui.js";
@@ -34,11 +35,75 @@ const TILES = [
 
 const MESSAGE = {
   voting:
-    "Voting is open. Live counts and rankings are never shown to anyone, so everyone stays in suspense until the winners are announced.",
+    "Voting is open. Rankings and other nominees’ numbers are never shown to anyone, so everyone stays in suspense until the winners are announced.",
   "voting-closed":
     "Voting has closed and the results are being verified. Winners are announced by the organisers.",
   results: "The winners have been announced.",
 };
+
+const when = (iso) =>
+  new Date(iso).toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+/** The nominee's own votes: a total per category and the latest voters. Only drawn when the admin has switched the feed on. */
+const votesCard = (v) =>
+  card(
+    "My votes",
+    html`${v.entries.map(
+        (e) =>
+          html`<div class="mb-3">
+            <div
+              class="d-flex align-items-baseline justify-content-between gap-2"
+            >
+              <span class="fw-semibold">${e.category}</span>
+              <span class="text-nowrap"
+                ><span class="h3 mb-0 text-gold"
+                  >${e.votes.toLocaleString()}</span
+                >
+                <small class="text-secondary"
+                  >vote${e.votes === 1 ? "" : "s"}</small
+                ></span
+              >
+            </div>
+            ${e.recent.length
+              ? html`<ul class="list-unstyled small mb-0 mt-2">
+                  ${e.recent.map(
+                    (r) =>
+                      html`<li
+                        class="d-flex justify-content-between gap-2 py-1 border-top"
+                      >
+                        <span>${r.name}</span>
+                        <span class="text-nowrap text-secondary"
+                          ><strong class="text-body">${r.votes}</strong>
+                          vote${r.votes === 1 ? "" : "s"} · ${when(r.at)}</span
+                        >
+                      </li>`,
+                  )}
+                </ul>`
+              : html`<p class="small text-secondary mb-0 mt-1">
+                  No votes yet. Share your link to get them coming.
+                </p>`}
+          </div>`,
+      )}
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        data-refresh-votes
+      >
+        <i class="fa-solid fa-rotate me-1"></i>Refresh
+      </button>`,
+    { icon: "fa-heart" },
+  );
+
+export function init(root) {
+  root
+    .querySelector("[data-refresh-votes]")
+    ?.addEventListener("click", () => location.reload());
+}
 
 export default async function home(p) {
   const {
@@ -54,11 +119,12 @@ export default async function home(p) {
     mineHere,
     at,
   } = p;
-  const [updates, pass] = readOnly
-    ? [[], null]
+  const [updates, pass, votes] = readOnly
+    ? [[], null, null]
     : await Promise.all([
         getNomineeAnnouncements().catch(() => []),
         getAccessPass().catch(() => null),
+        getMyVotes().catch(() => null),
       ]);
 
   const todo = [];
@@ -147,6 +213,9 @@ export default async function home(p) {
           </h2>
           <p class="mb-0">The organisers have announced the winners.</p>
         </div>`
+      : ""}
+    ${votes?.enabled && votes.entries.length
+      ? html`<div class="mb-4">${votesCard(votes)}</div>`
       : ""}
     ${todo.length
       ? html`<h2 class="h6 text-uppercase text-secondary mb-2">To do</h2>
