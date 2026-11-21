@@ -8,6 +8,11 @@ import { notify } from "../../../shared/js/ui/notify.js";
 import { resolveState } from "../../../shared/js/services/event.service.js";
 import { logAudit } from "../services/admin-store.js";
 import { getEdition, editionLabel } from "../services/edition.repo.js";
+import {
+  STAGES,
+  STAGE_LABELS,
+  stageConfig,
+} from "../../../shared/js/components/flier.js";
 import { fetchSettings, saveSettings } from "../services/settings.api.js";
 import { hubCards, initHub } from "./settings-hub.js";
 import {
@@ -237,15 +242,79 @@ export default async function settings({ edition: ed, can, access }) {
               "Nominees can claim an Access Pass",
               o.accessPass?.enabled,
             )}
-            <div class="row">
-              ${field({
-                label: "Guests per pass",
-                name: "guests",
-                type: "number",
-                required: true,
-                value: o.accessPass?.guests ?? 0,
-                col: "col-md-4",
-                help: "0 to 5 extra tickets with each pass. A later change applies to passes claimed after it.",
+            <div class="accordion mt-3" id="flierStages">
+              ${STAGES.map((st, i) => {
+                const f = stageConfig(o.flier, st);
+                return html`<div class="accordion-item">
+                  <h3 class="accordion-header">
+                    <button
+                      class="accordion-button ${i ? "collapsed" : ""}"
+                      type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#stage-${st}"
+                    >
+                      ${STAGE_LABELS[st]}
+                    </button>
+                  </h3>
+                  <div
+                    id="stage-${st}"
+                    class="accordion-collapse collapse ${i ? "" : "show"}"
+                    data-bs-parent="#flierStages"
+                  >
+                    <div class="accordion-body">
+                      ${sw(
+                        `${st}_on`,
+                        `Nominees can download the “${STAGE_LABELS[st]}” flier`,
+                        f.on,
+                      )}
+                      <div class="row">
+                        ${field({
+                          label: "Headline",
+                          name: `${st}_headline`,
+                          required: true,
+                          value: f.headline,
+                          col: "col-md-4",
+                          help: "Up to 40 characters.",
+                        })}
+                        ${field({
+                          label: "Tagline",
+                          name: `${st}_tagline`,
+                          value: f.tagline,
+                          col: "col-md-4",
+                          help: "Optional, up to 80 characters.",
+                        })}
+                        ${field({
+                          label: "Footer line",
+                          name: `${st}_footer`,
+                          value: f.footer,
+                          col: "col-md-4",
+                          help: "Optional, up to 80 characters.",
+                        })}
+                        ${field({
+                          label: "Background colour",
+                          name: `${st}_bg`,
+                          type: "color",
+                          value: f.bg,
+                          col: "col-md-4",
+                        })}
+                        ${field({
+                          label: "Accent colour",
+                          name: `${st}_accent`,
+                          type: "color",
+                          value: f.accent,
+                          col: "col-md-4",
+                        })}
+                        ${field({
+                          label: "Text colour",
+                          name: `${st}_text`,
+                          type: "color",
+                          value: f.text,
+                          col: "col-md-4",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>`;
               })}
             </div>
             ${save("Save Access Pass")}
@@ -302,8 +371,14 @@ export default async function settings({ edition: ed, can, access }) {
         html` <form id="flierForm" novalidate>
           <fieldset ${lock}>
             <p class="small text-secondary">
-              Nominees download a flier with their photo, name and a QR code to
-              their profile. You decide how it looks and what it says.
+              Nominees download a share-ready flier where their photo is the
+              main picture. It changes with the stage of the awards, so each
+              stage has its own wording and colours below. In any text you can
+              use <code>{name}</code> <code>{category}</code>
+              <code>{edition}</code> <code>{opens}</code> <code>{closes}</code>
+              <code>{results}</code> (voting open, voting close and results
+              dates). A line whose word is missing (for example no date set yet)
+              is left out.
             </p>
             ${sw(
               "flierEnabled",
@@ -572,22 +647,32 @@ export async function init(root, { admin, edition: ed, can, access }) {
       },
     });
     bindForm(root.querySelector("#flierForm"), {
-      schema: {
-        headline: [rules.required(), rules.max(40)],
-        tagline: [rules.max(80)],
-        footer: [rules.max(80)],
-      },
+      schema: Object.fromEntries(
+        STAGES.flatMap((st) => [
+          [`${st}_headline`, [rules.required(), rules.max(40)]],
+          [`${st}_tagline`, [rules.max(80)]],
+          [`${st}_footer`, [rules.max(80)]],
+        ]),
+      ),
       async onSubmit(v, form) {
         await saveFlier(ed.id, {
           enabled: form.elements.flierEnabled.checked,
           showQr: form.elements.showQr.checked,
           showCategory: form.elements.showCategory.checked,
-          headline: v.headline.trim(),
-          tagline: (v.tagline ?? "").trim(),
-          footer: (v.footer ?? "").trim(),
-          bg: v.bg,
-          accent: v.accent,
-          text: v.text,
+          states: Object.fromEntries(
+            STAGES.map((st) => [
+              st,
+              {
+                on: form.elements[`${st}_on`].checked,
+                headline: v[`${st}_headline`].trim(),
+                tagline: (v[`${st}_tagline`] ?? "").trim(),
+                footer: (v[`${st}_footer`] ?? "").trim(),
+                bg: v[`${st}_bg`],
+                accent: v[`${st}_accent`],
+                text: v[`${st}_text`],
+              },
+            ]),
+          ),
         });
         notify.toast("success", "Flier saved");
       },

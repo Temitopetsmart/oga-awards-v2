@@ -2691,6 +2691,66 @@ $db->exec("DELETE FROM vote_orders WHERE reference LIKE 'VFD-%'");
 check('this group left vote totals matching the orders', App\VoteTotals::drift($db) === []);
 App\Cache::flush();
 
+// ================================================================== AB. FLIER BY STAGE (coming soon, nominations, voting, voting closed, results, winner)
+group('AB. Flier by stage: each stage has its own look and wording, admin-controlled');
+$fbSlug = (string) $sqlv('SELECT slug FROM editions WHERE id = 2');
+$fbGet = fn () => (array_column((new Client())->get('/editions')[1]['editions'] ?? [], null, 'id')[$fbSlug]['flier'] ?? null);
+$fbStages = ['landing', 'nominations', 'voting', 'voting-closed', 'results', 'winner'];
+$fbPut = fn (array $b) => $sa->put("/admin/editions/$fbSlug/flier", $b);
+$db->exec("UPDATE edition_settings SET flier_config = NULL WHERE edition_id = 2");
+App\Cache::flush();
+$f = $fbGet();
+check('a new edition has a flier for every stage', is_array($f) && array_keys($f['states'] ?? []) === $fbStages, json_encode(array_keys($f['states'] ?? [])));
+check('the stages really look different: no two share the same colours', count(array_unique(array_map(fn ($s) => $s['bg'] . $s['accent'], $f['states']))) === 6);
+check('every stage has a headline and valid colours by default', !array_filter($f['states'], fn ($s) => $s['headline'] === '' || !preg_match('/^#[0-9a-f]{6}$/', $s['bg'] . '') || !preg_match('/^#[0-9a-f]{6}$/', $s['accent']) || !preg_match('/^#[0-9a-f]{6}$/', $s['text']) || $s['on'] !== true));
+check('voting and winner say different things', $f['states']['voting']['headline'] !== $f['states']['winner']['headline'] && $f['states']['landing']['headline'] !== $f['states']['voting-closed']['headline']);
+
+// old-style flat settings (saved before stages) keep working and become the voting flier
+$db->prepare("UPDATE edition_settings SET flier_config = ? WHERE edition_id = 2")->execute([json_encode(['enabled' => true, 'headline' => 'Back me', 'tagline' => '', 'footer' => 'Tap to vote', 'bg' => '#111111', 'accent' => '#ff0000', 'text' => '#ffffff', 'showQr' => true, 'showCategory' => true])]);
+App\Cache::flush();
+$f = $fbGet();
+check('a flier saved before stages becomes the voting flier', $f['states']['voting']['headline'] === 'Back me' && $f['states']['voting']['accent'] === '#ff0000' && $f['states']['landing']['headline'] !== 'Back me');
+
+// admin saves by stage
+$states = $f['states'];
+$states['winner']['headline'] = 'Champion';
+$states['winner']['tagline'] = '{category} champion, {edition}';
+$states['voting-closed']['on'] = false;
+$states['voting']['headline'] = 'Back me now';
+check('the admin can save the wording and colours of every stage', $fbPut(['enabled' => true, 'showQr' => true, 'showCategory' => true, 'states' => $states])[0] === 200);
+$f = $fbGet();
+check('what was saved comes back for each stage', $f['states']['winner']['headline'] === 'Champion' && $f['states']['winner']['tagline'] === '{category} champion, {edition}' && $f['states']['voting-closed']['on'] === false && $f['states']['voting']['on'] === true);
+check('the flat fields follow the voting stage', $f['headline'] === 'Back me now' && $f['accent'] === $f['states']['voting']['accent']);
+check('a stage can be switched off on its own', $f['states']['voting-closed']['on'] === false && $f['enabled'] === true);
+
+// validation names the stage
+$bad = $states; $bad['results']['headline'] = '   ';
+[$c, $r] = $fbPut(['states' => $bad] + ['enabled' => true]);
+check('a blank headline is refused and the stage is named', $c === 422 && str_contains(json_encode($r), 'Results out'), json_encode($r));
+$bad = $states; $bad['landing']['bg'] = 'red';
+[$c, $r] = $fbPut(['states' => $bad] + ['enabled' => true]);
+check('a bad colour is refused and the stage is named', $c === 422 && str_contains(json_encode($r), 'Coming soon'), json_encode($r));
+$bad = $states; $bad['winner']['accent'] = 'url(javascript:1)';
+check('colour injection is refused', $fbPut(['states' => $bad] + ['enabled' => true])[0] === 422);
+$bad = $states; $bad['nominations']['tagline'] = str_repeat('x', 81);
+check('texts are length-limited per stage', $fbPut(['states' => $bad] + ['enabled' => true])[0] === 422);
+$bad = $states; $bad['voting']['footer'] = "line\x01break";
+check('control characters are refused', $fbPut(['states' => $bad] + ['enabled' => true])[0] === 422);
+check('a refused save changes nothing', $fbGet()['states']['winner']['headline'] === 'Champion');
+check('staff without settings access cannot change the stages', $gate->put("/admin/editions/$fbSlug/flier", ['states' => $states, 'enabled' => true])[0] === 403);
+check('the old flat form still works (older clients)', $fbPut(['headline' => 'Old way', 'tagline' => '', 'footer' => '', 'bg' => '#222222', 'accent' => '#00ff00', 'text' => '#ffffff', 'enabled' => true, 'showQr' => true, 'showCategory' => true])[0] === 200 && $fbGet()['states']['voting']['headline'] === 'Old way');
+
+// the drawing code and the screens
+$fbJs = (string) file_get_contents($root . '/shared/js/components/flier.js');
+foreach ($fbStages as $st) {
+    check("the drawing code knows the \"$st\" stage", str_contains($fbJs, "\"$st\""));
+}
+check('the flier is a full-photo design, not a small round avatar', !str_contains($fbJs, 'ctx.arc(cx, cy, diameter') && str_contains($fbJs, 'function cover('));
+check('the promote page picks the flier by stage and can share the picture', str_contains((string) file_get_contents($root . '/portal/js/pages/promote.js'), 'flierStage(ctx.state, isWinner)') && str_contains((string) file_get_contents($root . '/portal/js/pages/promote.js'), 'shareFlier'));
+check('the admin page edits every stage', str_contains((string) file_get_contents($root . '/admin/js/pages/settings.js'), 'STAGES.map') && str_contains((string) file_get_contents($root . '/admin/js/pages/settings.js'), 'states: Object.fromEntries'));
+$db->exec("UPDATE edition_settings SET flier_config = NULL WHERE edition_id = 2");
+App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

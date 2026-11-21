@@ -2,8 +2,13 @@ import { html } from "../../../shared/js/core/dom.js";
 import { notify } from "../../../shared/js/ui/notify.js";
 import {
   FLIER_SIZES,
+  STAGE_LABELS,
+  canShareImage,
   drawFlier,
   downloadFlier,
+  flierStage,
+  shareFlier,
+  stageConfig,
 } from "../../../shared/js/components/flier.js";
 import { card, emptyState } from "../ui.js";
 import { drawQrCard } from "../qrcard.js";
@@ -11,12 +16,16 @@ import { drawQrCard } from "../qrcard.js";
 export const title = "Share & promote";
 
 export default function promote(p) {
-  const { me, ctx, cat, readOnly, profileUrl } = p;
+  const { me, ctx, cat, readOnly, profileUrl, isWinner } = p;
   const approved = me.status === "approved";
+  const stage = flierStage(ctx.state, isWinner);
   const text = `Vote for me, ${me.name}, in the ${ctx.occasion.name} ${ctx.occasion.edition}${cat ? ` (${cat.name})` : ""}!`;
   const enc = encodeURIComponent;
   const flier =
-    ctx.occasion.flier?.enabled && me.occasionId === ctx.occasion.id;
+    approved &&
+    ctx.occasion.flier?.enabled &&
+    stageConfig(ctx.occasion.flier, stage).on &&
+    me.occasionId === ctx.occasion.id;
 
   return html`<div class="row g-4">
     <div class="col-12">
@@ -100,10 +109,13 @@ export default function promote(p) {
           ${card(
             "Promo flier",
             html`<p class="small text-secondary">
-                A ready-made flier with your photo, name and a QR code to your
-                profile.${me.photo
+                Your flier for this stage
+                (<strong>${STAGE_LABELS[stage]}</strong>): your photo, name and
+                a QR code to your profile, ready to
+                post.${me.photo
                   ? ""
-                  : " Add a profile photo to make it stand out."}
+                  : " Add a profile photo: it becomes the main picture."}
+                It updates by itself as the awards move on.
               </p>
               <div class="d-flex flex-wrap gap-2 mb-3">
                 <select
@@ -121,6 +133,14 @@ export default function promote(p) {
                   type="button"
                 >
                   <i class="fa-solid fa-download me-1"></i>Download PNG
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="flierShare"
+                  type="button"
+                  hidden
+                >
+                  <i class="fa-solid fa-share-nodes me-1"></i>Share picture
                 </button>
               </div>
               <canvas
@@ -162,7 +182,7 @@ export default function promote(p) {
 }
 
 export async function init(root, p) {
-  const { me, ctx, cat, profileUrl } = p;
+  const { me, ctx, cat, profileUrl, isWinner } = p;
   const safe = me.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   root.querySelector("#copyBtn")?.addEventListener("click", async () => {
     try {
@@ -205,6 +225,12 @@ export async function init(root, p) {
       drawFlier(flier, {
         size: root.querySelector("#flierSize").value,
         cfg: ctx.occasion.flier,
+        stage: flierStage(ctx.state, isWinner),
+        dates: {
+          opens: ctx.occasion.timeline?.votingOpen,
+          closes: ctx.occasion.timeline?.votingClose,
+          results: ctx.occasion.timeline?.resultsPublish,
+        },
         name: me.name,
         nickname: me.nickname,
         category: cat?.name ?? "",
@@ -214,6 +240,22 @@ export async function init(root, p) {
       });
     draw();
     root.querySelector("#flierSize").addEventListener("change", draw);
+    const shareBtn = root.querySelector("#flierShare");
+    if (shareBtn && canShareImage()) {
+      shareBtn.hidden = false;
+      shareBtn.addEventListener("click", async () => {
+        try {
+          await draw();
+          await shareFlier(
+            flier,
+            `${safe}-flier.png`,
+            `${me.name}: ${profileUrl}`,
+          );
+        } catch (err) {
+          await notify.warning("Couldn’t share the picture", err.message);
+        }
+      });
+    }
     root.querySelector("#flierDownload").addEventListener("click", async () => {
       try {
         await draw();
