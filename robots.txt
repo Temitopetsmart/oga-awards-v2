@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /api/
+Disallow: /backend/
+Disallow: /database/
+Disallow: /tests/
+Disallow: /tools/
+
+Sitemap: https://ogaaward.xyz/sitemap.xml
