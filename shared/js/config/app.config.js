@@ -57,22 +57,27 @@ export const APP = {
    * Navigation. `states`: only show in these home states. `feature`: only show when
    * the main occasion has this feature flag on. Omit both to always show.
    */
+
   nav: [
     { label: "Home", href: "./" },
-    { label: "About", href: "about" },
+
+    { label: "About", href: "about", group: "About" },
     {
       label: "Categories",
       href: "categories",
+      group: "Awards",
       states: ["nominations", "voting", "voting-closed", "results"],
     },
-    { label: "Vote", href: "vote", states: ["voting"] },
-    { label: "Winners", href: "results", states: ["results"] },
-    { label: "Tickets", href: "tickets", feature: "tickets" },
-    { label: "Hall of Fame", href: "editions" },
-    { label: "Gallery", href: "gallery" },
-    { label: "Committee", href: "committee" },
-    { label: "FAQ", href: "faq" },
-    { label: "Contact", href: "contact" },
+    { label: "Vote", href: "vote", group: "Awards", states: ["voting"] },
+    { label: "Winners", href: "results", group: "Awards", states: ["results"] },
+
+    { label: "Tickets", href: "tickets", group: "Explore", feature: "tickets" },
+    { label: "Hall of Fame", href: "editions", group: "Explore" },
+    { label: "Gallery", href: "gallery", group: "Explore" },
+
+    { label: "Committee", href: "committee", group: "About" },
+    { label: "FAQ", href: "faq", group: "About" },
+    { label: "Contact", href: "contact", group: "About" },
   ],
 };
 

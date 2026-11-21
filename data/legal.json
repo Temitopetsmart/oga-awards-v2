@@ -1,47 +1,155 @@
 {
   "privacy": {
     "title": "Privacy Policy",
-    "updated": "2026-10-17",
+    "updated": "2026-11-21",
     "draft": true,
     "sections": [
       {
-        "heading": "Information we collect",
-        "body": "We collect the details you give us when you register as a nominee, vote, buy tickets, apply to join the committee or contact us — for example your name, email address and phone number."
+        "heading": "1. Introduction",
+        "body": "OGA Awards (OGA, we, us or our) respects your privacy and is committed to protecting the personal information of visitors, nominees, voters, ticket holders, committee applicants and other users of our platform. This Privacy Policy explains what information we collect, how we use it, when we may share it and the rights available to you when you use the OGA Awards website and related services."
       },
       {
-        "heading": "How we use it",
-        "body": "We use your details to run OGA: to process votes and ticket orders, manage nominee accounts, respond to enquiries and send important event updates."
+        "heading": "2. Information We Collect",
+        "body": "Depending on how you interact with our platform, we may collect your full name, email address, phone number, matriculation number, department, academic level, profile photograph, biography, nominee details, category selections and other information you voluntarily provide. We may also collect account information, application details, voting records, ticket order information, transaction references, payment status and messages submitted through our contact forms."
       },
       {
-        "heading": "Payments",
-        "body": "Payments are handled by our payment provider. We do not store your card details."
+        "heading": "3. Technical Information",
+        "body": "When you visit our website, certain technical information may be processed automatically, including your IP address, browser type, device information, pages visited, access times and security logs. This information helps us maintain website performance, diagnose technical problems, monitor usage and protect the platform against suspicious or unauthorised activities."
       },
       {
-        "heading": "Your choices",
-        "body": "You can contact us to ask about, correct or delete your information."
+        "heading": "4. How We Use Your Information",
+        "body": "We use collected information to create and manage user accounts, process nominee registrations, review committee applications, administer award categories, operate voting services, verify payments, manage ticket purchases, communicate event updates, respond to enquiries, publish approved nominee profiles and award results, maintain accurate records and protect the integrity and security of the OGA Awards platform."
+      },
+      {
+        "heading": "5. Public Information and Nominee Profiles",
+        "body": "Certain information submitted by nominees may be displayed publicly as part of the awards process. This may include a nominee's name, photograph, biography, department, academic level, category and award status. By submitting information for public nominee presentation, you acknowledge that approved information may be displayed on our website and official OGA communication channels. Please ensure that you have the necessary permission to submit photographs or other materials belonging to another person."
+      },
+      {
+        "heading": "6. Voting Information",
+        "body": "When you participate in voting, we may process information relating to your vote, selected nominee, category, transaction reference, payment status and voting activity. This information is used to validate transactions, maintain accurate vote records, detect suspicious activity and ensure the fairness and integrity of the awards. Where anonymous voting is offered, your public display name will follow the anonymity option provided during the voting process."
+      },
+      {
+        "heading": "7. Payments and Financial Information",
+        "body": "Payments made through OGA Awards are processed by an authorised third-party payment provider. We may receive transaction references, payment amounts, order details and payment confirmation status to enable us to verify purchases and manage transactions. We do not intend to store your full payment card details on our own servers. Payment providers process payment credentials under their respective privacy and security policies."
+      },
+      {
+        "heading": "8. How We Share Information",
+        "body": "We may share relevant information with authorised OGA organisers, committee members and administrators who require access to perform their responsibilities. Information may also be processed by trusted service providers supporting website hosting, payment processing, email delivery, security and technical operations. We may disclose information where required by applicable law, a lawful request or where reasonably necessary to protect users, the platform or our legal rights. We do not sell personal information to third parties."
+      },
+      {
+        "heading": "9. Data Security",
+        "body": "We apply reasonable administrative and technical safeguards designed to protect personal information against unauthorised access, disclosure, alteration, misuse or loss. Access to administrative information is restricted according to assigned permissions. However, no internet transmission or electronic storage system can be guaranteed to be completely secure. Users should also protect their account passwords and verification codes."
+      },
+      {
+        "heading": "10. Data Retention",
+        "body": "We retain personal information for as long as reasonably necessary to provide our services, administer the awards, maintain voting and transaction records, resolve disputes, enforce our terms and comply with applicable legal obligations. Some historical award records may be retained to preserve the history of previous editions. Information that is no longer required may be deleted, anonymised or securely disposed of where appropriate."
+      },
+      {
+        "heading": "11. Your Privacy Rights",
+        "body": "Subject to applicable law, you may request access to personal information held about you, ask us to correct inaccurate information, request deletion where appropriate, object to certain processing or withdraw consent where processing is based on consent. Some information may need to be retained for legal, security or legitimate operational reasons. You may also have the right to lodge a complaint with the Nigeria Data Protection Commission."
+      },
+      {
+        "heading": "12. Third-Party Websites and Services",
+        "body": "Our website may contain links to external websites or use third-party services, including payment providers and other online platforms. These services operate independently and may have their own privacy policies and terms. We encourage users to review those policies before providing personal information to external services. OGA Awards is not responsible for the independent privacy practices of third-party websites."
+      },
+      {
+        "heading": "13. Children and Young Users",
+        "body": "Users under the age of 18 should involve a parent or legal guardian before submitting personal information, photographs or payment details. Parents or legal guardians who believe that a child has provided personal information inappropriately may contact us through the official contact channels so that the matter can be reviewed."
+      },
+      {
+        "heading": "14. Changes to This Privacy Policy",
+        "body": "We may update this Privacy Policy when our services, operational practices or legal obligations change. Any revised version will be published on this page with an updated revision date. We encourage users to review this page periodically to remain informed about how their information is handled."
+      },
+      {
+        "heading": "15. Contact and Privacy Enquiries",
+        "body": "For questions about this Privacy Policy, requests relating to your personal information, correction requests or privacy concerns, please contact the OGA Awards team through the official Contact page on our website. Where possible, include sufficient information to help us identify the relevant account, application or transaction."
       }
     ]
   },
   "terms": {
     "title": "Terms of Use",
-    "updated": "2026-10-17",
+    "updated": "2026-11-21",
     "draft": true,
     "sections": [
       {
-        "heading": "Using this site",
-        "body": "By using this site you agree to use it fairly and lawfully, and not to interfere with voting, ticketing or other users."
+        "heading": "1. Acceptance of Terms",
+        "body": "These Terms of Use govern access to and use of the OGA Awards website and related services. By visiting the website, creating an account, registering as a nominee, voting, purchasing a ticket, submitting an application or using any other platform feature, you agree to comply with these terms and any additional instructions published for the relevant service. If you do not agree with these terms, you should discontinue use of the relevant service."
       },
       {
-        "heading": "Voting",
-        "body": "Votes are counted after payment is verified. Attempts to manipulate results may lead to votes being removed."
+        "heading": "2. About OGA Awards",
+        "body": "OGA Awards is an awards initiative celebrating outstanding students, leadership, creativity, contributions and achievements within the Ogun State Institute of Technology (OGITECH) community. The platform provides services for nominations, voting, award categories, ticketing, announcements, event information and publication of award results. Specific arrangements may differ between editions."
       },
       {
-        "heading": "Tickets",
-        "body": "Each ticket carries a unique code that can be scanned once at the gate."
+        "heading": "3. Eligibility and Accurate Information",
+        "body": "Users must satisfy the eligibility requirements published for the relevant award category, nomination process or event activity. All information submitted through the platform must be accurate, current and complete. Users must not impersonate another person, submit false academic information, use another person's account without permission or provide misleading information during registration, nomination, voting or ticket purchases."
       },
       {
-        "heading": "Changes",
-        "body": "We may update these terms. The date at the top shows when they last changed."
+        "heading": "4. User Accounts and Security",
+        "body": "Users are responsible for maintaining the confidentiality of their login credentials, passwords and verification codes. You are responsible for activities carried out through your account unless unauthorised access occurs through circumstances for which you are not responsible. Notify the OGA Awards team through the official contact channels if you suspect that your account has been compromised. Never share your password or one-time verification code with anyone."
+      },
+      {
+        "heading": "5. Nomination and Registration",
+        "body": "Submitting a nomination or registering as a nominee does not automatically guarantee approval, eligibility, publication or selection as a winner. Nominees must provide genuine and accurate information and ensure that submitted photographs, biographies and supporting materials are appropriate and authorised for use. OGA Awards reserves the right to review submissions, request corrections, reject incomplete or ineligible applications and remove information that violates these terms or the published award rules."
+      },
+      {
+        "heading": "6. Award Categories and Eligibility Rules",
+        "body": "Award categories, nomination requirements, academic level restrictions and other eligibility conditions are determined for each edition. Users are responsible for reviewing the applicable requirements before submitting a nomination. OGA Awards may modify, introduce, suspend or remove categories where reasonably necessary for the administration of an edition. Any relevant changes will be communicated through official channels."
+      },
+      {
+        "heading": "7. Voting Rules and Fair Participation",
+        "body": "Voting is subject to the voting period, category rules, eligibility requirements, vote limits and payment instructions published for the relevant edition. Votes requiring payment are counted only after successful payment verification and confirmation by the platform. Users must not manipulate voting through bots, automated scripts, fraudulent accounts, stolen payment methods, unauthorised access, duplicate transactions or any other method intended to distort the results. OGA Awards may investigate suspicious activity and reject, suspend or remove votes reasonably believed to be fraudulent, invalid or contrary to the published rules."
+      },
+      {
+        "heading": "8. Payments and Transaction Verification",
+        "body": "Where a service requires payment, the applicable amount and payment instructions will be displayed before the transaction is completed. Users are responsible for checking their order details before making payment. A bank debit, payment screenshot or unverified transaction reference does not by itself guarantee confirmation. Orders and votes are recognised only after the payment provider and platform successfully verify the transaction. Users should contact OGA Awards with their transaction reference if a payment issue occurs."
+      },
+      {
+        "heading": "9. Refunds and Payment Disputes",
+        "body": "Refund requests, duplicate payments, failed transactions and payment disputes will be reviewed based on the transaction records, payment provider information, applicable event conditions and relevant laws. Users should provide their order or transaction reference when reporting a payment issue. Nothing in these terms removes any refund or consumer rights that cannot lawfully be excluded."
+      },
+      {
+        "heading": "10. Tickets and Event Entry",
+        "body": "Tickets purchased through the platform are valid only for the event, ticket type, date and conditions stated at purchase. Digital tickets or entry codes may be verified at the venue and may be restricted to a single entry where indicated. Users must not forge, duplicate, alter or misuse tickets. Entry remains subject to venue capacity, safety requirements and reasonable instructions from authorised event personnel. OGA Awards may refuse entry where a ticket is invalid, duplicated, cancelled or reasonably suspected to have been obtained fraudulently."
+      },
+      {
+        "heading": "11. Content, Photographs and Intellectual Property",
+        "body": "Users retain ownership of materials they already own and submit to the platform. By submitting content for an OGA Awards activity, users grant OGA Awards permission to host, reproduce, display and use that content as reasonably necessary to administer, promote and report on the relevant awards or event, subject to applicable law and any choices or permissions presented during submission. Users must not submit content that infringes another person's rights, is unlawful, misleading, defamatory or otherwise inappropriate. OGA names, logos, website design and original materials may not be used without appropriate authorisation."
+      },
+      {
+        "heading": "12. Acceptable Use",
+        "body": "Users must not interfere with the normal operation of the website, attempt to access restricted systems or information, introduce malicious code, bypass security controls, disrupt another user's access, harvest personal information without authorisation or use the platform for unlawful, fraudulent or abusive activities. Users must respect other participants, nominees, organisers and authorised representatives."
+      },
+      {
+        "heading": "13. Results and Award Decisions",
+        "body": "Award results are determined and published in accordance with the rules and procedures applicable to the relevant edition. Voting records may be subject to verification, review and fraud checks before results are confirmed. OGA Awards may correct administrative errors, investigate credible complaints and take reasonable action where a breach of the award rules is identified. Published results should be treated as official only when released through authorised OGA communication channels."
+      },
+      {
+        "heading": "14. Website Availability and Changes",
+        "body": "We aim to keep the platform available and accurate, but uninterrupted access cannot be guaranteed. The website or some features may temporarily become unavailable due to maintenance, technical issues, security concerns or circumstances outside our reasonable control. OGA Awards may update website content, modify services or change event arrangements where reasonably necessary. Material changes affecting participants will be communicated through available official channels where practical."
+      },
+      {
+        "heading": "15. Third-Party Services",
+        "body": "Some platform features depend on third-party services, including payment processors, hosting providers, communication services and external websites. These services may operate under separate terms and privacy policies. OGA Awards does not control independent third-party services and is not responsible for their separate content, availability or practices."
+      },
+      {
+        "heading": "16. Suspension and Restriction of Access",
+        "body": "OGA Awards may restrict or suspend access to an account, nomination, vote, ticket or platform feature where reasonably necessary to investigate suspected fraud, protect users, enforce these terms, address a security incident or comply with applicable law. Where appropriate and practical, affected users may be provided with an explanation and an opportunity to raise a concern or request a review."
+      },
+      {
+        "heading": "17. Disclaimer and Limitation of Liability",
+        "body": "The website and its services are provided on an as-available basis. Although reasonable steps are taken to maintain accurate information and reliable services, OGA Awards does not guarantee uninterrupted access or that every item of website content will always be error-free. To the extent permitted by applicable law, OGA Awards is not responsible for indirect or consequential losses arising from temporary service interruptions or misuse of the platform. Nothing in these terms excludes or limits liability that cannot lawfully be excluded or limited."
+      },
+      {
+        "heading": "18. Governing Law",
+        "body": "These Terms of Use are governed by the laws of the Federal Republic of Nigeria. Any dispute arising from the use of the platform or these terms shall be handled by a court of competent jurisdiction in Nigeria, subject to rights and protections that cannot lawfully be excluded."
+      },
+      {
+        "heading": "19. Changes to These Terms",
+        "body": "OGA Awards may revise these Terms of Use to reflect changes in platform features, award procedures, event arrangements or applicable laws. The revision date displayed at the top of this page indicates when the terms were last updated. Continued use of the platform after revised terms are published constitutes acceptance of the updated terms to the extent permitted by applicable law."
+      },
+      {
+        "heading": "20. Contact Information",
+        "body": "For questions, complaints or clarification concerning these Terms of Use, please contact the OGA Awards team through the official Contact page on our website. Include relevant account, nomination, ticket or transaction references where necessary so that your enquiry can be reviewed."
       }
     ]
   }

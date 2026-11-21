@@ -38,6 +38,7 @@ final class NomineeApi
     {
         return [
             'id'            => (string) $n['id'],
+            'publicId'      => $n['account_public_id'] ?? $n['public_id'] ?? null,
             'occasionId'    => $edSlug,
             'categoryId'    => (string) $n['category_id'],
             'name'          => $n['name'],

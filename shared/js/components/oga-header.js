@@ -30,6 +30,28 @@ class OgaHeader extends HTMLElement {
         (!n.states || (ctx && n.states.includes(ctx.state))) &&
         (!n.feature || (ctx && hasFeature(ctx.occasion, n.feature))),
     );
+
+    const navItems = [];
+    const groups = new Map();
+
+    for (const item of items) {
+      if (!item.group) {
+        navItems.push({ type: "link", item });
+        continue;
+      }
+
+      if (!groups.has(item.group)) {
+        const group = { type: "group", label: item.group, items: [] };
+        groups.set(item.group, group);
+        navItems.push(group);
+      }
+
+      groups.get(item.group).items.push(item);
+    }
+
+    const isActive = (item) =>
+      item.href === current || (item.href === "./" && current === "./");
+
     const cta = ctx?.stateInfo.cta;
     const showCta =
       cta && (!cta.feature || hasFeature(ctx.occasion, cta.feature));
@@ -67,18 +89,55 @@ class OgaHeader extends HTMLElement {
               </button>
               <div class="collapse navbar-collapse" id="ogaNav">
                 <ul class="navbar-nav ms-auto align-items-lg-center">
-                  ${items.map(
-                    (n) =>
-                      html`<li class="nav-item">
-                        <a
-                          class="nav-link ${n.href === current ? "active" : ""}"
-                          href="${ROOT}${n.href}"
-                          ${n.href === current ? html`aria-current="page"` : ""}
-                          >${n.label}</a
-                        >
-                      </li>`,
+                  ${navItems.map((entry) =>
+                    entry.type === "link"
+                      ? html`<li class="nav-item">
+                          <a
+                            class="nav-link ${isActive(entry.item)
+                              ? "active"
+                              : ""}"
+                            href="${ROOT}${entry.item.href}"
+                            ${isActive(entry.item)
+                              ? html`aria-current="page"`
+                              : ""}
+                            >${entry.item.label}</a
+                          >
+                        </li>`
+                      : html`<li class="nav-item dropdown">
+                          <a
+                            class="nav-link dropdown-toggle ${entry.items.some(
+                              isActive,
+                            )
+                              ? "active"
+                              : ""}"
+                            href="#"
+                            role="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            >${entry.label}</a
+                          >
+                          <ul class="dropdown-menu dropdown-menu-end">
+                            ${entry.items.map(
+                              (item) => html`
+                                <li>
+                                  <a
+                                    class="dropdown-item ${isActive(item)
+                                      ? "active"
+                                      : ""}"
+                                    href="${ROOT}${item.href}"
+                                    ${isActive(item)
+                                      ? html`aria-current="page"`
+                                      : ""}
+                                    >${item.label}</a
+                                  >
+                                </li>
+                              `,
+                            )}
+                          </ul>
+                        </li>`,
                   )}
                 </ul>
+
                 <a
                   class="btn btn-ghost btn-sm ms-lg-3 mt-3 mt-lg-0"
                   href="${ROOT}login"

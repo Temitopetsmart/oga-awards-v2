@@ -54,6 +54,60 @@
 .oga-header .nav-link.active {
   color: var(--oga-gold-300);
 }
+
+/* Compact navbar dropdowns */
+.oga-header .dropdown-menu {
+  min-width: 10.5rem;
+  padding: 0.3rem;
+  margin-top: 0;
+  background: rgba(15, 15, 15, 0.98);
+  border: 1px solid var(--oga-border);
+  border-radius: 0.55rem;
+  box-shadow: 0 0.6rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.oga-header .dropdown-item {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.85rem;
+  color: var(--oga-text-muted);
+  border-radius: 0.35rem;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+.oga-header .dropdown-item:hover,
+.oga-header .dropdown-item:focus,
+.oga-header .dropdown-item.active {
+  color: var(--oga-gold-300);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+/* Smooth hover effect on desktop */
+@media (min-width: 992px) {
+  .oga-header .nav-item.dropdown:hover > .dropdown-menu,
+  .oga-header .nav-item.dropdown:focus-within > .dropdown-menu {
+    display: block;
+  }
+
+  .oga-header .dropdown-toggle {
+    transition: color 0.2s ease;
+  }
+
+  .oga-header .nav-link:hover {
+    color: var(--oga-gold-300);
+  }
+}
+
+/* Mobile dropdown styling */
+@media (max-width: 991.98px) {
+  .oga-header .dropdown-menu {
+    margin: 0.2rem 0 0.4rem 0.6rem;
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow: none;
+  }
+}
+
 .oga-header .navbar-toggler {
   color: var(--oga-ink-50);
   border: 1px solid var(--oga-border);

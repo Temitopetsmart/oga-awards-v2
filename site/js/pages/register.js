@@ -132,12 +132,32 @@ export default async function register(ctx) {
           autocomplete: "tel",
           col: "col-md-6",
         })}
-        ${field({
-          label: "Department",
-          name: "department",
-          required: true,
-          col: "col-md-6",
-        })}
+
+        <div class="oga-field mb-3 col-md-6">
+          <label class="form-label" for="departmentSelect">
+            Department <span class="text-gold" aria-hidden="true">*</span>
+          </label>
+
+          <select class="form-select" id="departmentSelect">
+            <option value="">Select your department…</option>
+            ${APP.departments.map(
+              (dept) => html`<option value="${dept}">${dept}</option>`,
+            )}
+            <option value="__other__">Other</option>
+          </select>
+
+          <input type="hidden" name="department" id="departmentValue" />
+
+          <input
+            class="form-control mt-2 d-none"
+            type="text"
+            id="departmentOther"
+            placeholder="Enter your department"
+            maxlength="150"
+            autocomplete="off"
+          />
+        </div>
+
         ${field({
           label: "Password",
           name: "password",
@@ -210,6 +230,31 @@ export function init(root, ctx) {
   if (ret) return finishRegistration(ret);
   const form = root.querySelector("#registerForm");
   if (!form) return;
+
+  // Department selection from admin-managed settings
+  const deptSelect = form.querySelector("#departmentSelect");
+  const deptValue = form.querySelector("#departmentValue");
+  const deptOther = form.querySelector("#departmentOther");
+
+  deptSelect.addEventListener("change", () => {
+    const isOther = deptSelect.value === "__other__";
+
+    deptOther.classList.toggle("d-none", !isOther);
+    deptOther.required = isOther;
+
+    if (isOther) {
+      deptValue.value = deptOther.value.trim();
+      deptOther.focus();
+    } else {
+      deptOther.value = "";
+      deptValue.value = deptSelect.value;
+    }
+  });
+
+  deptOther.addEventListener("input", () => {
+    deptValue.value = deptOther.value.trim();
+  });
+
   bindMatricVisibility(form);
 
   // ---- step 2: the category dropdown appears once we know the level (and the matric number, where one is needed)
