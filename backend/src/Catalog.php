@@ -143,13 +143,15 @@ final class Catalog
     public static function nominees(): array
     {
         $rows = self::db()->query(
-            'SELECT n.*, e.slug AS edition_slug FROM nominee_entries n
+            'SELECT n.*, e.slug AS edition_slug, COALESCE(a.public_id, n.public_id) AS person_public_id FROM nominee_entries n
                JOIN editions e ON e.id = n.edition_id
+               LEFT JOIN accounts a ON a.id = n.account_id
               WHERE n.status = \'approved\' AND e.status <> \'draft\'
               ORDER BY e.year DESC, n.id'
         )->fetchAll();
         return array_map(fn ($n) => [
             'id'         => (string) $n['id'],
+            'publicId'   => $n['person_public_id'],
             'occasionId' => $n['edition_slug'],
             'categoryId' => (string) $n['category_id'],
             'name'       => $n['name'],

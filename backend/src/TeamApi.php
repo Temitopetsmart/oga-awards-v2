@@ -92,9 +92,9 @@ final class TeamApi
         self::pdo()->prepare('INSERT INTO people (name, email, active) VALUES (?, ?, ?)')
             ->execute([$name, $email === '' ? null : $email, $active ? 1 : 0]);
         $id = (int) self::pdo()->lastInsertId();
+        $publicId = PublicId::assign(self::pdo(), 'person', $id);
         Audit::log((int) $actor['id'], 'Added person', $name, $actor['edition_id'], ['email' => $email ?: null]);
-        Response::json(['ok' => true, 'personId' => (string) $id]);
-    }
+        Response::json(['ok' => true, 'personId' => (string) $id, 'publicId' => $publicId]);    }
 
     public static function updatePerson(int $id): never
     {

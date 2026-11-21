@@ -205,7 +205,8 @@ final class AccountApi
             'authenticated' => true,
             'csrf'          => Session::csrf(),
             'account'       => [
-                'id' => (string) $account['id'], 'email' => $account['email'], 'emailVerified' => $account['email_verified_at'] !== null,
+                'id' => (string) $account['id'], 'publicId' => ($account['public_id'] ?? '') !== '' ? $account['public_id'] : PublicId::ensure('account', (int) $account['id']),
+                'email' => $account['email'], 'emailVerified' => $account['email_verified_at'] !== null,
                 'matricNo' => $account['matric_no'] ?? null, 'level' => self::accountLevel($account), 'needsMatric' => self::needsMatric($account),
             ],
             'entries'       => self::entries((int) $account['id']),
@@ -624,6 +625,7 @@ final class AccountApi
                 $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')
                     ->execute([$email, $hash, $matric, $level]);
                 $aid = (int) $db->lastInsertId();
+                PublicId::assign($db, 'account', $aid);
                 $ins = $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, phone, department, level, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')");
                 foreach ($catIds as $cid) {
                     $ins->execute([$ed['id'], $aid, $cid, $name, $phone, $dept, $level]);

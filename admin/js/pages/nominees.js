@@ -82,7 +82,11 @@ export async function init(root, { admin, can }) {
             ${avatar(n)}
             <div>
               <strong>${n.name}</strong
-              ><small>${n.email ?? n.department ?? ""}</small>
+              ><small
+                >${n.publicId ? `ID ${n.publicId} · ` : ""}${n.email ??
+                n.department ??
+                ""}</small
+              >
             </div>
           </div>`,
       },
@@ -243,6 +247,12 @@ export async function init(root, { admin, can }) {
             <dt>Status</dt>
             <dd>${statusBadge(n.status)}</dd>
           </div>
+          ${n.publicId
+            ? html`<div>
+                <dt>Public ID</dt>
+                <dd>${n.publicId}</dd>
+              </div>`
+            : ""}
           <div>
             <dt>Category</dt>
             <dd>${n.categoryName}</dd>

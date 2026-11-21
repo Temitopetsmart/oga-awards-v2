@@ -74,6 +74,7 @@ final class Registrations
             }
             $db->prepare('INSERT INTO accounts (email, password_hash, matric_no, level) VALUES (?, ?, ?, ?)')->execute([$r['email'], $r['password_hash'], $matric, $level]);
             $accountId = (int) $db->lastInsertId();
+            PublicId::assign($db, 'account', $accountId);
             if ($matric !== null) {
                 Matric::claim($db, $matric, $r['email'], 'nominee');
             }

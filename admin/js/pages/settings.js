@@ -234,14 +234,101 @@ export default async function settings({ edition: ed, can, access }) {
             <p class="small text-secondary">
               A free event ticket for approved nominees. Each nominee claims one
               pass for this edition and can bring the number of guests you set.
-              Nominees come whether they win or not; winners stay secret until
-              you publish them. Passes use the normal gate scanner.
+              Passes use the normal gate scanner.
             </p>
             ${sw(
               "passEnabled",
               "Nominees can claim an Access Pass",
               o.accessPass?.enabled,
             )}
+            <div class="row">
+              ${field({
+                label: "Guests allowed per pass",
+                name: "guests",
+                type: "number",
+                required: true,
+                value: o.accessPass?.guests ?? 0,
+                col: "col-md-4",
+                help: "Enter a whole number from 0 to 5.",
+              })}
+            </div>
+            ${save("Save Access Pass")}
+          </fieldset>
+        </form>`,
+        "cardPass",
+      )}
+      ${card(
+        "Nominee vote feed",
+        html` <form id="feedForm" novalidate>
+          <fieldset ${lock}>
+            <p class="small text-secondary">
+              Lets each nominee see their own total votes and the latest votes
+              they received (voter, number of votes, time) on their portal home
+              page. Nominees never see rankings or anybody else’s numbers. Leave
+              it off to keep everything secret until the winners are announced.
+            </p>
+            ${sw(
+              "feedEnabled",
+              "Nominees can see their own votes",
+              o.voteFeed?.enabled,
+            )}
+            <div class="row">
+              ${field({
+                label: "Voter names",
+                name: "feedNames",
+                required: true,
+                value: o.voteFeed?.names ?? "masked",
+                col: "col-md-6",
+                options: [
+                  { value: "masked", label: "Shortened (Ade O.)" },
+                  { value: "full", label: "Full name" },
+                  { value: "anonymous", label: "Hidden (A supporter)" },
+                ],
+                help: "Emails are never shown.",
+              })}
+              ${field({
+                label: "Latest votes to show",
+                name: "feedRecent",
+                type: "number",
+                required: true,
+                value: o.voteFeed?.recent ?? 5,
+                col: "col-md-4",
+                help: "1 to 20.",
+              })}
+            </div>
+            ${save("Save vote feed")}
+          </fieldset>
+        </form>`,
+        "cardFeed",
+      )}
+      ${card(
+        "Nominee promo flier",
+        html` <form id="flierForm" novalidate>
+          <fieldset ${lock}>
+            <p class="small text-secondary">
+              Nominees download a share-ready flier featuring their photo. The
+              design changes with the awards stage. Configure each stage
+              independently. You can use
+              <code>{name}</code> <code>{category}</code> <code>{edition}</code>
+              <code>{opens}</code> <code>{closes}</code> <code>{results}</code>.
+            </p>
+
+            ${sw(
+              "flierEnabled",
+              "Nominees can download a flier",
+              o.flier?.enabled ?? true,
+            )}
+            ${sw(
+              "showQr",
+              "Show a QR code to the nominee’s profile",
+              o.flier?.showQr ?? true,
+            )}
+            ${sw(
+              "showCategory",
+              "Show the category",
+              o.flier?.showCategory ?? true,
+            )}
+
             <div class="accordion mt-3" id="flierStages">
               ${STAGES.map((st, i) => {
                 const f = stageConfig(o.flier, st);
@@ -251,13 +338,13 @@ export default async function settings({ edition: ed, can, access }) {
                       class="accordion-button ${i ? "collapsed" : ""}"
                       type="button"
                       data-bs-toggle="collapse"
-                      data-bs-target="#stage-${st}"
+                      data-bs-target="#flier-stage-${st}"
                     >
                       ${STAGE_LABELS[st]}
                     </button>
                   </h3>
                   <div
-                    id="stage-${st}"
+                    id="flier-stage-${st}"
                     class="accordion-collapse collapse ${i ? "" : "show"}"
                     data-bs-parent="#flierStages"
                   >
@@ -317,129 +404,7 @@ export default async function settings({ edition: ed, can, access }) {
                 </div>`;
               })}
             </div>
-            ${save("Save Access Pass")}
-          </fieldset>
-        </form>`,
-        "cardPass",
-      )}
-      ${card(
-        "Nominee vote feed",
-        html` <form id="feedForm" novalidate>
-          <fieldset ${lock}>
-            <p class="small text-secondary">
-              Lets each nominee see their own total votes and the latest votes
-              they received (voter, number of votes, time) on their portal home
-              page. Nominees never see rankings or anybody else’s numbers. Leave
-              it off to keep everything secret until the winners are announced.
-            </p>
-            ${sw(
-              "feedEnabled",
-              "Nominees can see their own votes",
-              o.voteFeed?.enabled,
-            )}
-            <div class="row">
-              ${field({
-                label: "Voter names",
-                name: "feedNames",
-                required: true,
-                value: o.voteFeed?.names ?? "masked",
-                col: "col-md-6",
-                options: [
-                  { value: "masked", label: "Shortened (Ade O.)" },
-                  { value: "full", label: "Full name" },
-                  { value: "anonymous", label: "Hidden (A supporter)" },
-                ],
-                help: "Emails are never shown.",
-              })}
-              ${field({
-                label: "Latest votes to show",
-                name: "feedRecent",
-                type: "number",
-                required: true,
-                value: o.voteFeed?.recent ?? 5,
-                col: "col-md-4",
-                help: "1 to 20.",
-              })}
-            </div>
-            ${save("Save vote feed")}
-          </fieldset>
-        </form>`,
-        "cardFeed",
-      )}
-      ${card(
-        "Nominee promo flier",
-        html` <form id="flierForm" novalidate>
-          <fieldset ${lock}>
-            <p class="small text-secondary">
-              Nominees download a share-ready flier where their photo is the
-              main picture. It changes with the stage of the awards, so each
-              stage has its own wording and colours below. In any text you can
-              use <code>{name}</code> <code>{category}</code>
-              <code>{edition}</code> <code>{opens}</code> <code>{closes}</code>
-              <code>{results}</code> (voting open, voting close and results
-              dates). A line whose word is missing (for example no date set yet)
-              is left out.
-            </p>
-            ${sw(
-              "flierEnabled",
-              "Nominees can download a flier",
-              o.flier?.enabled ?? true,
-            )}
-            ${sw(
-              "showQr",
-              "Show a QR code to the nominee’s profile",
-              o.flier?.showQr ?? true,
-            )}
-            ${sw(
-              "showCategory",
-              "Show the category",
-              o.flier?.showCategory ?? true,
-            )}
-            <div class="row">
-              ${field({
-                label: "Headline",
-                name: "headline",
-                required: true,
-                value: o.flier?.headline ?? "Vote for me",
-                col: "col-md-4",
-                help: "Up to 40 characters.",
-              })}
-              ${field({
-                label: "Tagline",
-                name: "tagline",
-                value: o.flier?.tagline ?? "",
-                col: "col-md-4",
-                help: "Optional, up to 80 characters.",
-              })}
-              ${field({
-                label: "Footer",
-                name: "footer",
-                value: o.flier?.footer ?? "",
-                col: "col-md-4",
-                help: "Shown above the QR code, up to 80 characters.",
-              })}
-              ${field({
-                label: "Background colour",
-                name: "bg",
-                type: "color",
-                value: o.flier?.bg ?? "#14110a",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "Accent colour",
-                name: "accent",
-                type: "color",
-                value: o.flier?.accent ?? "#d4a84b",
-                col: "col-md-4",
-              })}
-              ${field({
-                label: "Text colour",
-                name: "text",
-                type: "color",
-                value: o.flier?.text ?? "#ffffff",
-                col: "col-md-4",
-              })}
-            </div>
+
             ${save("Save flier")}
           </fieldset>
         </form>`,

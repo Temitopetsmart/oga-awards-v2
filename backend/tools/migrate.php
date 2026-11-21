@@ -51,3 +51,12 @@ foreach ($files as $file) {
     $ran++;
 }
 echo $ran === 0 ? "Database is up to date.\n" : "Applied $ran migration(s).\n";
+
+
+// Public IDs: give every existing person one (does nothing when they all have one already).
+if ((int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'public_ids'")->fetchColumn() > 0) {
+    $added = App\PublicId::backfill($pdo);
+    if (array_sum($added) > 0) {
+        echo "Public IDs added: " . json_encode($added) . "\n";
+    }
+}

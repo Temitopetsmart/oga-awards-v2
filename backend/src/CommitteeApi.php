@@ -371,7 +371,7 @@ final class CommitteeApi
         }
 
         $st = $pdo->prepare(
-            "SELECT a.id, a.person_id, a.position, a.unit_id, a.visible, p.name, p.photo_path,
+            "SELECT a.id, a.person_id, a.position, a.unit_id, a.visible, p.name, p.photo_path, p.public_id,
                     (SELECT COUNT(*) FROM assignment_roles r WHERE r.assignment_id = a.id)
                   + (SELECT COUNT(*) FROM assignment_overrides o WHERE o.assignment_id = a.id AND o.effect = 'grant') AS access_count
                FROM edition_assignments a JOIN people p ON p.id = a.person_id
@@ -379,7 +379,7 @@ final class CommitteeApi
         );
         $st->execute([$edId]);
         $members = array_map(fn ($m) => [
-            'id' => (string) $m['id'], 'personId' => (string) $m['person_id'], 'name' => $m['name'], 'position' => $m['position'],
+                        'id' => (string) $m['id'], 'personId' => (string) $m['person_id'], 'publicId' => $m['public_id'] ?: PublicId::ensure('person', (int) $m['person_id']), 'name' => $m['name'], 'position' => $m['position'],
             'unitId' => $m['unit_id'] === null ? '' : (string) $m['unit_id'], 'visible' => (bool) $m['visible'],
             'hasAccess' => (int) $m['access_count'] > 0, 'photo' => $m['photo_path'], 'thumb' => Photos::thumbOf($m['photo_path']),
         ], $st->fetchAll());
@@ -501,6 +501,7 @@ final class CommitteeApi
                     } else {
                         $db->prepare('INSERT INTO people (name, email, active) VALUES (?, ?, 1)')->execute([$name, $email]);
                         $pid = (int) $db->lastInsertId();
+                        PublicId::assign($db, 'person', $pid);
                     }
                     // Position, unit and visibility only. Roles and permissions are never touched.
                     $q = $db->prepare('SELECT id FROM edition_assignments WHERE person_id = ? AND edition_id = ?');
@@ -593,6 +594,7 @@ final class CommitteeApi
             if (mb_strlen($name) < 2) { self::fail('Enter the person’s name.'); }
             $pdo->prepare('INSERT INTO people (name, email, active) VALUES (?, NULL, 1)')->execute([$name]);
             $personId = (int) $pdo->lastInsertId();
+            PublicId::assign($pdo, 'person', $personId);
         } else {
             $q = $pdo->prepare('SELECT id, name, active FROM people WHERE id = ?');
             $q->execute([(int) $pid]);

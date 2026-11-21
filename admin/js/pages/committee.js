@@ -126,7 +126,12 @@ export async function init(root, { edition, can }) {
         render: (m) =>
           html`<div class="oga-person">
             ${avatar(m)}
-            <div><strong>${m.name}</strong><small>${m.position}</small></div>
+            <div>
+              <strong>${m.name}</strong
+              ><small
+                >${m.position}${m.publicId ? ` · ID ${m.publicId}` : ""}</small
+              >
+            </div>
           </div>`,
       },
       { key: "unitName", label: "Unit", sort: true },

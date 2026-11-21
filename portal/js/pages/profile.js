@@ -87,13 +87,13 @@ export default function profile(p) {
         ? card(
             "Personal information",
             html`<div class="row g-3">
-              ${kv("Full name", me.name)}${kv("Email", me.email)}${kv(
-                "Phone",
-                me.phone,
-              )}${kv("Department", me.department)}${kv("Level", me.level)}${kv(
-                "Matric number",
-                me.matricNo,
-              )}
+              ${kv("Public ID", me.publicId)}${kv("Full name", me.name)}${kv(
+                "Email",
+                me.email,
+              )}${kv("Phone", me.phone)}${kv("Department", me.department)}${kv(
+                "Level",
+                me.level,
+              )}${kv("Matric number", me.matricNo)}
             </div>`,
             { icon: "fa-user" },
           )
@@ -101,6 +101,11 @@ export default function profile(p) {
             "Your details",
             html`<form id="profileForm" novalidate>
               ${editing}
+              ${me.publicId
+                ? html`<p class="small text-secondary mb-3">
+                    Your Public ID: <strong>${me.publicId}</strong>
+                  </p>`
+                : ""}
               <div class="d-flex align-items-center gap-3 mb-3">
                 <div id="photoPreview">
                   ${me.photo

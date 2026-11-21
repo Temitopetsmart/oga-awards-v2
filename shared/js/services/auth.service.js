@@ -91,6 +91,7 @@ function build(entry) {
     accountId: cache.account.id,
     email: cache.account.email,
     emailVerified: Boolean(cache.account.emailVerified),
+    publicId: cache.account.publicId ?? entry.publicId ?? null,
     matricNo: cache.account.matricNo ?? null,
     needsMatric: Boolean(cache.account.needsMatric),
     accountLevel: cache.account.level ?? null,

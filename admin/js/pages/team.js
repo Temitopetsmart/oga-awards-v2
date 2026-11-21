@@ -156,6 +156,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
         personId: p.id,
         name: p.name,
         email: p.email,
+        publicId: p.publicId,
         position: "—",
         roles: ["Super admin (all editions)"],
         allow: 0,
@@ -172,6 +173,7 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
           personId: a.personId,
           name: p?.name ?? "(removed)",
           email: p?.email ?? "",
+          publicId: p?.publicId ?? "",
           position: a.position || "—",
           roles: roleNames(a.roleIds),
           allow: a.grants.length,
@@ -198,7 +200,8 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
                   >You</span
                 >`
               : ""}<small class="d-block text-secondary"
-              >${r.email || "no email"}</small
+              >${r.publicId ? `ID ${r.publicId} · ` : ""}${r.email ||
+              "no email"}</small
             >`,
       },
       { key: "position", label: "Committee position", sort: true },

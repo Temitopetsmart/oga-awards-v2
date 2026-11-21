@@ -216,6 +216,7 @@ final class InviteApi
                     $db->prepare('INSERT INTO people (name, email, password_hash, active) VALUES (?, ?, ?, 1)')
                         ->execute([$name, $inv['email'], Auth::hash($password)]);
                     $personId = (int) $db->lastInsertId();
+                    PublicId::assign($db, 'person', $personId);
                 } else {
                     $personId = (int) $acc['id'];
                     if ($needsPassword) {

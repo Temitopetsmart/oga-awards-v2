@@ -69,7 +69,7 @@ final class NomineeApi
 
         if (!Paging::wanted()) {
             $st = self::pdo()->prepare(
-                'SELECT n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric
+                'SELECT n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric, a.public_id AS account_public_id
                    FROM nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id
                   WHERE n.edition_id = ? ORDER BY n.id DESC'
             );
@@ -88,12 +88,12 @@ final class NomineeApi
             $args[] = (int) $c;
         }
         if (($q = Paging::q()) !== '') {
-            $where[] = Paging::search(['n.name', 'a.email', 'a.matric_no', 'n.department', 'c.name'], $q, $args);
+            $where[] = Paging::search(['n.name', 'a.email', 'a.matric_no', 'n.department', 'c.name', 'a.public_id', 'n.public_id'], $q, $args);
         }
         $order = Paging::order(['name' => 'n.name', 'categoryName' => 'c.name', 'department' => 'n.department', 'status' => 'n.status', 'createdAt' => 'n.id'], 'n.id DESC', 'n.id DESC');
         $r = Paging::run(
             self::pdo(),
-            'n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric',
+            'n.*, a.email AS account_email, a.email_verified_at, a.matric_no AS account_matric, a.public_id AS account_public_id',
             'nominee_entries n LEFT JOIN accounts a ON a.id = n.account_id LEFT JOIN categories c ON c.id = n.category_id',
             $where, $args, $order
         );
@@ -104,11 +104,13 @@ final class NomineeApi
     public static function preview(int $id): never
     {
         $n = self::own($id, 'nominees.view');
-        $st = self::pdo()->prepare('SELECT email, email_verified_at FROM accounts WHERE id = ?');
+        $st = self::pdo()->prepare('SELECT email, email_verified_at, public_id FROM accounts WHERE id = ?');
         $st->execute([$n['account_id'] ?? 0]);
-        $acc = $st->fetch() ?: ['email' => '', 'email_verified_at' => null];
+        $acc = $st->fetch() ?: ['email' => '', 'email_verified_at' => null, 'public_id' => null];
         Response::json(['ok' => true, 'nominee' => [
-            'id' => (string) $n['id'], 'occasionId' => $n['edition_slug'], 'categoryId' => (string) $n['category_id'],
+            'id' => (string) $n['id'], 'publicId' => $acc['public_id'] ?? $n['public_id'] ?? null, 'occasionId' => $n['edition_slug'],
+            'categoryId' => (string) $n['category_id'],
+            'publicId'      => $n['account_public_id'] ?? $n['public_id'] ?? null,   // one per person: the account's, or the entry's own if an admin added them
             'name' => $n['name'], 'phone' => $n['phone'] ?? '', 'department' => $n['department'] ?? '', 'level' => $n['level'] ?? '',
             'bio' => $n['bio'] ?? '', 
             'photo' => $n['photo_path'], 
@@ -165,9 +167,10 @@ final class NomineeApi
         self::pdo()->prepare('INSERT INTO nominee_entries (edition_id, category_id, name, department, level, phone, bio, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$ed['id'], $cat, $name, $dept, $level, $phone, $bio, $status]);
         $id = (string) self::pdo()->lastInsertId();
+        $publicId = PublicId::assign(self::pdo(), 'entry', (int) $id);
         Cache::flush();
         Audit::log((int) $actor['id'], 'Added nominee', $name, (int) $ed['id']);
-        Response::json(['ok' => true, 'nomineeId' => $id]);
+        Response::json(['ok' => true, 'nomineeId' => $id, 'publicId' => $publicId]);
     }
 
     /** Tells the nominee (if they have an account) when their entry is approved or sent back. Never blocks the admin. */

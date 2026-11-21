@@ -2751,6 +2751,147 @@ check('the admin page edits every stage', str_contains((string) file_get_content
 $db->exec("UPDATE edition_settings SET flier_config = NULL WHERE edition_id = 2");
 App\Cache::flush();
 
+// ================================================================== AC. PUBLIC IDS (random numeric, one per person, display only)
+group('AC. Public IDs: random numeric, globally unique, one per person, every creation route, old records still work');
+$acSlug = (string) $sqlv('SELECT slug FROM editions WHERE id = 2');
+$acPid = fn (string $table, string $where, array $a = []) => $sqlv("SELECT public_id FROM $table WHERE $where", $a);
+
+// ---- the generator
+$gen = [];
+for ($i = 0; $i < 2000; $i++) { $gen[] = App\PublicId::generate(); }
+check('generated IDs are numeric strings of 7 digits with no leading zero', !array_filter($gen, fn ($g) => !is_string($g) || !preg_match('/^[1-9][0-9]{6}$/', $g)));
+check('they are random: nearly all different and not in counting order', count(array_unique($gen)) > 1990 && $gen !== (function ($g) { sort($g); return $g; })($gen));
+check('longer numbers are available when the short ones run low', preg_match('/^[1-9][0-9]{9}$/', App\PublicId::generate(10)) === 1 && preg_match('/^[1-9][0-9]{3}$/', App\PublicId::generate(4)) === 1);
+check('the format check accepts real IDs and refuses junk', App\PublicId::isValid('4543') && App\PublicId::isValid('13074893') && !App\PublicId::isValid('0123') && !App\PublicId::isValid('12a4') && !App\PublicId::isValid('') && !App\PublicId::isValid('123'));
+check('the generator uses the secure random function, not mt_rand or rand', (function () { $src = (string) file_get_contents(dirname(__DIR__) . '/backend/src/PublicId.php'); return str_contains($src, 'random_int(') && !preg_match('/\b(mt_rand|rand|uniqid|time)\s*\(/', $src); })());
+
+// ---- assigning: one per owner, never changes, unique across every kind of person
+$db->prepare("INSERT INTO people (name, email, active) VALUES ('Pid Person', 'pid.person@test.dev', 1)")->execute();
+$pidPerson = (int) $db->lastInsertId();
+$first = App\PublicId::assign($db, 'person', $pidPerson);
+check('a person gets a Public ID, stored as text on their row and in the registry', preg_match('/^[1-9][0-9]{6,9}$/', $first) === 1 && $acPid('people', 'id = ?', [$pidPerson]) === $first && $sqlv("SELECT owner_type FROM public_ids WHERE public_id = ?", [$first]) === 'person');
+check('asking again returns the same ID and changes nothing', App\PublicId::assign($db, 'person', $pidPerson) === $first && App\PublicId::ensure('person', $pidPerson) === $first && (int) $sqlv('SELECT COUNT(*) FROM public_ids WHERE owner_type = ? AND owner_id = ?', ['person', $pidPerson]) === 1);
+check('lookup finds the owner from the Public ID', App\PublicId::lookup($first) === ['type' => 'person', 'id' => $pidPerson] && App\PublicId::lookup('1') === null);
+check('the internal id of the person is untouched', (int) $sqlv('SELECT id FROM people WHERE public_id = ?', [$first]) === $pidPerson);
+$many = [];
+for ($i = 0; $i < 120; $i++) {
+    $db->prepare("INSERT INTO people (name, email, active) VALUES (?, ?, 1)")->execute(["Bulk $i", "bulk$i@pid.test"]);
+    $many[] = App\PublicId::assign($db, 'person', (int) $db->lastInsertId());
+    $db->prepare("INSERT INTO accounts (email, password_hash) VALUES (?, 'x')")->execute(["bulk$i@acc.pid.test"]);
+    $many[] = App\PublicId::assign($db, 'account', (int) $db->lastInsertId());
+    $db->prepare("INSERT INTO nominee_entries (edition_id, category_id, name, status) VALUES (2, 2, ?, 'pending')")->execute(["Bulk Entry $i"]);
+    $many[] = App\PublicId::assign($db, 'entry', (int) $db->lastInsertId());
+}
+check('360 IDs across people, accounts and admin-made nominees are all different', count($many) === 360 && count(array_unique($many)) === 360);
+$dupe = false;
+try { $db->prepare("INSERT INTO public_ids (public_id, owner_type, owner_id) VALUES (?, 'account', 999999)")->execute([$first]); } catch (PDOException $e) { $dupe = $e->getCode() === '23000'; }
+check('the database itself refuses the same ID for two owners', $dupe);
+$ghost = false;
+try { App\PublicId::assign($db, 'person', 987654321); } catch (RuntimeException $e) { $ghost = true; }
+check('an owner that does not exist gets nothing and leaves nothing behind', $ghost && (int) $sqlv("SELECT COUNT(*) FROM public_ids WHERE owner_type = 'person' AND owner_id = 987654321") === 0);
+$bad = false;
+try { App\PublicId::assign($db, 'ticket', 1); } catch (InvalidArgumentException $e) { $bad = true; }
+check('an unknown kind of owner is refused', $bad);
+
+// ---- registration: free
+$db->exec("UPDATE editions SET state_mode = 'manual', force_state = 'nominations' WHERE id = 2");
+$db->exec("UPDATE edition_settings SET nominee_registration_fee = 0 WHERE edition_id = 2");
+App\Cache::flush();
+$acCats = $db->query('SELECT id FROM categories WHERE edition_id = 2 AND active = 1 ORDER BY id LIMIT 2')->fetchAll(PDO::FETCH_COLUMN);
+$acReg = new Client('nominee');
+[$c, $r] = $acReg->post('/nominee/register', ['occasionId' => $acSlug, 'name' => 'Pid Student', 'email' => 'pid.free@test.dev', 'phone' => '08031234567', 'department' => 'Software', 'level' => 'HND II', 'matricNo' => 'hswf/24/0731', 'categoryId' => (string) $acCats[0], 'password' => 'Test-Pass-12345', 'terms' => 'on']);
+check('free registration works as before', $c === 200 && ($r['authenticated'] ?? false) === true, json_encode($r));
+$acAcc = (int) $sqlv("SELECT id FROM accounts WHERE email = 'pid.free@test.dev'");
+$acPublic = (string) $acPid('accounts', 'id = ?', [$acAcc]);
+check('the new nominee account has a Public ID', preg_match('/^[1-9][0-9]{6,9}$/', $acPublic) === 1);
+check('the sign-in answer carries it next to the internal id', ($r['account']['publicId'] ?? '') === $acPublic && $r['account']['id'] === (string) $acAcc);
+check('the entry itself carries none (the account has it)', $acPid('nominee_entries', 'account_id = ?', [$acAcc]) === null);
+App\Entries::addFrom($db, 2, $acAcc, App\Entries::template($db, $acAcc, 2), [(int) $acCats[1]], 'HND II');
+[, $me] = $acReg->get('/nominee/me');
+check('a nominee with two categories has ONE Public ID, the same as before', count($me['entries']) === 2 && ($me['account']['publicId'] ?? '') === $acPublic);
+check('their internal ids are still the old kind of number', ctype_digit($me['account']['id']) && ctype_digit($me['entries'][0]['id']));
+$acLogin = new Client('nominee'); [, $lg] = $acLogin->post('/nominee/login', ['email' => 'pid.free@test.dev', 'password' => 'Test-Pass-12345']);
+check('logging in again shows the same ID', ($lg['account']['publicId'] ?? '') === $acPublic);
+
+// ---- registration: paid
+$acPaidPid = $paidReg('ACPAID-1', 'pid.paid@test.dev', 'HSWF/24/0732');
+$acPaidAcc = (int) $sqlv("SELECT id FROM accounts WHERE email = 'pid.paid@test.dev'");
+check('a paid registration creates the account with a Public ID', $acPaidAcc > 0 && preg_match('/^[1-9][0-9]{6,9}$/', (string) $acPid('accounts', 'id = ?', [$acPaidAcc])) === 1);
+check('free and paid nominees never share an ID', $acPid('accounts', 'id = ?', [$acPaidAcc]) !== $acPublic);
+
+// ---- admin-created nominee (no account)
+$acAdd = fn (string $name) => $sa->post('/admin/nominees', ['edition' => $acSlug, 'name' => $name, 'department' => 'Law', 'level' => 'HND I', 'categoryId' => (string) $acCats[0], 'status' => 'approved']);
+[$c, $r] = $acAdd('Admin Added One');
+check('an admin-created nominee works as before and returns both ids', $c === 200 && ctype_digit((string) $r['nomineeId']) && preg_match('/^[1-9][0-9]{6,9}$/', (string) ($r['publicId'] ?? '')) === 1, json_encode($r));
+check('the Public ID sits on that nominee entry', $acPid('nominee_entries', 'id = ?', [(int) $r['nomineeId']]) === $r['publicId'] && $sqlv('SELECT account_id FROM nominee_entries WHERE id = ?', [(int) $r['nomineeId']]) === null);
+$acAdminNom = $r;
+[, $r2] = $acAdd('Admin Added Two');
+check('two admin-created nominees get two different IDs', $r2['publicId'] !== $acAdminNom['publicId']);
+
+// ---- admin lists show them; internal ids unchanged; search by Public ID
+[, $list] = $sa->get('/admin/nominees?edition=' . $acSlug);
+$rows = array_column($list['nominees'] ?? [], null, 'id');
+check('the admin nominee list shows the Public ID next to the internal id', ($rows[(string) $acAdminNom['nomineeId']]['publicId'] ?? '') === $acAdminNom['publicId'] && ctype_digit((string) $acAdminNom['nomineeId']));
+$freeEntryIds = array_map('strval', $db->query("SELECT id FROM nominee_entries WHERE account_id = $acAcc")->fetchAll(PDO::FETCH_COLUMN));
+check('both categories of one nominee show the SAME Public ID (the account\'s)', count($freeEntryIds) === 2 && ($rows[$freeEntryIds[0]]['publicId'] ?? 'x') === $acPublic && ($rows[$freeEntryIds[1]]['publicId'] ?? 'y') === $acPublic);
+[, $found] = $sa->get('/admin/nominees?edition=' . $acSlug . '&page=1&q=' . $acPublic);
+check('searching by Public ID finds the nominee (both of their entries)', count($found['nominees'] ?? []) === 2 && !array_diff(array_column($found['nominees'], 'publicId'), [$acPublic]), json_encode(array_column($found['nominees'] ?? [], 'publicId')));
+[, $one] = $sa->get('/admin/nominees/' . $acAdminNom['nomineeId']);
+check('the "view as nominee" preview carries it too', ($one['nominee']['publicId'] ?? '') === $acAdminNom['publicId']);
+$cat = (new Client())->get('/nominees')[1] ?? [];
+$catRows = array_column($cat['nominees'] ?? ($cat ?? []), null, 'id');
+check('the public nominee list shows the Public ID of approved nominees', ($catRows[(string) $acAdminNom['nomineeId']]['publicId'] ?? '') === $acAdminNom['publicId'] && preg_match('/^[1-9][0-9]*$/', (string) ($catRows[(string) $acAdminNom['nomineeId']]['publicId'] ?? '')) === 1);
+
+// ---- team, committee and invitations
+[$c, $r] = $sa->post('/admin/people', ['edition' => $acSlug, 'name' => 'Team Pid', 'email' => 'team.pid@test.dev']);
+check('adding a team member works and gives a Public ID', $c === 200 && preg_match('/^[1-9][0-9]{6,9}$/', (string) ($r['publicId'] ?? '')) === 1 && $acPid('people', 'id = ?', [(int) $r['personId']]) === $r['publicId'], json_encode($r));
+$tp = $r;
+[$c, $r] = $sa->post('/admin/committee/members', ['edition' => $acSlug, 'personId' => 'new', 'name' => 'Committee Pid', 'position' => 'Secretary', 'unitId' => 1, 'visible' => true]);
+$cmId = (int) $sqlv("SELECT id FROM people WHERE name = 'Committee Pid'");
+check('a committee member created without a login gets a Public ID', $c === 200 && preg_match('/^[1-9][0-9]{6,9}$/', (string) $acPid('people', 'id = ?', [$cmId])) === 1, json_encode($r));
+[, $cl] = $sa->get('/admin/committee?edition=' . $acSlug);
+$cmRow = array_values(array_filter($cl['members'] ?? [], fn ($m) => $m['personId'] === (string) $cmId))[0] ?? [];
+check('the committee list shows it next to the internal ids', ($cmRow['publicId'] ?? '') === $acPid('people', 'id = ?', [$cmId]) && ctype_digit($cmRow['id'] ?? ''));
+check('a person appointed from a committee application has one', preg_match('/^[1-9][0-9]{6,9}$/', (string) $sqlv("SELECT public_id FROM people WHERE email = 'ada@test.dev'")) === 1);
+check('committee application reference numbers stay separate: applications carry no Public ID', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'committee_applications' AND column_name = 'public_id'") === 0 && !str_contains(json_encode($cl['applications'] ?? []), 'publicId'));
+$tok = bin2hex(random_bytes(32));
+$db->prepare("INSERT INTO invitations (token_hash, email, edition_id, status, expires_at) VALUES (?, 'invitee.pid@test.dev', 2, 'pending', DATE_ADD(NOW(), INTERVAL 1 DAY))")->execute([hash('sha256', $tok)]);
+[$c, $r] = (new Client())->post('/invite/accept', ['token' => $tok, 'name' => 'Invited Pid', 'email' => 'invitee.pid@test.dev', 'password' => 'Invite-Pass-12345']);
+check('accepting an invitation creates the person with a Public ID', $c === 200 && preg_match('/^[1-9][0-9]{6,9}$/', (string) $sqlv("SELECT public_id FROM people WHERE email = 'invitee.pid@test.dev'")) === 1, json_encode($r));
+$adminCall = $sa->get('/admin/me')[1] ?? [];
+$pp = array_column($adminCall['people'] ?? [], null, 'id');
+check('the admin\'s people list shows Public IDs and keeps the internal ids', ($pp[(string) $tp['personId']]['publicId'] ?? '') === $tp['publicId'] && ctype_digit((string) $tp['personId']));
+check('the signed-in admin sees their own Public ID', preg_match('/^[1-9][0-9]{6,9}$/', (string) ($adminCall['person']['publicId'] ?? '')) === 1);
+
+// ---- imported nominees
+check('imported nominees (no account) each got a Public ID', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = (SELECT id FROM editions WHERE slug = 'oga-8')") > 0 && (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = (SELECT id FROM editions WHERE slug = 'oga-8') AND public_id IS NULL") === 0);
+
+// ---- old records: backfill and lazy assignment
+$db->prepare("INSERT INTO people (name, email, active) VALUES ('Legacy Person', 'legacy@pid.test', 1)")->execute();
+$legacyP = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO accounts (email, password_hash) VALUES ('legacy@acc.pid.test', 'x')")->execute();
+$legacyA = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO nominee_entries (edition_id, category_id, name, status) VALUES (2, 2, 'Legacy Admin Nominee', 'approved')")->execute();
+$legacyE = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, status) VALUES (2, ?, 2, 'Legacy Account Nominee', 'pending')")->execute([$legacyA]);
+$legacyEA = (int) $db->lastInsertId();
+$before = App\PublicId::assign($db, 'person', $pidPerson);
+$done = App\PublicId::backfill($db);
+check('the backfill gives every old person, account and admin-made nominee an ID', $done['person'] >= 1 && $done['account'] >= 1 && $done['entry'] >= 1 && $acPid('people', 'id = ?', [$legacyP]) !== null && $acPid('accounts', 'id = ?', [$legacyA]) !== null && $acPid('nominee_entries', 'id = ?', [$legacyE]) !== null);
+check('an entry that belongs to an account is left to the account\'s ID', $acPid('nominee_entries', 'id = ?', [$legacyEA]) === null);
+check('the backfill never changes an ID that already exists', App\PublicId::assign($db, 'person', $pidPerson) === $before && $acPid('people', 'id = ?', [$pidPerson]) === $before);
+check('running it again adds nothing', array_sum(App\PublicId::backfill($db)) === 0);
+check('nobody is without an ID after the backfill (accounts, people, account-less nominees)', (int) $sqlv('SELECT COUNT(*) FROM people WHERE public_id IS NULL') === 0 && (int) $sqlv('SELECT COUNT(*) FROM accounts WHERE public_id IS NULL') === 0 && (int) $sqlv('SELECT COUNT(*) FROM nominee_entries WHERE account_id IS NULL AND public_id IS NULL') === 0);
+check('every ID in the tables is in the registry exactly once, and the registry has no strays', (int) $sqlv('SELECT COUNT(*) FROM public_ids') === (int) $sqlv('SELECT (SELECT COUNT(public_id) FROM people) + (SELECT COUNT(public_id) FROM accounts) + (SELECT COUNT(public_id) FROM nominee_entries)'));
+$db->prepare("INSERT INTO accounts (email, password_hash) VALUES ('lazy@acc.pid.test', 'x')")->execute();
+$lazyA = (int) $db->lastInsertId();
+check('an old row met later gets its ID on first use (no backfill needed)', $acPid('accounts', 'id = ?', [$lazyA]) === null && preg_match('/^[1-9][0-9]{6,9}$/', App\PublicId::ensure('account', $lazyA)) === 1 && $acPid('accounts', 'id = ?', [$lazyA]) !== null);
+
+// ---- nothing else moved
+check('voting and payments still point at internal ids only', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND column_name = 'public_id' AND table_name NOT IN ('people', 'accounts', 'nominee_entries', 'public_ids')") === 0 && (int) $sqlv("SELECT COUNT(*) FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND referenced_table_name = 'public_ids'") === 0);
+$db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL WHERE id = 2");
+App\Cache::flush();
+
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
 exit($GLOBALS['fail'] === 0 ? 0 : 1);

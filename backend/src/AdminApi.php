@@ -535,12 +535,13 @@ final class AdminApi
         }
 
         $people = [];
-        foreach ($pdo->query('SELECT id, name, email, active, is_super_admin, photo_path FROM people ORDER BY id')->fetchAll() as $p) {
+        foreach ($pdo->query('SELECT id, public_id, name, email, active, is_super_admin, photo_path FROM people ORDER BY id')->fetchAll() as $p) {
             if (!$seeTeam && (int) $p['id'] !== (int) $person['id']) {
                 continue;
             }
             $people[] = [
                 'id'         => (string) $p['id'],
+                'publicId'   => ($p['public_id'] ?? '') !== '' ? $p['public_id'] : PublicId::ensure('person', (int) $p['id']),
                 'name'       => $p['name'],
                 'email'      => $p['email'] ?? '',
                 'active'     => (bool) $p['active'],
@@ -570,6 +571,7 @@ final class AdminApi
             'csrf'          => Session::csrf(),
             'person'        => [
                 'id'         => (string) $person['id'],
+                'publicId'   => PublicId::ensure('person', (int) $person['id']),
                 'name'       => $person['name'],
                 'email'      => $person['email'] ?? '',
                 'active'     => true,

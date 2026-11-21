@@ -34,6 +34,7 @@ export default async function nominee(ctx, { params }) {
     { label: "Category", value: cat?.name },
     { label: "Department", value: n.department },
     { label: "Level", value: n.level },
+    { label: "Nominee ID", value: n.publicId },
   ].filter((item) => item.value);
 
   document.title = `${n.name} — ${ctx.occasion.name} ${ctx.occasion.edition}`;

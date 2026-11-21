@@ -219,6 +219,7 @@ final class ImportApi
                 $cid = $catIds[$n['cat']];
                 $nIns->execute([$eid, $cid, $n['name'], $n['department'], $n['level'], $n['bio']]);
                 $nid = (int) $db->lastInsertId();
+                PublicId::assign($db, 'entry', $nid);
                 if ($n['votes'] > 0) {
                     $oIns->execute([$eid, 'IMP-' . strtoupper(bin2hex(random_bytes(6))), $nid, $cid, $n['votes'], 'Imported from ' . $plan['edition']['name'] . ' ' . $plan['edition']['label'], $actor['id']]);
                     VoteTotals::addOrder($db, ['nominee_entry_id' => $nid, 'category_id' => $cid, 'edition_id' => $eid, 'votes' => $n['votes'], 'amount' => 0, 'source' => 'manual']);

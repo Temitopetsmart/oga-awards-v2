@@ -37,6 +37,7 @@ if ((int) $st->fetchColumn() > 0) {
 
 $pdo->prepare('INSERT INTO people (name, email, password_hash, active, is_super_admin) VALUES (?, ?, ?, 1, 1)')
     ->execute([$name, $email, Auth::hash($pass)]);
+$publicId = App\PublicId::assign($pdo, 'person', (int) $pdo->lastInsertId());
 
-echo "Done. Super admin created: $email\n";
+echo "Done. Super admin created: $email (Public ID $publicId)\n";
 echo "Tip: clear your terminal history if you typed the password here (type 'cls' on Windows).\n";  
