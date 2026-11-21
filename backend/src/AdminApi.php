@@ -115,14 +115,15 @@ final class AdminApi
         if ($method === 'POST' && preg_match('#^/admin/editions/([a-z0-9-]+)/transition$#', $path, $m)) {
             EditionApi::transition($m[1]);
         }
+
         if ($method === 'PUT' && preg_match('#^/admin/editions/([a-z0-9-]+)/access-pass$#', $path, $m)) {
             EditionApi::saveAccessPass($m[1]);
+        }
 
         if ($method === 'PUT' && preg_match('#^/admin/editions/([a-z0-9-]+)/vote-feed$#', $path, $m)) {
             EditionApi::saveVoteFeed($m[1]);
         }
-        
-        }
+
         if ($method === 'PUT' && preg_match('#^/admin/editions/([a-z0-9-]+)/flier$#', $path, $m)) {
             EditionApi::saveFlier($m[1]);
         }
