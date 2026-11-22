@@ -1450,7 +1450,7 @@ $db->exec("UPDATE nominee_entries SET status = 'approved' WHERE id = $eid"); App
 $face = fn (array $o = []) => $sa->post('/admin/spotlight', array_merge(['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'November 2026', 'headline' => 'Face of the month', 'note' => 'Brightens every room.', 'featured' => true], $o));
 $pubFace = fn () => (new Client())->get('/spotlight')[1];
 check('staff without spotlight permissions cannot list or add', $gate->get("/admin/spotlight?edition=$ed")[0] === 403 && $gate->post('/admin/spotlight', ['edition' => $ed, 'nomineeId' => (string) $entry['na'], 'period' => 'X period'])[0] === 403);
-check('nobody is featured to begin with', $pubFace() === ['featured' => null, 'history' => []]);
+check('nobody is featured to begin with', array_key_exists('featured', $pubFace()) && $pubFace()['featured'] === null && ($pubFace()['history'] ?? 1) === []);
 check('a nominee who is not approved cannot be featured', $face(['nomineeId' => (string) $entry['nb']])[0] === 422);
 check('nor someone from another edition', $face(['nomineeId' => (string) $sqlv("SELECT id FROM nominee_entries WHERE edition_id = 1 AND status = 'approved' LIMIT 1")])[0] === 422);
 check('a period name is required, within 60 characters', $face(['period' => ' '])[0] === 422 && $face(['period' => str_repeat('p', 61)])[0] === 422);
@@ -2891,6 +2891,178 @@ check('an old row met later gets its ID on first use (no backfill needed)', $acP
 check('voting and payments still point at internal ids only', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND column_name = 'public_id' AND table_name NOT IN ('people', 'accounts', 'nominee_entries', 'public_ids')") === 0 && (int) $sqlv("SELECT COUNT(*) FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND referenced_table_name = 'public_ids'") === 0);
 $db->exec("UPDATE editions SET state_mode = 'auto', force_state = NULL WHERE id = 2");
 App\Cache::flush();
+
+// ================================================================== AD. FACE OF THE MOMENT (live, random, self-changing spotlight)
+group('AD. Face of the moment: random nominee or committee member, changes by itself, set by the admin');
+$adSlug = (string) $sqlv('SELECT slug FROM editions WHERE id = 2');
+$adWasActive = $db->query("SELECT id FROM editions WHERE status = 'active' AND id <> 2")->fetchAll(PDO::FETCH_COLUMN);
+$db->exec("UPDATE editions SET status = 'completed' WHERE status = 'active' AND id <> 2");
+$db->exec("UPDATE editions SET status = 'active' WHERE id = 2");
+$db->exec("UPDATE edition_settings SET spotlight_auto = 0 WHERE edition_id = 2");
+$db->exec("DELETE FROM spotlight_slots");
+App\Cache::flush();
+$adPut = fn (array $o = []) => $sa->put('/admin/spotlight/settings', array_merge(['edition' => $adSlug, 'enabled' => true, 'every' => 1, 'unit' => 'hour', 'who' => 'both', 'heading' => 'Meet the face of the {period}', 'tagline' => 'Could it be you next?', 'showBio' => true, 'requirePhoto' => false], $o));
+$adNow = fn () => (new Client())->get('/spotlight/now')[1];
+
+// ---- off by default, nothing leaks
+check('migration 027 added the settings and the slots table', (int) $sqlv("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'edition_settings' AND column_name LIKE 'spotlight_%'") === 8 && (int) $sqlv("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'spotlight_slots'") === 1);
+$r = $adNow();
+check('it is OFF by default: nobody is shown', ($r['enabled'] ?? null) === false && !isset($r['face']));
+check('the public list says the live face is off', ((new Client())->get('/spotlight')[1]['auto']['enabled'] ?? null) === false);
+
+// ---- admin settings and their rules
+check('staff without spotlight access cannot read or change the settings', $gate->get("/admin/spotlight/settings?edition=$adSlug")[0] === 403 && $gate->put('/admin/spotlight/settings', ['edition' => $adSlug, 'enabled' => true, 'every' => 1, 'unit' => 'hour', 'who' => 'both', 'heading' => 'x'])[0] === 403);
+check('a stranger gets 401', (new Client())->get("/admin/spotlight/settings?edition=$adSlug")[0] === 401);
+foreach ([['unit', 'years'], ['unit', ''], ['every', 0], ['every', 'x'], ['every', 1.5], ['who', 'everyone'], ['heading', '  '], ['heading', str_repeat('h', 81)], ['tagline', str_repeat('t', 161)], ['heading', "bad\x01text"]] as [$k, $v]) {
+    check("a bad $k (" . json_encode($v) . ") is refused", $adPut([$k => $v])[0] === 422);
+}
+check('seconds start at 5 so the site is never asked for a new face every second', $adPut(['unit' => 'second', 'every' => 4])[0] === 422 && $adPut(['unit' => 'second', 'every' => 5])[0] === 200);
+check('each unit has its own top limit', $adPut(['unit' => 'minute', 'every' => 1441])[0] === 422 && $adPut(['unit' => 'week', 'every' => 53])[0] === 422 && $adPut(['unit' => 'month', 'every' => 13])[0] === 422 && $adPut(['unit' => 'month', 'every' => 12])[0] === 200);
+check('a refused save changes nothing', (int) $sqlv('SELECT spotlight_every FROM edition_settings WHERE edition_id = 2') === 12);
+$adUnitsOk = true;
+foreach (['second' => 30, 'minute' => 10, 'hour' => 1, 'day' => 1, 'week' => 1, 'month' => 1] as $adU => $adE) {
+    if ($adPut(['unit' => $adU, 'every' => $adE])[0] !== 200) { $adUnitsOk = false; }
+}
+check('the admin can save every unit the brief asks for: seconds, minutes, hours, days, weeks, months', $adUnitsOk);
+check('the change is written to the audit log', (int) $sqlv("SELECT COUNT(*) FROM audit_log WHERE action = 'Updated the live Face of the moment'") >= 1);
+$adPut(['enabled' => true, 'unit' => 'hour', 'every' => 1]);
+[, $gs] = $sa->get("/admin/spotlight/settings?edition=$adSlug");
+check('the settings come back as saved, with how many people are in the draw', ($gs['settings']['enabled'] ?? null) === true && $gs['settings']['unit'] === 'hour' && $gs['settings']['heading'] === 'Meet the face of the {period}' && isset($gs['eligible']['nominees'], $gs['eligible']['committee']));
+
+// ---- the time slots (unit tests)
+$lagos = new DateTimeZone('Africa/Lagos');
+$ts = fn (string $s) => (new DateTimeImmutable($s, $lagos))->getTimestamp();
+$t0 = $ts('2026-11-21 23:30:17');
+$s = App\Spotlight::slot('second', 5, $t0);
+check('seconds: a slot of 5 seconds', $s['end'] - $s['start'] === 5 && $s['start'] <= $t0 && $t0 < $s['end'] && $s['start'] % 5 === 0);
+$s = App\Spotlight::slot('minute', 10, $t0);
+check('minutes: a slot of 10 minutes', $s['end'] - $s['start'] === 600 && $s['start'] <= $t0 && $t0 < $s['end']);
+$s = App\Spotlight::slot('hour', 1, $t0);
+check('hours: 23:30 is in the 23:00 to 00:00 slot', $s['start'] === $ts('2026-11-21 23:00:00') && $s['end'] === $ts('2026-11-22 00:00:00'));
+$s = App\Spotlight::slot('day', 1, $t0);
+check('days: a day runs from midnight to midnight, site time', $s['start'] === $ts('2026-11-21 00:00:00') && $s['end'] === $ts('2026-11-22 00:00:00'));
+$s = App\Spotlight::slot('week', 1, $t0);
+check('weeks: Monday 16 Nov to Monday 23 Nov (21 Nov 2026 is a Saturday)', $s['start'] === $ts('2026-11-16 00:00:00') && $s['end'] === $ts('2026-11-23 00:00:00'));
+$s = App\Spotlight::slot('month', 1, $t0);
+check('months: 1 Nov to 1 Dec', $s['start'] === $ts('2026-11-01 00:00:00') && $s['end'] === $ts('2026-12-01 00:00:00'));
+$s = App\Spotlight::slot('month', 3, $t0);
+check('every 3 months works too', $s['end'] > $t0 && $s['start'] <= $t0 && $s['start'] === $ts('2026-10-01 00:00:00') && $s['end'] === $ts('2027-01-01 00:00:00'));
+$gaps = 0;
+foreach (['second' => 7, 'minute' => 3, 'hour' => 5, 'day' => 2, 'week' => 2, 'month' => 2] as $u => $e) {
+    for ($i = 0; $i < 40; $i++) {
+        $t = $ts('2026-01-03 10:15:00') + $i * 1234567;
+        $a = App\Spotlight::slot($u, $e, $t);
+        $b = App\Spotlight::slot($u, $e, $a['end']);
+        $c = App\Spotlight::slot($u, $e, $a['end'] - 1);
+        if ($b['start'] !== $a['end'] || $b['key'] === $a['key'] || $c['key'] !== $a['key'] || !($a['start'] <= $t && $t < $a['end'])) { $gaps++; }
+    }
+}
+check('slots follow one another with no gap and no overlap, for every unit', $gaps === 0);
+
+// ---- who is in the draw
+$db->exec("UPDATE nominee_entries SET photo_path = NULL WHERE edition_id = 2");
+$db->exec("UPDATE people SET photo_path = NULL");
+$poolAll = App\Spotlight::pool(2, ['who' => 'both', 'requirePhoto' => false, 'showBio' => true]);
+$poolN = App\Spotlight::pool(2, ['who' => 'nominees', 'requirePhoto' => false, 'showBio' => true]);
+$poolC = App\Spotlight::pool(2, ['who' => 'committee', 'requirePhoto' => false, 'showBio' => true]);
+check('"both" is nominees plus committee, and each option only gives its own kind', count($poolAll) === count($poolN) + count($poolC) && count($poolN) > 0 && count($poolC) > 0 && !array_filter($poolN, fn ($x) => $x['type'] !== 'nominee') && !array_filter($poolC, fn ($x) => $x['type'] !== 'committee'));
+check('only approved nominees can be picked', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2 AND status <> 'approved'") > 0 && count($poolN) <= (int) $sqlv("SELECT COUNT(DISTINCT COALESCE(CONCAT('a', account_id), CONCAT('e', id))) FROM nominee_entries WHERE edition_id = 2 AND status = 'approved'"));
+$twoCats = (int) $sqlv("SELECT account_id FROM nominee_entries WHERE edition_id = 2 AND status = 'approved' AND account_id IS NOT NULL GROUP BY account_id HAVING COUNT(*) > 1 LIMIT 1");
+if (!$twoCats) {
+    $acc = (int) $sqlv("SELECT account_id FROM nominee_entries WHERE edition_id = 2 AND status = 'approved' AND account_id IS NOT NULL LIMIT 1");
+    $db->prepare("INSERT INTO nominee_entries (edition_id, account_id, category_id, name, status) SELECT edition_id, account_id, 3, name, 'approved' FROM nominee_entries WHERE edition_id = 2 AND account_id = ? AND status = 'approved' LIMIT 1")->execute([$acc]);
+    $twoCats = $acc;
+    $poolN = App\Spotlight::pool(2, ['who' => 'nominees', 'requirePhoto' => false, 'showBio' => true]);
+}
+check('a nominee in two categories is ONE person in the draw', (int) $sqlv("SELECT COUNT(*) FROM nominee_entries WHERE edition_id = 2 AND status = 'approved' AND account_id = ?", [$twoCats]) >= 2 && count(array_filter($poolN, fn ($x) => (int) $sqlv('SELECT account_id FROM nominee_entries WHERE id = ?', [$x['id']]) === $twoCats)) === 1);
+$hiddenCm = (int) $sqlv("SELECT COUNT(*) FROM edition_assignments WHERE edition_id = 2 AND position <> '' AND visible = 0");
+check('committee members hidden from the public committee page are never drawn', $hiddenCm === 0 || count($poolC) < (int) $sqlv("SELECT COUNT(*) FROM edition_assignments WHERE edition_id = 2 AND position <> ''"));
+check('with "only people who have a photo" on, nobody without a photo is drawn', App\Spotlight::pool(2, ['who' => 'both', 'requirePhoto' => true, 'showBio' => true]) === []);
+$someNom = (int) array_values($poolN)[0]['id'];
+$db->prepare("UPDATE nominee_entries SET photo_path = 'uploads/test-face.webp' WHERE id = ?")->execute([$someNom]);
+$withPhoto = App\Spotlight::pool(2, ['who' => 'both', 'requirePhoto' => true, 'showBio' => true]);
+check('a person with a photo is drawn once the photo is added', count($withPhoto) === 1 && array_values($withPhoto)[0]['id'] === $someNom);
+$db->exec("UPDATE nominee_entries SET photo_path = NULL WHERE edition_id = 2");
+
+// ---- the live face
+$adPut(['enabled' => true, 'unit' => 'hour', 'every' => 1, 'who' => 'both', 'requirePhoto' => false]);
+App\Cache::flush();
+$r = $adNow();
+check('switched on: someone is shown, with a heading that names the period', ($r['enabled'] ?? false) === true && is_array($r['face'] ?? null) && $r['heading'] === 'Meet the face of the hour' && $r['tagline'] === 'Could it be you next?', json_encode($r));
+check('it says when the face changes: the end is in the future, after the start', strtotime($r['endsAt']) > time() && strtotime($r['startsAt']) <= time() && strtotime($r['endsAt']) > strtotime($r['startsAt']) && isset($r['serverNow']));
+check('the public list now says the live face is on, and keeps the old fields', ((new Client())->get('/spotlight')[1]['auto']['enabled'] ?? null) === true && array_key_exists('featured', (new Client())->get('/spotlight')[1]) && array_key_exists('history', (new Client())->get('/spotlight')[1]));
+$f1 = $r['face']['name'];
+App\Cache::flush();
+$again = $adNow();
+check('everybody sees the same person for the whole slot (even after the cache is cleared)', $again['face']['name'] === $f1 && (new Client())->get('/spotlight/now')[1]['face']['name'] === $f1);
+check('the pick is remembered for the slot', (int) $sqlv('SELECT COUNT(*) FROM spotlight_slots WHERE edition_id = 2') === 1);
+$pf = $r['face'];
+check('the public face shows only public things: name, photo, bio, role, no internal ids or contact details', !array_diff(array_keys($pf), ['type', 'name', 'nickname', 'photo', 'thumb', 'bio', 'line', 'extra', 'nomineeId', 'publicId']) && !str_contains(json_encode($r), 'email') && !str_contains(json_encode($r), 'phone'));
+check('nothing about who comes next, and no vote numbers or rankings', !array_intersect($walk($r), ['next', 'upcoming', 'queue', 'pool', 'votes', 'rank', 'ranking', 'count', 'tally']));
+$adHeaders = implode("\n", (array) @get_headers(API . '/spotlight/now'));
+check('the answer is never cached by the browser (no-store)', stripos($adHeaders, 'no-store') !== false, $adHeaders);
+
+// ---- fairness: nobody comes round twice before everyone has had a turn
+$pick = new ReflectionMethod(App\Spotlight::class, 'pick');
+$pick->setAccessible(true);
+$db->exec("DELETE FROM spotlight_slots");
+$cfg = ['who' => 'both', 'requirePhoto' => false, 'showBio' => true];
+$pool = App\Spotlight::pool(2, $cfg);
+$P = count($pool);
+$seq = [];
+for ($i = 0; $i < $P * 3; $i++) {
+    $p = $pick->invoke(null, 2, "t:$i", $pool);
+    $seq[] = $p['type'] . ':' . $p['id'];
+}
+$rounds = array_chunk($seq, $P);
+$eachOnce = true;
+foreach ($rounds as $rd) { if (count($rd) !== $P || count(array_unique($rd)) !== $P) { $eachOnce = false; } }
+check("with $P people in the draw, every round of $P faces shows each person exactly once (nobody comes round twice early)", $P >= 3 && $eachOnce, json_encode($seq));
+check('everybody gets a turn: all people appear', count(array_unique($seq)) === $P);
+check('the same face is never shown twice in a row, even when a new round starts', (function ($s) { for ($i = 1; $i < count($s); $i++) { if ($s[$i] === $s[$i - 1]) { return false; } } return true; })($seq));
+check('every round is in a new random order', $P < 5 || $rounds[0] !== $rounds[1] || $rounds[1] !== $rounds[2], json_encode($rounds));
+check('asking again for the same slot gives the same person (two visitors at once)', $pick->invoke(null, 2, 't:0', $pool)['id'] === $pick->invoke(null, 2, 't:0', $pool)['id'] && $pick->invoke(null, 2, 't:0', $pool)['type'] . ':' . $pick->invoke(null, 2, 't:0', $pool)['id'] === $seq[0]);
+$one = [array_key_first($pool) => array_values($pool)[0]];
+check('a draw of one person always shows them, an empty draw shows nobody', $pick->invoke(null, 2, 'solo:1', $one)['id'] === array_values($one)[0]['id'] && $pick->invoke(null, 2, 'solo:2', $one)['id'] === array_values($one)[0]['id'] && $pick->invoke(null, 2, 'none:1', []) === null);
+$db->exec("DELETE FROM spotlight_slots");
+
+// ---- changes in who is eligible
+App\Cache::flush();
+$r = $adNow();
+$shown = $r['face'];
+$entryShown = (int) $sqlv("SELECT subject_id FROM spotlight_slots WHERE edition_id = 2 LIMIT 1");
+$typeShown = (string) $sqlv("SELECT subject_type FROM spotlight_slots WHERE edition_id = 2 LIMIT 1");
+if ($typeShown === 'nominee') {
+    $db->prepare("UPDATE nominee_entries SET status = 'rejected' WHERE id = ?")->execute([$entryShown]);
+} else {
+    $db->prepare("UPDATE edition_assignments SET visible = 0 WHERE id = ?")->execute([$entryShown]);
+}
+App\Cache::flush();
+$r2 = $adNow();
+check('someone who is no longer eligible is replaced straight away, and the slot keeps one person', $r2['face']['name'] !== $shown['name'] && (int) $sqlv('SELECT COUNT(*) FROM spotlight_slots WHERE edition_id = 2') === 1);
+if ($typeShown === 'nominee') { $db->prepare("UPDATE nominee_entries SET status = 'approved' WHERE id = ?")->execute([$entryShown]); } else { $db->prepare("UPDATE edition_assignments SET visible = 1 WHERE id = ?")->execute([$entryShown]); }
+$adPut(['enabled' => false]);
+App\Cache::flush();
+check('switching it off hides it at once', ($adNow()['enabled'] ?? null) === false && ((new Client())->get('/spotlight')[1]['auto']['enabled'] ?? null) === false);
+$adPut(['enabled' => true, 'who' => 'nominees', 'showBio' => false, 'heading' => 'Spotlight on the {period}']);
+$db->exec("UPDATE nominee_entries SET bio = 'A short bio about this person.' WHERE edition_id = 2");
+App\Cache::flush();
+$r = $adNow();
+check('"nominees only" never shows a committee member, and the heading wording is the admin\'s', $r['face']['type'] === 'nominee' && $r['heading'] === 'Spotlight on the hour');
+check('with bios switched off, no bio is sent', $r['face']['bio'] === '');
+$adPut(['enabled' => true, 'who' => 'both', 'showBio' => true, 'every' => 3, 'unit' => 'hour']);
+App\Cache::flush();
+check('"every 3 hours" is named as such', $adNow()['heading'] === 'Meet the face of the 3 hours');
+$db->exec("DELETE FROM spotlight_slots");
+$db->exec("UPDATE edition_settings SET spotlight_auto = 0 WHERE edition_id = 2");
+foreach ($adWasActive as $wid) { $db->prepare("UPDATE editions SET status = 'active' WHERE id = ?")->execute([$wid]); }
+App\Cache::flush();
+
+// ---- the screens
+$adJs = (string) file_get_contents($root . '/shared/js/components/oga-spotlight.js');
+check('the live card is a registered element that re-asks just after each slot ends and pauses for a hidden tab', str_contains($adJs, 'customElements.define("oga-spotlight"') && str_contains($adJs, 'visibilitychange') && str_contains($adJs, 'endsAt') && str_contains($adJs, 'prefers-reduced-motion'));
+check('the public page and the home hero use it when the live face is on, and keep the old card when it is off', str_contains((string) file_get_contents($root . '/site/js/pages/spotlight.js'), '<oga-spotlight variant="page">') && str_contains((string) file_get_contents($root . '/site/js/views/home.views.js'), '<oga-spotlight variant="home">') && str_contains((string) file_get_contents($root . '/site/js/views/home.views.js'), 'faceCard(featuredFace'));
+check('the admin page has the live settings form', str_contains((string) file_get_contents($root . '/admin/js/pages/spotlight.js'), 'liveForm') && str_contains((string) file_get_contents($root . '/admin/js/services/content.api.js'), '/admin/spotlight/settings'));
 
 // ------------------------------------------------------------------ result
 echo "\n" . str_repeat('=', 50) . "\nPassed: {$GLOBALS['pass']}   Failed: {$GLOBALS['fail']}\n";
