@@ -37,6 +37,7 @@ import {
   createInvitation,
   listInvitations,
   revokeInvitation,
+  uploadPersonPhoto,
 } from "../services/team.api.js";
 import { logPreview } from "../services/audit.api.js";
 
@@ -618,6 +619,12 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
     actions: [
       { key: "edit", label: "Edit", icon: "fa-pen", perm: "team.manage" },
       {
+        key: "photo",
+        label: "Upload / change photo",
+        icon: "fa-camera",
+        perm: "team.manage",
+      },
+      {
         key: "resetLink",
         label: "Send a password reset link",
         icon: "fa-envelope-circle-check",
@@ -772,6 +779,41 @@ export async function init(root, { admin, edition, can, readOnly, access }) {
       } catch (err) {
         await notify.warning("Couldn’t send it", err.message);
       }
+    },
+    async photo(p) {
+      openCustomModal({
+        title: `Profile photo — ${p.name}`,
+        submitLabel: "Upload photo",
+        body: html`
+          <div class="mb-3">
+            <p class="text-secondary small">
+              Choose a clear profile picture. JPG, PNG or WebP. Maximum size: 5
+              MB.
+            </p>
+            <label class="form-label" for="personPhoto"> Select picture </label>
+            <input
+              class="form-control"
+              type="file"
+              id="personPhoto"
+              name="photo"
+              accept="image/jpeg,image/png,image/webp"
+              required
+            />
+          </div>
+        `,
+        async onSubmit(form) {
+          const file = form.querySelector('[name="photo"]')?.files?.[0];
+
+          if (!file) {
+            throw userError("Choose a profile picture first.");
+          }
+
+          await uploadPersonPhoto(p.id, file);
+
+          notify.toast("success", `${p.name}'s photo uploaded`);
+          refreshPeople();
+        },
+      });
     },
     async super(p) {
       const list = listPeople();

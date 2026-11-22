@@ -67,6 +67,9 @@ final class AdminApi
             $method === 'PATCH'  && TeamApi::updatePerson((int) $m[1]);
             $method === 'DELETE' && TeamApi::deletePerson((int) $m[1]);
         }
+        if ($method === 'POST' && preg_match('#^/admin/people/(\d+)/photo$#', $path, $m)) {
+            TeamApi::uploadPhoto((int) $m[1]);
+        }
         if ($method === 'POST' && preg_match('#^/admin/people/(\d+)/super$#', $path, $m)) {
             TeamApi::setSuper((int) $m[1]);
         }

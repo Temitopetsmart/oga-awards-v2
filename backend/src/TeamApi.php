@@ -148,6 +148,47 @@ final class TeamApi
         Response::json(['ok' => true]);
     }
 
+    public static function uploadPhoto(int $id): never
+    {
+        $actor = Access::require(
+            'team.manage',
+            Request::str($_POST, 'edition', 60)
+        );
+
+        $st = self::pdo()->prepare(
+            'SELECT id, name, photo_path FROM people WHERE id = ?'
+        );
+        $st->execute([$id]);
+        $person = $st->fetch();
+
+        if (!$person) {
+            self::fail('That person was not found.', 404);
+        }
+
+        $path = Photos::save($_FILES['photo'] ?? [], 'people');
+
+        self::pdo()->prepare(
+            'UPDATE people SET photo_path = ? WHERE id = ?'
+        )->execute([$path, $id]);
+
+        Photos::delete($person['photo_path']);
+
+        Cache::flush();
+
+        Audit::log(
+            (int) $actor['id'],
+            'Changed team member photo',
+            $person['name'],
+            $actor['edition_id']
+        );
+
+        Response::json([
+            'ok' => true,
+            'photo' => $path,
+            'thumb' => Photos::thumbOf($path),
+        ]);
+    }
+
     public static function setSuper(int $id): never
     {
         $in = Request::json();

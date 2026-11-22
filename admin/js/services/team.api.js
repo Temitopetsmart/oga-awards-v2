@@ -1,5 +1,5 @@
 import { store } from "../../../shared/js/core/store.js";
-import { adminApi } from "./admin-api.js";
+import { adminApi, adminUpload } from "./admin-api.js";
 import { restoreSession } from "./admin-auth.service.js";
 import { getPerson } from "./team.repo.js";
 
@@ -25,6 +25,16 @@ export async function addPerson({ name, email = "", active = true }) {
 }
 export const updatePerson = (id, patch) =>
   write(`/admin/people/${id}`, "PATCH", patch);
+export async function uploadPersonPhoto(id, file) {
+  const formData = new FormData();
+  formData.append("edition", viewing());
+  formData.append("photo", file);
+
+  const result = await adminUpload(`/admin/people/${id}/photo`, formData);
+
+  await restoreSession();
+  return result;
+}
 export const setSuperAdmin = (id, value) =>
   write(`/admin/people/${id}/super`, "POST", { value });
 export const deletePerson = (id) => write(`/admin/people/${id}`, "DELETE");
