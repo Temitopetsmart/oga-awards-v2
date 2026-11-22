@@ -65,7 +65,10 @@ async function load() {
       getResource("spotlight").catch(() => ({ featured: null })),
     ]);
 
-    data.featuredFace = spotlight?.featured ?? null;
+    // when the live "Face of the moment" is on, the hero shows it; otherwise the hand-picked face, if any
+    data.featuredFace = spotlight?.auto?.enabled
+      ? { live: true }
+      : (spotlight?.featured ?? null);
     document.title = `${ctx.occasion.name} ${ctx.occasion.edition} — ${ctx.stateInfo.label}`;
     document.body.dataset.state = ctx.state;
     mount(app, homeViews[ctx.state](ctx, data));

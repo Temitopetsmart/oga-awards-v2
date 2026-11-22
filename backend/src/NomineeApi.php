@@ -38,7 +38,7 @@ final class NomineeApi
     {
         return [
             'id'            => (string) $n['id'],
-            'publicId'      => $n['account_public_id'] ?? $n['public_id'] ?? null,
+            'publicId'      => $n['account_public_id'] ?? $n['public_id'] ?? null,   // one per 
             'occasionId'    => $edSlug,
             'categoryId'    => (string) $n['category_id'],
             'name'          => $n['name'],
@@ -111,7 +111,6 @@ final class NomineeApi
         Response::json(['ok' => true, 'nominee' => [
             'id' => (string) $n['id'], 'publicId' => $acc['public_id'] ?? $n['public_id'] ?? null, 'occasionId' => $n['edition_slug'],
             'categoryId' => (string) $n['category_id'],
-            'publicId'      => $n['account_public_id'] ?? $n['public_id'] ?? null,   // one per person: the account's, or the entry's own if an admin added them
             'name' => $n['name'], 'phone' => $n['phone'] ?? '', 'department' => $n['department'] ?? '', 'level' => $n['level'] ?? '',
             'bio' => $n['bio'] ?? '', 
             'photo' => $n['photo_path'], 

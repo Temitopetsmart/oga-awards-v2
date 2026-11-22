@@ -424,3 +424,525 @@
   color: var(--oga-ink-900);
   background: var(--oga-gold-500);
 }
+
+/* ---------------------------------------------------------------- Face of the moment (<oga-spotlight>) */
+.oga-spot {
+  position: relative;
+  text-align: left;
+}
+
+.oga-spot__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.oga-spot__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid rgba(228, 197, 102, 0.45);
+  border-radius: 999px;
+  color: var(--oga-gold-300);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.oga-spot__live i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7);
+  animation: oga-spot-pulse 1.6s infinite;
+}
+
+.oga-spot__heading {
+  margin: 0;
+  font-family: var(--oga-font-display);
+  font-size: clamp(1.7rem, 4.2vw, 2.7rem);
+  line-height: 1.15;
+  background: linear-gradient(
+    100deg,
+    var(--oga-gold-200),
+    var(--oga-gold-500) 55%,
+    var(--oga-gold-300)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.oga-spot__edition {
+  margin: 0;
+  color: var(--oga-text-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oga-spot__card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  overflow: hidden;
+  border: 1px solid rgba(228, 197, 102, 0.28);
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(
+      120% 90% at 0% 0%,
+      rgba(212, 175, 55, 0.16),
+      transparent 55%
+    ),
+    var(--oga-surface);
+  box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.5);
+}
+
+.oga-spot__photo {
+  position: relative;
+  margin: 0;
+  min-height: 26rem;
+  overflow: hidden;
+  background: var(--oga-ink-700);
+}
+
+.oga-spot__photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+}
+
+.oga-spot__photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(5, 5, 5, 0.55));
+  pointer-events: none;
+}
+
+.oga-spot__initials {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--oga-gold-400);
+  font-family: var(--oga-font-display);
+  font-size: 6rem;
+}
+
+.oga-spot__role {
+  position: absolute;
+  z-index: 2;
+  top: 1rem;
+  left: 1rem;
+  padding: 0.28rem 0.8rem;
+  border-radius: 999px;
+  background: var(--oga-gold-500);
+  color: var(--oga-ink-900);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oga-spot__spark {
+  position: absolute;
+  z-index: 2;
+  width: 0.9rem;
+  height: 0.9rem;
+  background: var(--oga-gold-200);
+  clip-path: polygon(
+    50% 0,
+    62% 38%,
+    100% 50%,
+    62% 62%,
+    50% 100%,
+    38% 62%,
+    0 50%,
+    38% 38%
+  );
+  opacity: 0;
+}
+
+.oga-spot__spark--a {
+  top: 16%;
+  right: 12%;
+}
+.oga-spot__spark--b {
+  top: 38%;
+  right: 26%;
+  width: 0.6rem;
+  height: 0.6rem;
+}
+.oga-spot__spark--c {
+  top: 9%;
+  right: 34%;
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.oga-spot__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: clamp(1.25rem, 3vw, 2.4rem);
+}
+
+.oga-spot__name {
+  margin: 0;
+  font-family: var(--oga-font-display);
+  font-size: clamp(1.7rem, 3.6vw, 2.6rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.oga-spot__nick {
+  margin: 0;
+  color: var(--oga-gold-400);
+  font-size: 1.1rem;
+  font-style: italic;
+}
+
+.oga-spot__line {
+  margin: 0;
+  color: var(--oga-text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.oga-spot__bio {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--oga-gold-500);
+  color: var(--oga-ink-100);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.oga-spot__cta {
+  margin-top: 0.6rem;
+}
+
+.oga-spot__timer {
+  margin-top: 1rem;
+}
+
+.oga-spot__bar {
+  height: 0.3rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.oga-spot__bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--oga-gold-600), var(--oga-gold-300));
+  transition: width 1s linear;
+}
+
+.oga-spot__next {
+  margin: 0.5rem 0 0;
+  color: var(--oga-text-muted);
+  font-size: 0.82rem;
+}
+
+.oga-spot__next strong {
+  color: var(--oga-gold-300);
+  font-variant-numeric: tabular-nums;
+}
+
+.oga-spot__empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--oga-text-muted);
+}
+
+/* earlier faces */
+.oga-spot__recent {
+  margin-top: 2.5rem;
+}
+
+.oga-spot__recent-title {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--oga-text-muted);
+}
+
+.oga-spot__recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oga-spot__recent-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 6.5rem;
+  text-align: center;
+}
+
+.oga-spot__recent-list img,
+.oga-spot__mini {
+  width: 4.5rem;
+  height: 4.5rem;
+  border: 2px solid rgba(228, 197, 102, 0.5);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 22%;
+}
+
+.oga-spot__mini {
+  display: grid;
+  place-items: center;
+  background: var(--oga-ink-700);
+  color: var(--oga-gold-400);
+  font-weight: 700;
+}
+
+.oga-spot__recent-list strong {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.oga-spot__recent-list small {
+  color: var(--oga-text-muted);
+  font-size: 0.7rem;
+}
+
+/* the reveal when a new face appears */
+.oga-spot__card.is-shuffling .oga-spot__photo img {
+  filter: blur(2px) saturate(1.2);
+}
+
+.oga-spot__card.is-shuffling .oga-spot__body {
+  opacity: 0.25;
+}
+
+.oga-spot__card.is-reveal {
+  animation: oga-spot-card 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.oga-spot__card.is-reveal .oga-spot__photo img {
+  animation: oga-spot-photo 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.oga-spot__card.is-reveal .oga-spot__body > * {
+  animation: oga-spot-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.oga-spot__card.is-reveal .oga-spot__body > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.oga-spot__card.is-reveal .oga-spot__body > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.oga-spot__card.is-reveal .oga-spot__body > *:nth-child(4) {
+  animation-delay: 0.24s;
+}
+.oga-spot__card.is-reveal .oga-spot__body > *:nth-child(5) {
+  animation-delay: 0.32s;
+}
+
+.oga-spot__card.is-reveal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(246, 231, 180, 0.35) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: oga-spot-shine 1.3s ease-out 0.15s both;
+  pointer-events: none;
+}
+
+.oga-spot__card.is-reveal .oga-spot__spark {
+  animation: oga-spot-spark 1.6s ease-out both;
+}
+
+.oga-spot__card.is-reveal .oga-spot__spark--b {
+  animation-delay: 0.25s;
+}
+.oga-spot__card.is-reveal .oga-spot__spark--c {
+  animation-delay: 0.5s;
+}
+
+@keyframes oga-spot-pulse {
+  70% {
+    box-shadow: 0 0 0 0.55rem rgba(255, 77, 77, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 77, 0);
+  }
+}
+
+@keyframes oga-spot-card {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oga-spot-photo {
+  from {
+    transform: scale(1.14);
+    filter: blur(10px) brightness(1.3);
+  }
+  to {
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes oga-spot-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.9rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oga-spot-shine {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes oga-spot-spark {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.3) rotate(90deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.6) rotate(180deg);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .oga-spot__card {
+    grid-template-columns: 1fr;
+  }
+
+  .oga-spot__photo {
+    min-height: 22rem;
+  }
+}
+
+/* compact version for the home page hero */
+.oga-spot--home .oga-spot__head {
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  text-align: left;
+}
+
+.oga-spot--home .oga-spot__heading {
+  font-size: clamp(1.15rem, 2.4vw, 1.5rem);
+}
+
+.oga-spot--home .oga-spot__card {
+  display: block;
+  height: 27rem;
+}
+
+.oga-spot--home .oga-spot__photo {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+}
+
+.oga-spot--home .oga-spot__photo::after {
+  background: linear-gradient(180deg, transparent 30%, rgba(5, 5, 5, 0.92) 88%);
+}
+
+.oga-spot--home .oga-spot__body {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  gap: 0.25rem;
+  padding: 1rem 1.15rem 1rem;
+}
+
+.oga-spot--home .oga-spot__name {
+  font-size: 1.5rem;
+}
+
+.oga-spot--home .oga-spot__nick,
+.oga-spot--home .oga-spot__line {
+  font-size: 0.85rem;
+}
+
+.oga-spot--home .oga-spot__bio {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0.2rem 0 0;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  border: 0;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.oga-spot--home .oga-spot__cta {
+  margin-top: 0.3rem;
+}
+
+.oga-spot--home .oga-spot__timer {
+  margin-top: 0.55rem;
+}
+
+.oga-spot--home .oga-spot__tag {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oga-spot__live i,
+  .oga-spot__card.is-reveal,
+  .oga-spot__card.is-reveal::before,
+  .oga-spot__card.is-reveal .oga-spot__photo img,
+  .oga-spot__card.is-reveal .oga-spot__body > *,
+  .oga-spot__card.is-reveal .oga-spot__spark {
+    animation: none;
+  }
+
+  .oga-spot__bar span {
+    transition: none;
+  }
+}

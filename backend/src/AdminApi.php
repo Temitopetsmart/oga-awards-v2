@@ -14,6 +14,13 @@ final class AdminApi
             Session::requireCsrf();                 // every change needs the CSRF token
         }
 
+        if ($method === 'GET' && $path === '/admin/spotlight/settings') {
+            SpotlightApi::settings();
+        }
+        if ($method === 'PUT' && $path === '/admin/spotlight/settings') {
+            SpotlightApi::saveSettings();
+        }
+
         if ($method === 'GET' && $path === '/admin/csrf') {
             Response::json(['ok' => true, 'csrf' => Session::csrf()]);
         }

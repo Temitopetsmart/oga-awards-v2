@@ -93,6 +93,12 @@ if ($method === 'POST' && $path === '/tickets/lookup') {
     App\TicketApi::lookup();
 }
 
+// ---- Face of the moment (public): who is in the spotlight right now and when it changes. Never cached by the browser. ----
+if ($method === 'GET' && $path === '/spotlight/now') {
+    header('Cache-Control: no-store');
+    App\Response::json(App\Spotlight::now());
+}
+
 // ---- Advertising (public): showing ads, counting, the order form, paying, the advertiser's status page ----
 if ($method === 'GET' && $path === '/ads/serve') {
     App\AdApi::serve();

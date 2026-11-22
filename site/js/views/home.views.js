@@ -41,7 +41,11 @@ const homeAside = (
   featuredFace,
   fallback = countdownPanel(ctx.countdown),
 ) =>
-  featuredFace ? faceCard(featuredFace, { big: true, home: true }) : fallback;
+  featuredFace?.live
+    ? html`<oga-spotlight variant="home"></oga-spotlight>`
+    : featuredFace
+      ? faceCard(featuredFace, { big: true, home: true })
+      : fallback;
 
 /** Move countdown beside the status badge only when a Face is active. */
 const homeInlineCountdown = (ctx, featuredFace) =>

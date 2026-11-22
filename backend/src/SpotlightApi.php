@@ -127,6 +127,8 @@ final class SpotlightApi
             'history' => array_values(
                 array_filter($all, fn ($x) => $x !== $featured)
             ),
+            // the live, self-changing face: pages draw it instead of the hand-picked one when it is on
+            'auto' => ['enabled' => Spotlight::enabledNow()],
         ];
     }
 
@@ -157,6 +159,41 @@ final class SpotlightApi
             'ok' => true,
             'faces' => array_map([self::class, 'shape'], $rows),
         ]);
+    }
+
+    /** GET /admin/spotlight/settings?edition=: how the live "Face of the moment" is set up, and how many people are in the draw. */
+    public static function settings(): never
+    {
+        $slug = (string) ($_GET['edition'] ?? '');
+        Access::require('spotlight.view', $slug);
+        $ed = self::edition($slug);
+        $cfg = Spotlight::settings((int) $ed['id']);
+        $all = Spotlight::pool((int) $ed['id'], ['who' => 'both'] + $cfg);
+        $nominees = count(array_filter($all, fn ($s) => $s['type'] === 'nominee'));
+        Response::json(['ok' => true, 'settings' => $cfg, 'eligible' => ['nominees' => $nominees, 'committee' => count($all) - $nominees]]);
+    }
+
+    /** PUT /admin/spotlight/settings */
+    public static function saveSettings(): never
+    {
+        $in = Request::json();
+        $slug = Request::str($in, 'edition', 60);
+        $actor = Access::require('spotlight.manage', $slug);
+        $ed = self::edition($slug);
+        [$cfg, $error] = Spotlight::validate($in);
+        if ($error !== null) {
+            self::fail($error);
+        }
+        self::pdo()->prepare(
+            'INSERT INTO edition_settings (edition_id, spotlight_auto, spotlight_every, spotlight_unit, spotlight_who, spotlight_show_bio, spotlight_require_photo, spotlight_heading, spotlight_tagline, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE spotlight_auto = VALUES(spotlight_auto), spotlight_every = VALUES(spotlight_every), spotlight_unit = VALUES(spotlight_unit),
+                spotlight_who = VALUES(spotlight_who), spotlight_show_bio = VALUES(spotlight_show_bio), spotlight_require_photo = VALUES(spotlight_require_photo),
+                spotlight_heading = VALUES(spotlight_heading), spotlight_tagline = VALUES(spotlight_tagline), updated_by = VALUES(updated_by)'
+        )->execute([$ed['id'], (int) $cfg['enabled'], $cfg['every'], $cfg['unit'], $cfg['who'], (int) $cfg['showBio'], (int) $cfg['requirePhoto'], $cfg['heading'], $cfg['tagline'], $actor['id']]);
+        Cache::flush();
+        Audit::log((int) $actor['id'], 'Updated the live Face of the moment', ($cfg['enabled'] ? 'on' : 'off') . ', every ' . Spotlight::periodWord($cfg) . ', ' . $cfg['who'], (int) $ed['id']);
+        Response::json(['ok' => true]);
     }
 
     private static function fields(array $in, int $editionId): array

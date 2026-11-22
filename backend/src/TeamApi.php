@@ -226,14 +226,16 @@ final class TeamApi
     public static function saveAssignment(): never
     {
         $in = Request::json();
-        $actor = Access::require('team.manage', Request::str($in, 'edition', 60));
         $pdo = self::pdo();
 
         $target = self::person((int) ($in['personId'] ?? 0));
-        $st = $pdo->prepare('SELECT id, status FROM editions WHERE slug = ?');
+
+        $st = $pdo->prepare('SELECT id, slug, status FROM editions WHERE slug = ?');
         $st->execute([Request::str($in, 'editionId', 60)]);
         $ed = $st->fetch() ?: self::fail('That edition was not found.', 404);
-        $patch = is_array($in['patch'] ?? null) ? $in['patch'] : [];
+
+        // Authorise against the actual edition being modified.
+        $actor = Access::require('team.manage', $ed['slug']);        $patch = is_array($in['patch'] ?? null) ? $in['patch'] : [];
 
         $changesAccess = isset($patch['roleIds']) || isset($patch['grants']) || isset($patch['denies']);
         if ($changesAccess && (int) $target['id'] === (int) $actor['id'] && !self::isSuper($actor)) {
