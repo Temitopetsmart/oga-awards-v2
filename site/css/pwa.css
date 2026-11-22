@@ -1,0 +1,110 @@
+.oga-install-card {
+  position: fixed;
+  z-index: 9999;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(460px, calc(100% - 32px));
+  padding: 16px;
+  color: #f5f5f5;
+  background: #111;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  font-family: inherit;
+}
+
+.oga-install-card img {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.oga-install-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.oga-install-content strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.oga-install-content p {
+  margin: 0;
+  color: #c5c5c5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.oga-install-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.oga-install-button,
+.oga-install-close {
+  padding: 8px 12px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.oga-install-button {
+  color: #111;
+  background: #d4af37;
+  border: 1px solid #d4af37;
+}
+
+.oga-install-close {
+  color: #ddd;
+  background: transparent;
+  border: 1px solid #555;
+}
+
+.oga-install-button:hover {
+  background: #e5c65e;
+}
+
+.oga-install-close:hover {
+  border-color: #aaa;
+}
+
+@media (max-width: 480px) {
+  .oga-install-card {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100% - 24px);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .oga-install-card img {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .oga-install-content strong {
+    font-size: 13px;
+  }
+
+  .oga-install-actions {
+    gap: 5px;
+  }
+
+  .oga-install-button,
+  .oga-install-close {
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+}

@@ -31,19 +31,21 @@ final class InviteApi
     public static function create(): never
     {
         $in = Request::json();
+
+        // Check permission before validating invitation details.
+        $editionSlug = trim((string) ($in['edition'] ?? $in['editionId'] ?? ''));
+        $actor = Access::require('team.manage', $editionSlug);
+
         $pdo = self::pdo();
+
+        $st = $pdo->prepare('SELECT id, slug, name, edition_label FROM editions WHERE id = ?');
+        $st->execute([$actor['edition_id']]);
+        $ed = $st->fetch() ?: self::fail('That edition was not found.', 404);
 
         $email = mb_strtolower(Request::str($in, 'email', 190));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             self::fail('Enter a valid email address.');
         }
-
-        $st = $pdo->prepare('SELECT id, slug, name, edition_label FROM editions WHERE slug = ?');
-        $st->execute([Request::str($in, 'editionId', 60)]);
-        $ed = $st->fetch() ?: self::fail('That edition was not found.', 404);
-
-        // Authorise against the actual edition receiving the invitation.
-        $actor = Access::require('team.manage', $ed['slug']);
         $slugs = array_values(array_unique(array_map(fn ($r) => self::slugOf((string) $r), (array) ($in['roleIds'] ?? []))));
         TeamApi::assertGrantable($actor, (int) $ed['id'], $slugs);
 

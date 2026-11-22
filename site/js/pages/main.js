@@ -1,3 +1,4 @@
+import "../pwa.js";
 import "../../../shared/js/components/index.js";
 import { html, mount } from "../../../shared/js/core/dom.js";
 import { getHomeContext } from "../../../shared/js/services/event.service.js";
