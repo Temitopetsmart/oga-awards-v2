@@ -63,11 +63,15 @@ export default async function committee(ctx) {
                 <div class="row g-4">
                   ${members.map(
                     (member) => html`
-                      <div class="col-6 col-md-4 col-lg-3">
-                        <article class="oga-card oga-member">
-                          ${avatar(member)}
-                          <h3>${member.name}</h3>
-                          <p>${member.role}</p>
+                      <div class="col-6 col-md-4 col-lg-3"> 
+                        <article class="oga-card oga-person-card oga-member">
+                          <div class="oga-person-card__media">
+                            ${avatar(member, true)}
+                          </div>
+                          <div class="oga-person-card__body">
+                            <h3>${member.name}</h3>
+                            <p>${member.role}</p>
+                          </div>
                         </article>
                       </div>
                     `,

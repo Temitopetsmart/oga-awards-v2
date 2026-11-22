@@ -39,6 +39,9 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]+)/(?:[\s?])
 RewriteRule ^ %1 [R=301,L]
 
+# Serve nominee profiles through PHP for social sharing previews
+RewriteRule ^nominee$ nominee-preview.php [END,QSA]
+
 # (d) /vote -> vote.html (served internally; the address bar keeps the clean address)
 
 RewriteCond %{REQUEST_FILENAME} !-d
